@@ -1,0 +1,16 @@
+.env
+.cache/
+.docker-data/
+.run/
+logs/
+output/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.pid
+.DS_Store
+.idea/
+.vscode/
+doc/
