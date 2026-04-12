@@ -1,14 +1,35 @@
-from pathlib import Path
 import uuid
 import uvicorn
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
-from app.utils.task_utils import *
-from app.utils.sse_utils import create_sse_queue, SSEEvent, sse_generator
-from app.clients.mongo_history_utils import *
+from app.utils.task_utils import (
+    update_task_status,
+    get_task_result,
+    TASK_STATUS_PROCESSING,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_FAILED,
+)
+from app.utils.sse_utils import (
+    push_to_session,
+    create_sse_queue,
+    SSEEvent,
+    sse_generator,
+)
+from app.utils.perf_tracker import (
+    perf_start,
+    perf_finish,
+    get_performance_summary,
+    get_performance_time_series,
+    get_stage_breakdown,
+)
+from app.clients.mongo_history_utils import (
+    get_recent_messages,
+    clear_history,
+    get_all_sessions,
+)
 from app.query_process.agent.main_graph import query_app
 
 # 后续导入启动图对象
@@ -24,21 +45,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# 返回chat.html页面
-@app.get("/chat.html")  # 对外访问地址
-async def chat():
-    # 从 api -> query_process
-    current_dir_parent_path = Path(__file__).absolute().parent.parent
-    # 定义chat.html位置
-    chat_html_path = current_dir_parent_path / "page" / "chat.html"
-    # 如果不存在，抛出404异常
-    if not chat_html_path.exists():
-        raise HTTPException(
-            status_code=404, detail=f"没有查询到页面，地址为：{chat_html_path}！"
-        )
-    return FileResponse(chat_html_path)
 
 
 # 定义接口接收的数据结构
@@ -63,6 +69,9 @@ async def health():
 def run_query_graph(session_id: str, user_query: str, is_stream: bool = True):
     print(f"开始流程图处理...{session_id} {user_query} {is_stream}")
 
+    # 性能埋点：开始追踪
+    perf_start(session_id, user_query)
+
     default_state = {
         "original_query": user_query,
         "session_id": session_id,
@@ -78,6 +87,9 @@ def run_query_graph(session_id: str, user_query: str, is_stream: bool = True):
         update_task_status(session_id, TASK_STATUS_FAILED, is_stream)
         if is_stream:
             push_to_session(session_id, SSEEvent.ERROR, {"error": str(e)})
+    finally:
+        # 性能埋点：结束追踪并写入 MongoDB
+        perf_finish(session_id)
 
 
 @app.post("/query")
@@ -176,5 +188,51 @@ async def clear_chat_history(session_id: str):
     return {"message": "History cleared", "deleted_count": count}
 
 
+@app.get("/sessions")
+async def list_sessions(limit: int = 50):
+    """
+    获取所有会话列表，按最后消息时间倒序
+    """
+    try:
+        sessions = get_all_sessions(limit=limit)
+        return {"sessions": sessions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"sessions error: {e}")
+
+
+# ─── 性能分析 API ─────────────────────────────────────────────
+
+
+@app.get("/performance/summary")
+async def performance_summary(start_date: str = None, end_date: str = None):
+    """获取性能摘要统计"""
+    try:
+        return get_performance_summary(start_date, end_date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"performance summary error: {e}")
+
+
+@app.get("/performance/time-series")
+async def performance_time_series(
+    granularity: str = "day", start_date: str = None, end_date: str = None
+):
+    """获取性能时间序列数据"""
+    try:
+        return get_performance_time_series(granularity, start_date, end_date)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"performance time-series error: {e}"
+        )
+
+
+@app.get("/performance/stages")
+async def performance_stages(start_date: str = None, end_date: str = None):
+    """获取阶段耗时分布"""
+    try:
+        return get_stage_breakdown(start_date, end_date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"performance stages error: {e}")
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

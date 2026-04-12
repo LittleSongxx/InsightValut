@@ -8,7 +8,6 @@ import uvicorn
 # 第三方库
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 # 项目内部工具/配置/客户端
 from app.clients.minio_utils import get_minio_client
@@ -20,10 +19,18 @@ from app.utils.task_utils import (
     get_running_task_list,
     update_task_status,
     get_task_status,
+    set_task_result,
+    get_task_result,
 )
 from app.import_process.agent.state import get_default_state
 from app.import_process.agent.main_graph import kb_import_app  # LangGraph全流程编译实例
 from app.core.logger import logger  # 项目统一日志工具
+from app.clients.mongo_import_utils import (
+    create_import_task,
+    update_import_task,
+    get_import_task,
+    list_import_tasks,
+)
 
 # 初始化FastAPI应用实例
 # 标题和描述会在Swagger文档(http://ip:port/docs)中展示
@@ -42,28 +49,10 @@ app.add_middleware(
 )
 
 
-# --------------------------
-# 静态页面路由：返回文件导入前端页面import.html
-# 访问地址：http://localhost:8000/import.html
-# --------------------------
-@app.get("/import.html", response_class=FileResponse)
-async def get_import_page():
-    """返回文件导入前端页面：import.html"""
-    # 拼接HTML文件绝对路径，基于项目根目录定位
-    html_abs_path = PROJECT_ROOT / "app/import_process/page/import.html"
-    # 日志记录页面访问的文件路径，方便排查文件不存在问题
-    logger.info(f"前端页面访问，文件绝对路径：{html_abs_path}")
-
-    # 校验文件是否存在，不存在则抛出404异常
-    if not os.path.exists(html_abs_path):
-        logger.error(f"前端页面文件不存在，路径：{html_abs_path}")
-        raise HTTPException(status_code=404, detail="import.html page not found")
-
-    # 以FileResponse返回HTML文件，浏览器自动渲染
-    return FileResponse(
-        path=html_abs_path,
-        media_type="text/html",  # 显式指定媒体类型为HTML，确保浏览器正确解析
-    )
+@app.get("/health")
+async def health():
+    """检查服务是否正常"""
+    return {"ok": True}
 
 
 # --------------------------
@@ -104,11 +93,25 @@ def run_graph_task(task_id: str, local_dir: str, local_file_path: str):
 
         # 4. 全流程执行完成，更新任务全局状态为：已完成
         update_task_status(task_id, "completed")
+        update_import_task(
+            task_id,
+            status="completed",
+            done_list=get_done_task_list(task_id),
+            running_list=[],
+        )
         logger.info(f"[{task_id}] LangGraph全流程执行完毕，任务完成")
 
     except Exception as e:
         # 5. 捕获全流程异常，更新任务全局状态为：失败，并记录错误日志（含堆栈）
         update_task_status(task_id, "failed")
+        set_task_result(task_id, "error", str(e))
+        update_import_task(
+            task_id,
+            status="failed",
+            error_message=str(e),
+            done_list=get_done_task_list(task_id),
+            running_list=[],
+        )
         logger.error(
             f"[{task_id}] LangGraph全流程执行失败，异常信息：{str(e)}", exc_info=True
         )
@@ -157,6 +160,7 @@ async def upload_files(
 
         # 3. 标记「文件上传」阶段为「运行中」，前端轮询可查
         add_running_task(task_id, "upload_file")
+        create_import_task(task_id, file.filename, status="uploading")
 
         # 4. 构建该任务的本地独立目录：output/YYYYMMDD/TaskID，避免多文件重名冲突
         task_local_dir = os.path.join(date_based_root_dir, task_id)
@@ -248,21 +252,59 @@ async def get_task_progress(task_id: str):
     :param task_id: 全局唯一任务ID（由/upload接口返回）
     :return: 包含任务全局状态、已完成节点、运行中节点的JSON响应
     """
-    # 构造任务状态返回体
-    task_status_info: Dict[str, Any] = {
-        "code": 200,
-        "task_id": task_id,
-        "status": get_task_status(
-            task_id
-        ),  # 任务全局状态：pending/processing/completed/failed
-        "done_list": get_done_task_list(task_id),  # 已完成的节点/阶段列表
-        "running_list": get_running_task_list(task_id),  # 正在运行的节点/阶段列表
-    }
-    # 记录状态查询日志，方便追踪前端轮询情况
+    # 优先从内存获取（处理中的任务实时性最好）
+    mem_status = get_task_status(task_id)
+
+    if mem_status:
+        # 内存中有数据 → 正在处理或刚完成
+        task_status_info: Dict[str, Any] = {
+            "code": 200,
+            "task_id": task_id,
+            "status": mem_status,
+            "done_list": get_done_task_list(task_id),
+            "running_list": get_running_task_list(task_id),
+            "error_message": get_task_result(task_id, "error"),
+        }
+    else:
+        # 内存中无数据（服务重启过） → 回退到 MongoDB 持久化记录
+        db_task = get_import_task(task_id)
+        if db_task:
+            task_status_info = {
+                "code": 200,
+                "task_id": task_id,
+                "status": db_task.get("status", ""),
+                "done_list": db_task.get("done_list", []),
+                "running_list": db_task.get("running_list", []),
+                "error_message": db_task.get("error_message", ""),
+            }
+        else:
+            task_status_info = {
+                "code": 404,
+                "task_id": task_id,
+                "status": "",
+                "done_list": [],
+                "running_list": [],
+                "error_message": "任务不存在",
+            }
+
     logger.info(
         f"[{task_id}] 任务状态查询，当前状态：{task_status_info['status']}，已完成节点：{task_status_info['done_list']}"
     )
     return task_status_info
+
+
+@app.get(
+    "/tasks",
+    summary="导入任务列表",
+    description="查询所有历史导入任务（持久化存储，重启不丢失）",
+)
+async def get_all_tasks(limit: int = 100, status: str = None):
+    """
+    导入任务列表接口
+    从 MongoDB 读取所有历史导入任务，按创建时间倒序
+    """
+    tasks = list_import_tasks(limit=limit, status=status)
+    return {"code": 200, "tasks": tasks}
 
 
 # --------------------------
@@ -275,6 +317,6 @@ if __name__ == "__main__":
     # 启动uvicorn服务，绑定本地IP和8000端口，关闭自动重载（生产环境建议用workers多进程）
     uvicorn.run(
         app=app,
-        host="127.0.0.1",  # 仅本地访问，生产环境改为0.0.0.0（允许所有IP访问）
+        host="0.0.0.0",  # 允许所有IP访问（容器/远程环境必需）
         port=8000,  # 服务端口
     )

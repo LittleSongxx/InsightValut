@@ -1,9 +1,15 @@
+import os
+import threading
+from pathlib import Path
+
 from pymilvus.model.hybrid import BGEM3EmbeddingFunction
 from app.core.logger import logger
 from app.conf.embedding_config import embedding_config
 
 # 模型单例对象，避免重复初始化
 _bge_m3_ef = None
+_bge_m3_lock = threading.Lock()
+
 
 def get_bge_m3_ef():
     """
@@ -11,41 +17,56 @@ def get_bge_m3_ef():
     :return: 初始化完成的BGEM3EmbeddingFunction实例
     """
     global _bge_m3_ef
-    # 单例模式：已初始化则直接返回，避免重复加载模型
     if _bge_m3_ef is not None:
         logger.debug("BGE-M3模型单例已存在，直接返回实例")
         return _bge_m3_ef
 
-    # 从环境变量加载配置，无配置则使用默认值
-    # 本地有可以使用本地地址！ 没有使用 "BAAI/bge-m3" 会自动下载！ 如果云端部署也可以使用url地址！
-    model_name = embedding_config.bge_m3_path or "BAAI/bge-m3"
-    device = embedding_config.bge_device or "cpu"
-    use_fp16 = embedding_config.bge_fp16 or False
+    with _bge_m3_lock:
+        if _bge_m3_ef is not None:
+            return _bge_m3_ef
 
-    # 打印模型初始化配置，便于问题排查
-    logger.info(
-        "开始初始化BGE-M3模型",
-        extra={
-            "model_name": model_name,
-            "device": device,
-            "use_fp16": use_fp16,
-            "normalize_embeddings": True
-        }
-    )
+        # BGE_M3_PATH: 本地模型路径（相对/绝对），存在则优先使用；不存在则用 repo ID 自动下载
+        raw_path = embedding_config.bge_m3_path
+        if raw_path:
+            resolved = Path(os.path.expanduser(raw_path))
+            # 相对路径 → 拼接 PROJECT_ROOT（容器内为 /app）
+            if not resolved.is_absolute():
+                project_root = os.getenv("PROJECT_ROOT", "/app")
+                resolved = Path(project_root) / resolved
+            if resolved.exists():
+                model_name = str(resolved)
+                logger.info(f"检测到本地模型目录，使用本地路径：{resolved}")
+            else:
+                model_name = embedding_config.bge_m3 or "BAAI/bge-m3"
+                logger.warning(f"本地模型目录不存在（{resolved}），回退到 HuggingFace repo ID：{model_name}")
+        else:
+            model_name = embedding_config.bge_m3 or "BAAI/bge-m3"
 
-    try:
-        # 初始化BGE-M3模型，开启原生L2归一化（适配Milvus IP内积检索）
-        _bge_m3_ef = BGEM3EmbeddingFunction(
-            model_name=model_name,
-            device=device,
-            use_fp16=use_fp16,
-            normalize_embeddings=True  # 模型原生对稠密+稀疏向量做L2归一化
+        device = embedding_config.bge_device or "cpu"
+        use_fp16 = embedding_config.bge_fp16 or False
+
+        logger.info(
+            "开始初始化BGE-M3模型",
+            extra={
+                "model_name": model_name,
+                "device": device,
+                "use_fp16": use_fp16,
+                "normalize_embeddings": True,
+            },
         )
-        logger.success("BGE-M3模型初始化成功，已开启原生L2归一化")
-        return _bge_m3_ef
-    except Exception as e:
-        logger.error(f"BGE-M3模型初始化失败：{str(e)}", exc_info=True)
-        raise  # 向上抛出异常，由调用方处理
+
+        try:
+            _bge_m3_ef = BGEM3EmbeddingFunction(
+                model_name=model_name,
+                device=device,
+                use_fp16=use_fp16,
+                normalize_embeddings=True,
+            )
+            logger.success("BGE-M3模型初始化成功，已开启原生L2归一化")
+            return _bge_m3_ef
+        except Exception as e:
+            logger.error(f"BGE-M3模型初始化失败：{str(e)}", exc_info=True)
+            raise
 
 
 def generate_embeddings(texts):
@@ -72,21 +93,31 @@ def generate_embeddings(texts):
         processed_sparse = []
         for i in range(len(texts)):
             # 提取第i个文本的稀疏向量索引：np.int64 → Python int（满足字典key可哈希要求）
-            sparse_indices = embeddings["sparse"].indices[
-                embeddings["sparse"].indptr[i]:embeddings["sparse"].indptr[i + 1]
-            ].tolist()
+            sparse_indices = (
+                embeddings["sparse"]
+                .indices[
+                    embeddings["sparse"].indptr[i] : embeddings["sparse"].indptr[i + 1]
+                ]
+                .tolist()
+            )
             # 提取第i个文本的稀疏向量权重：np.float32 → Python float（适配JSON序列化/接口返回）
-            sparse_data = embeddings["sparse"].data[
-                embeddings["sparse"].indptr[i]:embeddings["sparse"].indptr[i + 1]
-            ].tolist()
+            sparse_data = (
+                embeddings["sparse"]
+                .data[
+                    embeddings["sparse"].indptr[i] : embeddings["sparse"].indptr[i + 1]
+                ]
+                .tolist()
+            )
             # 构造{特征索引: 归一化权重}的稀疏向量字典
             sparse_dict = {k: v for k, v in zip(sparse_indices, sparse_data)}
             processed_sparse.append(sparse_dict)
 
         # 构造最终返回结果，稠密向量转列表（解决numpy数组不可序列化问题）
         result = {
-            "dense": [emb.tolist() for emb in embeddings["dense"]],  # 嵌套列表，与输入文本一一对应
-            "sparse": processed_sparse  # 字典列表，模型已做L2归一化
+            "dense": [
+                emb.tolist() for emb in embeddings["dense"]
+            ],  # 嵌套列表，与输入文本一一对应
+            "sparse": processed_sparse,  # 字典列表，模型已做L2归一化
         }
         logger.success(f"{len(texts)}条文本向量生成完成，格式已适配工业级使用")
         return result

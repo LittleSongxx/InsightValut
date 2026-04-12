@@ -1,16 +1,22 @@
 # 导入系统模块：用于读取环境变量
 import os
+
 # 导入日志模块：用于记录程序运行日志（成功/失败/错误信息）
 import logging
+
 # 导入类型注解模块：用于函数参数/返回值的类型提示，提升代码可读性和规范性
 from typing import List, Dict, Any, Optional
+
 # 导入时间模块：用于生成时间戳，记录对话的创建时间
 from datetime import datetime
+
 # 导入pymongo核心模块：MongoDB原生Python驱动，实现数据库连接和操作
 # ASCENDING：表示升序排序，用于MongoDB索引和查询排序
 from pymongo import MongoClient, ASCENDING
+
 # 导入bson的ObjectId：MongoDB默认的主键类型，用于唯一标识文档
 from bson import ObjectId
+
 # 导入dotenv模块：用于从.env文件加载环境变量，避免硬编码敏感配置（如MongoDB连接地址）
 from dotenv import load_dotenv
 
@@ -24,6 +30,7 @@ class HistoryMongoTool:
     核心功能：封装MongoDB的连接、集合初始化、索引创建，为上层提供统一的数据库操作入口
     扩展功能：支持与LangChain消息对象的格式转换（原代码预留能力）
     """
+
     def __init__(self):
         """
         类初始化方法：完成MongoDB的连接、数据库/集合获取、索引创建
@@ -68,6 +75,7 @@ except Exception as e:
     # 原因：模块加载阶段的异常可能导致整个程序启动失败，此处保留懒加载兜底（get_history_mongo_tool会再次尝试创建）
     logging.warning(f"Could not initialize HistoryMongoTool on module load: {e}")
 
+
 def get_history_mongo_tool() -> HistoryMongoTool:
     """
     获取HistoryMongoTool的单例实例（懒加载模式）
@@ -83,7 +91,6 @@ def get_history_mongo_tool() -> HistoryMongoTool:
     return _history_mongo_tool
 
 
-
 def clear_history(session_id: str) -> int:
     """
     清空指定会话的所有历史对话记录
@@ -96,7 +103,9 @@ def clear_history(session_id: str) -> int:
         # 执行批量删除操作：删除所有session_id匹配的文档
         result = mongo_tool.chat_message.delete_many({"session_id": session_id})
         # 记录删除成功日志，包含删除数量和会话ID，便于问题排查
-        logging.info(f"Deleted {result.deleted_count} messages for session {session_id}")
+        logging.info(
+            f"Deleted {result.deleted_count} messages for session {session_id}"
+        )
         # 返回实际删除的数量（delete_many的返回对象包含deleted_count属性）
         return result.deleted_count
     except Exception as e:
@@ -107,13 +116,13 @@ def clear_history(session_id: str) -> int:
 
 
 def save_chat_message(
-        session_id: str,
-        role: str,
-        text: str,
-        rewritten_query: str = "",
-        item_names: List[str] = None,
-        image_urls: List[str] = None,
-        message_id: str = None
+    session_id: str,
+    role: str,
+    text: str,
+    rewritten_query: str = "",
+    item_names: List[str] = None,
+    image_urls: List[str] = None,
+    message_id: str = None,
 ) -> str:
     """
     写入/更新单条会话记录到MongoDB
@@ -138,7 +147,7 @@ def save_chat_message(
         "rewritten_query": rewritten_query or "",  # 重写查询，空值处理为空字符串
         "item_names": item_names,  # 关联商品名称列表
         "image_urls": image_urls,  # 关联图片URL列表
-        "ts": ts  # 时间戳，排序和时间筛选维度
+        "ts": ts,  # 时间戳，排序和时间筛选维度
     }
 
     # 获取全局的HistoryMongoTool实例，使用单例模式
@@ -147,8 +156,10 @@ def save_chat_message(
     if message_id:
         # 有message_id：执行更新操作（根据主键更新）
         result = mongo_tool.chat_message.update_one(
-            {"_id": ObjectId(message_id)},  # 更新条件：主键匹配（需将字符串转为ObjectId类型）
-            {"$set": document}  # 更新操作：$set表示只更新指定字段，保留其他字段
+            {
+                "_id": ObjectId(message_id)
+            },  # 更新条件：主键匹配（需将字符串转为ObjectId类型）
+            {"$set": document},  # 更新操作：$set表示只更新指定字段，保留其他字段
         )
         # 更新操作返回传入的message_id作为标识
         return message_id
@@ -174,13 +185,13 @@ def update_message_item_names(ids: List[str], item_names: List[str]) -> int:
         # 执行批量更新操作
         result = mongo_tool.chat_message.update_many(
             # 更新条件：复合条件，同时满足
-            {
-                "_id": {"$in": object_ids}# 主键在指定的ID列表中（批量筛选）
-            },
-            {"$set": {"item_names": item_names}}  # 更新操作：设置新的商品名称列表
+            {"_id": {"$in": object_ids}},  # 主键在指定的ID列表中（批量筛选）
+            {"$set": {"item_names": item_names}},  # 更新操作：设置新的商品名称列表
         )
         # 记录更新成功日志，包含更新数量和新的商品名称
-        logging.info(f"Updated {result.modified_count} records to item_names: {item_names}")
+        logging.info(
+            f"Updated {result.modified_count} records to item_names: {item_names}"
+        )
         # 返回实际更新的数量（modified_count：真正被修改的文档数，区别于matched_count）
         return result.modified_count
     except Exception as e:
@@ -220,6 +231,60 @@ def get_recent_messages(session_id: str, limit: int = 10) -> List[Dict[str, Any]
         return []
 
 
+def get_all_sessions(limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    查询所有会话列表，按最后消息时间倒序排列
+    每个会话返回：session_id、title（首条用户消息摘要）、last_ts、message_count
+    :param limit: 最大返回会话数，默认50
+    :return: 会话摘要列表
+    """
+    mongo_tool = get_history_mongo_tool()
+    try:
+        pipeline = [
+            # 按 session_id 分组，聚合每个会话的元信息
+            {
+                "$group": {
+                    "_id": "$session_id",
+                    "last_ts": {"$max": "$ts"},
+                    "message_count": {"$sum": 1},
+                    "messages": {
+                        "$push": {"role": "$role", "text": "$text", "ts": "$ts"}
+                    },
+                }
+            },
+            # 按最后消息时间倒序
+            {"$sort": {"last_ts": -1}},
+            {"$limit": limit},
+        ]
+        results = list(mongo_tool.chat_message.aggregate(pipeline))
+
+        sessions = []
+        for r in results:
+            # 从该会话所有消息中找到最早的用户消息作为标题
+            user_msgs = sorted(
+                [m for m in r["messages"] if m.get("role") == "user"],
+                key=lambda m: m.get("ts", 0),
+            )
+            title = ""
+            if user_msgs:
+                title = user_msgs[0].get("text", "")[:60]
+            if not title:
+                title = f"对话 {r['_id'][:8]}..."
+
+            sessions.append(
+                {
+                    "session_id": r["_id"],
+                    "title": title,
+                    "last_ts": r["last_ts"],
+                    "message_count": r["message_count"],
+                }
+            )
+        return sessions
+    except Exception as e:
+        logging.error(f"Error getting all sessions: {e}")
+        return []
+
+
 # 主程序入口：仅当直接运行该脚本时执行，用于简单的功能测试
 if __name__ == "__main__":
     # 简单测试代码：验证数据库的写入和查询功能是否正常
@@ -228,7 +293,9 @@ if __name__ == "__main__":
     # 1. 写入用户消息（手动指定ts=1000，便于测试排序）
     save_chat_message(sid, "user", "你好 (Hybrid)")
     # 2. 写入助手回复（手动指定ts=1001，按时间顺序紧跟用户消息）
-    save_chat_message(sid, "assistant", "你好！我是基于原生 Mongo + LangChain 对象的助手。")
+    save_chat_message(
+        sid, "assistant", "你好！我是基于原生 Mongo + LangChain 对象的助手。"
+    )
     # 3. 写入带关联商品的用户消息（手动指定ts=1002，测试item_names字段）
     save_chat_message(sid, "user", "这个万用表怎么换电池？", item_names=["混合万用表"])
 

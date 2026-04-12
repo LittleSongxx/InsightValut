@@ -4,8 +4,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$PROJECT_ROOT/.run"
 LOG_DIR="$PROJECT_ROOT/logs"
-IMPORT_PID_FILE="$RUN_DIR/import_service.pid"
-QUERY_PID_FILE="$RUN_DIR/query_service.pid"
+FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
 
 wait_http() {
   local name="$1"
@@ -48,7 +47,7 @@ ensure_port_free() {
   fi
 }
 
-mkdir -p "$RUN_DIR" "$LOG_DIR" "$PROJECT_ROOT/.cache/models" "$PROJECT_ROOT/.cache/huggingface" "$PROJECT_ROOT/.cache/modelscope"
+mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 cd "$PROJECT_ROOT"
 
@@ -57,58 +56,33 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v conda >/dev/null 2>&1; then
-  echo "[error] conda command not found"
-  exit 1
-fi
+echo "[1/4] building and starting all services via docker-compose..."
+docker compose up --build -d >/dev/null
 
-echo "[1/6] starting docker infra containers..."
-docker compose up -d mongodb etcd minio minio-init milvus neo4j >/dev/null
-
-echo "[2/6] ensuring BGE-M3 model exists in local docker volume..."
-if [[ ! -f "$PROJECT_ROOT/.cache/models/bge-m3/config.json" ]]; then
-  docker run --rm \
-    -v "$PROJECT_ROOT/.cache/models:/models" \
-    -e HF_HOME=/models/hf \
-    python:3.11-slim \
-    bash -lc "set -e; pip install --quiet --no-cache-dir huggingface_hub && python - <<'PY'
-from huggingface_hub import snapshot_download
-snapshot_download(
-    repo_id='BAAI/bge-m3',
-    local_dir='/models/bge-m3',
-    local_dir_use_symlinks=False,
-    resume_download=True,
-)
-print('BGE-M3 model prepared at /models/bge-m3')
-PY"
-else
-  echo "[ok] BGE-M3 already present, skip download"
-fi
-
-echo "[3/6] stopping stale API processes..."
-"$PROJECT_ROOT/stop_insightvault.sh" --silent || true
-ensure_port_free 8000
-ensure_port_free 8001
-
-echo "[4/6] starting import service..."
-ensure_port_free 8000
-nohup conda run -n langchain --no-capture-output python -m app.import_process.api.file_import_service >"$LOG_DIR/import_service.log" 2>&1 &
-echo $! > "$IMPORT_PID_FILE"
-
-echo "[5/6] starting query service..."
-ensure_port_free 8001
-nohup conda run -n langchain --no-capture-output python -m app.query_process.api.query_service >"$LOG_DIR/query_service.log" 2>&1 &
-echo $! > "$QUERY_PID_FILE"
-
-echo "[6/6] waiting for API health checks..."
-wait_http "import-service" "http://127.0.0.1:8000/import.html" 120
+echo "[2/4] waiting for API health checks..."
+wait_http "import-service" "http://127.0.0.1:8000/health" 120
 wait_http "query-service" "http://127.0.0.1:8001/health" 120
+
+echo "[3/4] stopping stale frontend dev server..."
+if [[ -f "$FRONTEND_PID_FILE" ]]; then
+  kill "$(cat "$FRONTEND_PID_FILE")" 2>/dev/null || true
+  rm -f "$FRONTEND_PID_FILE"
+fi
+
+echo "[4/4] starting frontend dev server..."
+ensure_port_free 3002
+cd "$PROJECT_ROOT/frontend"
+nohup npm run dev >"$LOG_DIR/frontend.log" 2>&1 &
+echo $! > "$FRONTEND_PID_FILE"
+cd "$PROJECT_ROOT"
+wait_http "frontend" "http://127.0.0.1:3002" 30
 
 echo ""
 echo "insightvault started successfully"
-echo "- import log: $LOG_DIR/import_service.log"
-echo "- query  log: $LOG_DIR/query_service.log"
-echo "- import page: http://127.0.0.1:8000/import.html"
-echo "- chat   page: http://127.0.0.1:8001/chat.html"
-echo "- query health: http://127.0.0.1:8001/health"
-echo "- stop command: ./stop_insightvault.sh"
+echo "- docker logs  : docker compose logs -f"
+echo "- frontend log: $LOG_DIR/frontend.log"
+echo ""
+echo "- frontend    : http://127.0.0.1:3002"
+echo "- import API  : http://127.0.0.1:8000/health"
+echo "- query  API  : http://127.0.0.1:8001/health"
+echo "- stop command: docker compose down"

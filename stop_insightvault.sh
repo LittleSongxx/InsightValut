@@ -3,8 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$PROJECT_ROOT/.run"
-IMPORT_PID_FILE="$RUN_DIR/import_service.pid"
-QUERY_PID_FILE="$RUN_DIR/query_service.pid"
+FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
 SILENT="${1:-}"
 
 log() {
@@ -13,60 +12,23 @@ log() {
   fi
 }
 
-kill_by_pid_file() {
-  local name="$1"
-  local pid_file="$2"
+cd "$PROJECT_ROOT"
 
-  if [[ ! -f "$pid_file" ]]; then
-    return 0
-  fi
+echo "stopping insightvault services..."
 
+if [[ -f "$FRONTEND_PID_FILE" ]]; then
   local pid
-  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  pid="$(cat "$FRONTEND_PID_FILE" 2>/dev/null || true)"
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null || true
     sleep 1
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -9 "$pid" 2>/dev/null || true
-    fi
-    log "[ok] stopped $name (pid=$pid)"
+    kill -9 "$pid" 2>/dev/null || true
+    log "[ok] stopped frontend (pid=$pid)"
   fi
+  rm -f "$FRONTEND_PID_FILE"
+fi
 
-  rm -f "$pid_file"
-}
+echo "stopping docker containers..."
+docker compose down >/dev/null 2>&1 || true
 
-kill_by_pattern() {
-  local name="$1"
-  local pattern="$2"
-
-  local pids
-  pids="$(pgrep -f "$pattern" || true)"
-  if [[ -n "$pids" ]]; then
-    pkill -f "$pattern" || true
-    log "[ok] stopped $name by pattern"
-  fi
-}
-
-kill_by_port() {
-  local name="$1"
-  local port="$2"
-
-  if command -v fuser >/dev/null 2>&1; then
-    if fuser "${port}/tcp" >/dev/null 2>&1; then
-      fuser -k "${port}/tcp" >/dev/null 2>&1 || true
-      log "[ok] stopped $name by port $port"
-    fi
-  fi
-}
-
-kill_by_pid_file "import-service" "$IMPORT_PID_FILE"
-kill_by_pid_file "query-service" "$QUERY_PID_FILE"
-
-kill_by_pattern "import-service" "app.import_process.api.file_import_service"
-kill_by_pattern "query-service" "app.query_process.api.query_service"
-kill_by_pattern "import-service" "app/import_process/api/file_import_service.py"
-kill_by_pattern "query-service" "app/query_process/api/query_service.py"
-kill_by_port "import-service" 8000
-kill_by_port "query-service" 8001
-
-log "insightvault API processes stopped (docker containers kept running)"
+log "insightvault stopped"

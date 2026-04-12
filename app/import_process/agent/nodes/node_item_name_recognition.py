@@ -5,24 +5,32 @@ from typing import List, Dict, Any, Tuple
 
 # 导入Milvus客户端（向量数据库核心操作）、数据类型枚举（定义集合Schema）
 from pymilvus import MilvusClient, DataType
+
 # 导入LangChain消息类（标准化大模型对话消息格式）
 from langchain_core.messages import SystemMessage, HumanMessage
 
 # 导入自定义模块：
 # 1. 流程状态载体：ImportGraphState为LangGraph流程的统一状态管理对象
 from app.import_process.agent.state import ImportGraphState
+
 # 2. Milvus工具：获取单例Milvus客户端，实现连接复用
 from app.clients.milvus_utils import get_milvus_client
+
 # 3. 大模型工具：获取大模型客户端，统一模型调用入口
 from app.lm.lm_utils import get_llm_client
+
 # 4. 向量工具：BGE-M3模型实例、向量生成方法（稠密+稀疏向量）
 from app.lm.embedding_utils import get_bge_m3_ef, generate_embeddings
+
 # 5. 稀疏向量工具：归一化处理，保证向量长度为1，提升检索准确性
 from app.utils.normalize_sparse_vector import normalize_sparse_vector
+
 # 6. 任务工具：更新任务运行状态，用于任务监控和管理
-from app.utils.task_utils import add_running_task
+from app.utils.task_utils import add_running_task, add_done_task
+
 # 7. 日志工具：项目统一日志入口，分级输出（info/warning/error）
 from app.core.logger import logger
+
 # 8. 提示词工具：加载本地prompt模板，实现提示词与代码解耦
 from app.core.load_prompt import load_prompt
 
@@ -75,7 +83,11 @@ def step_1_get_inputs(state: ImportGraphState) -> Tuple[str, List[Dict]]:
     return file_title, chunks
 
 
-def step_2_build_context(chunks: List[Dict], k: int = DEFAULT_ITEM_NAME_CHUNK_K, max_chars: int = CONTEXT_TOTAL_MAX_CHARS) -> str:
+def step_2_build_context(
+    chunks: List[Dict],
+    k: int = DEFAULT_ITEM_NAME_CHUNK_K,
+    max_chars: int = CONTEXT_TOTAL_MAX_CHARS,
+) -> str:
     """
     步骤 2: 构造大模型商品名称识别的标准化上下文
     核心作用：
@@ -118,7 +130,9 @@ def step_2_build_context(chunks: List[Dict], k: int = DEFAULT_ITEM_NAME_CHUNK_K,
         # 单切片内容截断：防止单个切片内容过长占满上下文
         if len(chunk_content) > SINGLE_CHUNK_CONTENT_MAX_LEN:
             chunk_content = chunk_content[:SINGLE_CHUNK_CONTENT_MAX_LEN]
-            logger.debug(f"第{idx+1}个切片内容过长，已截断至{SINGLE_CHUNK_CONTENT_MAX_LEN}字符")
+            logger.debug(
+                f"第{idx+1}个切片内容过长，已截断至{SINGLE_CHUNK_CONTENT_MAX_LEN}字符"
+            )
 
         # 结构化格式化切片：带序号+标题+内容，提升大模型识别效率
         piece = f"【切片{idx + 1}】\n标题：{chunk_title} \n内容：{chunk_content}"
@@ -166,10 +180,14 @@ def step_3_call_llm(file_title: str, context: str) -> str:
 
     try:
         # 加载商品名称识别prompt模板，动态传入文件标题和上下文
-        human_prompt = load_prompt("item_name_recognition", file_title=file_title, context=context)
+        human_prompt = load_prompt(
+            "item_name_recognition", file_title=file_title, context=context
+        )
         # 加载系统提示词，定义大模型角色（商品识别专家，仅返回纯结果）
         system_prompt = load_prompt("product_recognition_system")
-        logger.debug(f"大模型调用提示词构建完成，系统提示词长度{len(system_prompt)}，人类提示词长度{len(human_prompt)}")
+        logger.debug(
+            f"大模型调用提示词构建完成，系统提示词长度{len(system_prompt)}，人类提示词长度{len(human_prompt)}"
+        )
 
         # 获取大模型客户端：json_mode=False，要求返回纯文本而非JSON格式
         llm = get_llm_client(json_mode=False)
@@ -180,7 +198,7 @@ def step_3_call_llm(file_title: str, context: str) -> str:
         # 标准化构建大模型对话消息：SystemMessage定义角色 + HumanMessage传递业务请求
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=human_prompt)
+            HumanMessage(content=human_prompt),
         ]
         # 调用大模型并获取返回结果
         resp = llm.invoke(messages)
@@ -188,11 +206,28 @@ def step_3_call_llm(file_title: str, context: str) -> str:
         # 兼容不同LLM客户端返回格式：优先取content字段，无则返回空字符串
         item_name = getattr(resp, "content", "").strip()
         # 清洗返回结果：过滤空格、换行、回车、制表符等无效字符
-        item_name = item_name.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "")
+        item_name = (
+            item_name.replace(" ", "")
+            .replace("\n", "")
+            .replace("\r", "")
+            .replace("\t", "")
+        )
 
         # 清洗后结果为空，使用文件标题兜底
         if not item_name:
             logger.warning("大模型返回空内容，使用文件标题作为商品名称兜底")
+            return file_title
+
+        # 防御性校验：若返回结果与字段名高度相似或过短，直接用文件名兜底
+        lower_name = item_name.lower()
+        invalid_patterns = {"item_name", "item", "name", "商品名称", "product", "模型", "filename", "file_title", "chunk"}
+        is_invalid = (
+            item_name in invalid_patterns
+            or (len(item_name) < 2 and item_name in {"A", "B", "1", "X"})
+            or lower_name in invalid_patterns
+        )
+        if is_invalid or any(p in lower_name for p in invalid_patterns):
+            logger.warning(f"大模型返回了疑似字段名或无效值（{item_name}），使用文件标题兜底")
             return file_title
 
         logger.info(f"步骤3：大模型识别商品名称成功，结果为：{item_name}")
@@ -203,6 +238,7 @@ def step_3_call_llm(file_title: str, context: str) -> str:
         logger.error(f"步骤3：大模型调用失败，原因：{str(e)}", exc_info=True)
         # 异常时返回文件标题兜底，保证流程继续执行
         return file_title
+
 
 def step_4_update_chunks(state: ImportGraphState, chunks: List[Dict], item_name: str):
     """
@@ -225,7 +261,10 @@ def step_4_update_chunks(state: ImportGraphState, chunks: List[Dict], item_name:
         chunk["item_name"] = item_name
     # 同步更新state中的切片列表，确保修改全局生效
     state["chunks"] = chunks
-    logger.info(f"步骤4：商品名称回填完成，共为{len(chunks)}个切片添加item_name字段，值为：{item_name}")
+    logger.info(
+        f"步骤4：商品名称回填完成，共为{len(chunks)}个切片添加item_name字段，值为：{item_name}"
+    )
+
 
 def step_5_generate_vectors(item_name: str) -> Tuple[Any, Any]:
     """
@@ -270,7 +309,13 @@ def step_5_generate_vectors(item_name: str) -> Tuple[Any, Any]:
     return dense_vector, sparse_vector
 
 
-def step_6_save_to_milvus(state: ImportGraphState, file_title: str, item_name: str, dense_vector, sparse_vector):
+def step_6_save_to_milvus(
+    state: ImportGraphState,
+    file_title: str,
+    item_name: str,
+    dense_vector,
+    sparse_vector,
+):
     """
     步骤 6: 将商品名称、文件标题、双向量持久化到Milvus向量数据库
     核心逻辑：
@@ -293,10 +338,14 @@ def step_6_save_to_milvus(state: ImportGraphState, file_title: str, item_name: s
 
     # 配置缺失校验：任一配置为空则跳过Milvus存储，记录警告
     if not all([milvus_uri, collection_name]):
-        logger.warning("Milvus配置缺失（MILVUS_URL/ITEM_NAME_COLLECTION），跳过数据保存")
+        logger.warning(
+            "Milvus配置缺失（MILVUS_URL/ITEM_NAME_COLLECTION），跳过数据保存"
+        )
         return
 
-    logger.info(f"开始执行步骤6：将商品名称[{item_name}]保存到Milvus集合[{collection_name}]")
+    logger.info(
+        f"开始执行步骤6：将商品名称[{item_name}]保存到Milvus集合[{collection_name}]"
+    )
 
     try:
         # 获取Milvus单例客户端，连接失败则直接返回
@@ -312,33 +361,24 @@ def step_6_save_to_milvus(state: ImportGraphState, file_title: str, item_name: s
             schema = client.create_schema(auto_id=True, enable_dynamic_field=True)
             # 添加自增主键字段：INT64类型，唯一标识每条数据
             schema.add_field(
-                field_name="pk",
-                datatype=DataType.INT64,
-                is_primary=True,
-                auto_id=True
+                field_name="pk", datatype=DataType.INT64, is_primary=True, auto_id=True
             )
             # 添加文件标题字段：VARCHAR类型，最大长度65535，适配长标题
             schema.add_field(
-                field_name="file_title",
-                datatype=DataType.VARCHAR,
-                max_length=65535
+                field_name="file_title", datatype=DataType.VARCHAR, max_length=65535
             )
             # 添加商品名字段：VARCHAR类型，最大长度65535，去重依据
             schema.add_field(
-                field_name="item_name",
-                datatype=DataType.VARCHAR,
-                max_length=65535
+                field_name="item_name", datatype=DataType.VARCHAR, max_length=65535
             )
-            # 添加稠密向量字段：FLOAT_VECTOR，1024维（BGE-M3固定维度）
             schema.add_field(
-                field_name="dense_vector",
-                datatype=DataType.FLOAT_VECTOR,
-                dim=1024
+                field_name="image_urls", datatype=DataType.JSON, max_length=65535
             )
-            # 添加稀疏向量字段：SPARSE_FLOAT_VECTOR，变长
             schema.add_field(
-                field_name="sparse_vector",
-                datatype=DataType.SPARSE_FLOAT_VECTOR
+                field_name="dense_vector", datatype=DataType.FLOAT_VECTOR, dim=1024
+            )
+            schema.add_field(
+                field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR
             )
 
             # 构建索引参数：为向量字段创建索引，提升检索性能
@@ -353,7 +393,7 @@ def step_6_save_to_milvus(state: ImportGraphState, file_title: str, item_name: s
                 metric_type="COSINE",
                 # M: 图中每个节点的最大连接数(常用16-64)
                 # efConstruction: 构建索引时的搜索范围(越大建索引越慢，但精度越高，常用100-200)
-                params={"M": 16, "efConstruction": 200}
+                params={"M": 16, "efConstruction": 200},
             )
 
             # 稀疏向量索引：专用SPARSE_INVERTED_INDEX+IP，关闭量化保证精度
@@ -364,12 +404,20 @@ def step_6_save_to_milvus(state: ImportGraphState, file_title: str, item_name: s
                 index_type="SPARSE_INVERTED_INDEX",
                 # IP（内积，Inner Product）如果向量是 “文本语义向量 + 关键词权重”，长度代表文本与主题的关联强度，此时用 IP 能同时体现 “语义匹配度” 和 “关联强度”。
                 metric_type="IP",
-                #DAAT_MAXSCORE 是稀疏检索的高效算法，quantization="none" 保证稀疏向量权重无损失；normalize=是否归一化。
-                params = {"inverted_index_algo": "DAAT_MAXSCORE", "normalize": True, "quantization": "none"}
+                # DAAT_MAXSCORE 是稀疏检索的高效算法，quantization="none" 保证稀疏向量权重无损失；normalize=是否归一化。
+                params={
+                    "inverted_index_algo": "DAAT_MAXSCORE",
+                    "normalize": True,
+                    "quantization": "none",
+                },
             )
 
             # 创建集合：Schema + 索引参数
-            client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
+            client.create_collection(
+                collection_name=collection_name,
+                schema=schema,
+                index_params=index_params,
+            )
             logger.info(f"Milvus集合[{collection_name}]创建成功，包含Schema和向量索引")
 
         # 幂等性处理：删除同名商品数据，避免重复存储（核心：先加载集合才能删除）
@@ -381,13 +429,12 @@ def step_6_save_to_milvus(state: ImportGraphState, file_title: str, item_name: s
             filter_expr = f'item_name=="{safe_item_name}"'
             # 执行删除操作
             client.delete(collection_name=collection_name, filter=filter_expr)
-            logger.info(f"Milvus幂等性处理完成，已删除集合中[{clean_item_name}]的历史数据")
+            logger.info(
+                f"Milvus幂等性处理完成，已删除集合中[{clean_item_name}]的历史数据"
+            )
 
         # 构造插入Milvus的数据：基础字段+非空向量字段
-        data = {
-            "file_title": file_title,
-            "item_name": item_name
-        }
+        data = {"file_title": file_title, "item_name": item_name, "image_urls": []}
         # 稠密向量非空才添加，避免空值入库报错
         if dense_vector is not None:
             data["dense_vector"] = dense_vector
@@ -402,11 +449,14 @@ def step_6_save_to_milvus(state: ImportGraphState, file_title: str, item_name: s
 
         # 最终同步商品名称到全局状态
         state["item_name"] = item_name
-        logger.info(f"步骤6：商品名称[{item_name}]成功存入Milvus集合[{collection_name}]，数据：{list(data.keys())}")
+        logger.info(
+            f"步骤6：商品名称[{item_name}]成功存入Milvus集合[{collection_name}]，数据：{list(data.keys())}"
+        )
 
     # 捕获所有Milvus操作异常：连接中断、入库失败、索引错误等，不中断主流程
     except Exception as e:
         logger.error(f"步骤6：数据存入Milvus失败，原因：{str(e)}", exc_info=True)
+
 
 def node_item_name_recognition(state: ImportGraphState) -> ImportGraphState:
     """
@@ -458,16 +508,24 @@ def node_item_name_recognition(state: ImportGraphState) -> ImportGraphState:
         step_6_save_to_milvus(state, file_title, item_name, dense_vector, sparse_vector)
 
         # 节点执行完成日志
-        logger.info(f">>> 核心节点执行完成：【商品名称识别】{node_name}，识别结果：{item_name}，已存入Milvus")
+        logger.info(
+            f">>> 核心节点执行完成：【商品名称识别】{node_name}，识别结果：{item_name}，已存入Milvus"
+        )
 
     except Exception as e:
         # 全局异常捕获：保证节点执行失败不崩溃整个流程，记录详细错误日志便于排查
-        logger.error(f">>> 核心节点执行失败：【商品名称识别】{node_name}，错误信息：{str(e)}", exc_info=True)
+        logger.error(
+            f">>> 核心节点执行失败：【商品名称识别】{node_name}，错误信息：{str(e)}",
+            exc_info=True,
+        )
         # 可选：失败时设置默认值或标记状态
         state["item_name"] = "未知商品"
+    finally:
+        add_done_task(state.get("task_id", ""), node_name)
 
     # 返回更新后的状态（供下游节点使用）
     return state
+
 
 # ===================== 本地测试方法（直接运行调试，无需启动LangGraph） =====================
 def test_node_item_name_recognition():
@@ -485,26 +543,28 @@ def test_node_item_name_recognition():
     logger.info("=== 开始执行商品名称识别节点本地测试 ===")
     try:
         # 1. 构造模拟的ImportGraphState状态（模拟上游节点产出数据）
-        mock_state = ImportGraphState({
-            "task_id": "test_task_123456",  # 测试任务ID
-            "file_title": "华为Mate60 Pro手机使用说明书",  # 模拟文件标题
-            "file_name": "华为Mate60Pro说明书.pdf",  # 模拟原始文件名（兜底用）
-            # 模拟文本切片列表（上游切片节点产出，含title/content字段）
-            "chunks": [
-                {
-                    "title": "产品简介",
-                    "content": "华为Mate60 Pro是华为公司2023年发布的旗舰智能手机，搭载麒麟9000S芯片，支持卫星通话功能，屏幕尺寸6.82英寸，分辨率2700×1224。"
-                },
-                {
-                    "title": "拍照功能",
-                    "content": "华为Mate60 Pro后置5000万像素超光变摄像头+1200万像素超广角摄像头+4800万像素长焦摄像头，支持5倍光学变焦，100倍数字变焦。"
-                },
-                {
-                    "title": "电池参数",
-                    "content": "电池容量5000mAh，支持88W有线超级快充，50W无线超级快充，反向无线充电功能。"
-                }
-            ]
-        })
+        mock_state = ImportGraphState(
+            {
+                "task_id": "test_task_123456",  # 测试任务ID
+                "file_title": "华为Mate60 Pro手机使用说明书",  # 模拟文件标题
+                "file_name": "华为Mate60Pro说明书.pdf",  # 模拟原始文件名（兜底用）
+                # 模拟文本切片列表（上游切片节点产出，含title/content字段）
+                "chunks": [
+                    {
+                        "title": "产品简介",
+                        "content": "华为Mate60 Pro是华为公司2023年发布的旗舰智能手机，搭载麒麟9000S芯片，支持卫星通话功能，屏幕尺寸6.82英寸，分辨率2700×1224。",
+                    },
+                    {
+                        "title": "拍照功能",
+                        "content": "华为Mate60 Pro后置5000万像素超光变摄像头+1200万像素超广角摄像头+4800万像素长焦摄像头，支持5倍光学变焦，100倍数字变焦。",
+                    },
+                    {
+                        "title": "电池参数",
+                        "content": "电池容量5000mAh，支持88W有线超级快充，50W无线超级快充，反向无线充电功能。",
+                    },
+                ],
+            }
+        )
 
         # 2. 调用商品名称识别核心节点
         result_state = node_item_name_recognition(mock_state)
@@ -514,7 +574,9 @@ def test_node_item_name_recognition():
         logger.info(f"测试任务ID：{result_state.get('task_id')}")
         logger.info(f"最终识别商品名称：{result_state.get('item_name')}")
         logger.info(f"切片数量：{len(result_state.get('chunks', []))}")
-        logger.info(f"第一个切片商品名称：{result_state.get('chunks', [{}])[0].get('item_name')}")
+        logger.info(
+            f"第一个切片商品名称：{result_state.get('chunks', [{}])[0].get('item_name')}"
+        )
 
         # 4. 验证Milvus存储（可选）
         milvus_client = get_milvus_client()
@@ -522,12 +584,12 @@ def test_node_item_name_recognition():
         if milvus_client and collection_name:
             milvus_client.load_collection(collection_name)
             # 检索测试结果
-            item_name = result_state.get('item_name')
+            item_name = result_state.get("item_name")
             safe_name = escape_milvus_string(item_name)
             res = milvus_client.query(
                 collection_name=collection_name,
                 filter=f'item_name=="{safe_name}"',
-                output_fields=["file_title", "item_name"]
+                output_fields=["file_title", "item_name"],
             )
             logger.info(f"Milvus中检索到的数据：{res}")
 

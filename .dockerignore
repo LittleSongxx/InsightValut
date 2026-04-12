@@ -1,0 +1,45 @@
+# 环境密钥（确保 .env 不被打包进镜像）
+.env
+.env.local
+.env.production
+
+# Docker 数据目录（每个机器独立，无需打包）
+.docker-data/
+
+# 本地模型缓存（由启动脚本自动准备，不需要打包）
+.cache/
+temp-files/
+
+# 日志和输出
+logs/
+output/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.pid
+
+# IDE 配置
+.idea/
+.vscode/
+.DS_Store
+
+# 文档和测试（不需要进镜像）
+doc/
+test/
+tests/
+*.md
+
+# 本地脚本（启动脚本在 docker-compose 里直接写命令）
+scripts/
+start_insightvault.sh
+stop_insightvault.sh
+RAG技术深度分析.md
+
+# 前端开发文件（前端独立构建）
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/.env
+frontend/.env.local

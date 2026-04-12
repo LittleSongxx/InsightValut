@@ -2,13 +2,15 @@ import re
 import json
 import os
 import sys
+
 # 统一类型注解，避免混用any/Any
 from typing import List, Dict, Any, Tuple
+
 # LangChain文本分割器（标注核心用途，便于理解）
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # 项目内部工具/状态/日志导入（保持原有路径）
-from app.utils.task_utils import add_running_task
+from app.utils.task_utils import add_running_task, add_done_task
 from app.import_process.agent.state import ImportGraphState
 from app.core.logger import logger  # 项目统一日志工具，核心替换print
 
@@ -42,11 +44,15 @@ def step_1_get_inputs(state: ImportGraphState) -> Tuple[Any, str, int]:
     # 提取最大Chunk长度：有则用状态中的配置，无则用全局默认值
     max_len = DEFAULT_MAX_CONTENT_LENGTH
 
-    logger.info(f"步骤1：输入数据加载完成，文件标题：{file_title}，最大Chunk长度：{max_len}")
+    logger.info(
+        f"步骤1：输入数据加载完成，文件标题：{file_title}，最大Chunk长度：{max_len}"
+    )
     return content, file_title, max_len
 
 
-def step_2_split_by_titles(content: str, file_title: str) -> Tuple[List[Dict[str, Any]], int, int]:
+def step_2_split_by_titles(
+    content: str, file_title: str
+) -> Tuple[List[Dict[str, Any]], int, int]:
     """
     【步骤2】按Markdown标题初次切分（核心：按#分级切分，跳过代码块内标题）
     LangChain前置预处理：将整份MD按标题拆分为独立章节，为后续精细化切分做基础
@@ -59,7 +65,7 @@ def step_2_split_by_titles(content: str, file_title: str) -> Tuple[List[Dict[str
     # #{1,6}：匹配1-6个#（对应MD1-6级标题）
     # \s+：#后必须有至少1个空格（区分#是标题还是普通文本）
     # .+：标题文字至少1个字符（避免空标题）
-    title_pattern = r'^\s*#{1,6}\s+.+'
+    title_pattern = r"^\s*#{1,6}\s+.+"
 
     # 将MD内容按换行符拆分为行列表，逐行处理
     lines = content.split("\n")
@@ -73,12 +79,16 @@ def step_2_split_by_titles(content: str, file_title: str) -> Tuple[List[Dict[str
         """内部辅助函数：将当前缓存的章节写入sections，空缓存则跳过"""
         if not current_lines:
             return
-        sections.append({
-            "title": current_title,
-            # 每段之间使用 \n换行区分
-            "content": "\n".join(current_lines),
-            "file_title": file_title,
-        })
+        content = "\n".join(current_lines)
+        img_urls = _extract_image_urls(content)
+        sections.append(
+            {
+                "title": current_title,
+                "content": content,
+                "file_title": file_title,
+                "image_urls": img_urls,
+            }
+        )
 
     # 逐行遍历，识别标题并切分章节
     for line in lines:
@@ -104,11 +114,15 @@ def step_2_split_by_titles(content: str, file_title: str) -> Tuple[List[Dict[str
 
     # 处理最后一个章节：循环结束后，将最后一个缓存的章节写入结果
     _flush_section()
-    logger.info(f"步骤2：MD标题切分完成，识别到{title_count}个有效标题，原始文本共{len(lines)}行")
+    logger.info(
+        f"步骤2：MD标题切分完成，识别到{title_count}个有效标题，原始文本共{len(lines)}行"
+    )
     return sections, title_count, len(lines)
 
 
-def step_3_handle_no_title(content: str, sections: List[Dict[str, Any]], title_count: int, file_title: str) -> List[Dict[str, Any]]:
+def step_3_handle_no_title(
+    content: str, sections: List[Dict[str, Any]], title_count: int, file_title: str
+) -> List[Dict[str, Any]]:
     """
     【步骤3】无标题兜底处理
     功能：若MD中未识别到任何标题，将全文作为一个整体处理，避免后续逻辑异常
@@ -120,13 +134,35 @@ def step_3_handle_no_title(content: str, sections: List[Dict[str, Any]], title_c
     """
     if title_count == 0:
         # 无标题情况：替换为单章节，标题为"无标题"
-        logger.warning(f"步骤3：未识别到任何MD标题，将全文作为单个章节处理，文件：{file_title}")
+        logger.warning(
+            f"步骤3：未识别到任何MD标题，将全文作为单个章节处理，文件：{file_title}"
+        )
         return [{"title": "无标题", "content": content, "file_title": file_title}]
     # 有标题情况：直接返回步骤2的结果
     logger.debug(f"步骤3：检测到{title_count}个有效标题，无需兜底处理")
     return sections
 
-def _split_long_section(section: Dict[str, Any], max_length: int = DEFAULT_MAX_CONTENT_LENGTH) -> List[Dict[str, Any]]:
+
+def _extract_image_urls(text: str) -> List[str]:
+    """
+    从文本中提取所有 Markdown 图片链接
+    :param text: 待提取的文本内容（通常是 chunk.content）
+    :return: 图片 URL 列表（去重）
+    """
+    md_img_pattern = re.compile(r"!\[.*?\]\((.*?)\)")
+    seen = set()
+    urls = []
+    for match in md_img_pattern.finditer(text):
+        url = match.group(1).strip()
+        if url and url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
+def _split_long_section(
+    section: Dict[str, Any], max_length: int = DEFAULT_MAX_CONTENT_LENGTH
+) -> List[Dict[str, Any]]:
     """
     【辅助函数】超长章节二次切分（核心适配LangChain分割器）
     功能：单个章节内容超限时，按「段落→句子→空格」从粗到细切分，保留语义
@@ -157,13 +193,13 @@ def _split_long_section(section: Dict[str, Any], max_length: int = DEFAULT_MAX_C
     # 清理正文重复标题：避免原章节中正文开头重复标题，导致子Chunk内容冗余
     body = content
     if title and body.lstrip().startswith(title):
-        body = body[body.find(title) + len(title):].lstrip()
+        body = body[body.find(title) + len(title) :].lstrip()
 
     # 初始化LangChain递归分割器（核心工具：按优先级分隔符切分，保留语义）
     # separators：分割符优先级（从粗到细），优先按大语义单元切分，最后才硬拆
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=available_len,  # 正文部分最大长度（已扣除标题）
-        chunk_overlap=0,           # 无重叠：按标题切分后语义完整，无需重叠
+        chunk_overlap=0,  # 无重叠：按标题切分后语义完整，无需重叠
         # 分割符优先级：空行(段落)→换行→中文标点→英文标点→空格，最后硬拆
         separators=["\n\n", "\n", "。", "！", "？", "；", ".", "!", "?", ";", " "],
     )
@@ -177,19 +213,29 @@ def _split_long_section(section: Dict[str, Any], max_length: int = DEFAULT_MAX_C
             continue
         # 组装子Chunk完整内容：标题前缀 + 切分后的正文
         full_text = (prefix + text).strip()
+        # 提取图片URL：从切分后的文本中提取所有 Markdown 图片链接
+        img_urls = _extract_image_urls(full_text)
         # 子章节元信息：保留父级关联，添加序号，便于后续检索/溯源
-        sub_sections.append({
-            "title": f"{title}-{idx}" if title else f"chunk-{idx}",  # 子Chunk标题（带序号）
-            "content": full_text,                                     # 切分后的完整内容
-            "parent_title": title,                                    # 父章节标题（用于后续合并）
-            "part": idx,                                              # 子Chunk序号
-            "file_title": section.get("file_title"),                  # 所属文件标题
-        })
+        sub_sections.append(
+            {
+                "title": (
+                    f"{title}-{idx}" if title else f"chunk-{idx}"
+                ),  # 子Chunk标题（带序号）
+                "content": full_text,  # 切分后的完整内容
+                "parent_title": title,  # 父章节标题（用于后续合并）
+                "part": idx,  # 子Chunk序号
+                "file_title": section.get("file_title"),  # 所属文件标题
+                "image_urls": img_urls,  # 图片URL列表（用于查询时直接获取图片，避免正则提取）
+            }
+        )
 
     logger.debug(f"超长章节切分完成：{title} → 生成{len(sub_sections)}个子Chunk")
     return sub_sections
 
-def _merge_short_sections(sections: List[Dict[str, Any]], min_length: int = MIN_CONTENT_LENGTH) -> List[Dict[str, Any]]:
+
+def _merge_short_sections(
+    sections: List[Dict[str, Any]], min_length: int = MIN_CONTENT_LENGTH
+) -> List[Dict[str, Any]]:
     """
     【辅助函数】过短章节合并（减少碎片化，提升检索效果）
     核心规则：仅合并「同父标题」且「当前块长度不足阈值」的相邻Chunk，避免跨章节合并
@@ -220,13 +266,20 @@ def _merge_short_sections(sections: List[Dict[str, Any]], min_length: int = MIN_
             parent_title = sec.get("parent_title", "")
             next_content = sec["content"]
             if parent_title and next_content.startswith(parent_title):
-                next_content = next_content[len(parent_title):].lstrip()
+                next_content = next_content[len(parent_title) :].lstrip()
             # 合并内容：空行分隔，保证格式整洁
             current_chunk["content"] += "\n\n" + next_content
+            # 合并图片URL列表，去重
+            next_urls = sec.get("image_urls") or []
+            existing_urls = set(current_chunk.get("image_urls") or [])
+            merged_urls = list(existing_urls) + [u for u in next_urls if u not in existing_urls]
+            current_chunk["image_urls"] = merged_urls
             # 更新子Chunk序号：保留最新序号，便于溯源
             if "part" in sec:
                 current_chunk["part"] = sec["part"]
-            logger.debug(f"合并短Chunk：{current_chunk.get('parent_title')} → 累计长度{len(current_chunk['content'])}")
+            logger.debug(
+                f"合并短Chunk：{current_chunk.get('parent_title')} → 累计长度{len(current_chunk['content'])}, 图片{len(merged_urls)}张"
+            )
         else:
             # 不满足合并条件：将当前块加入结果，切换为新的待合并块
             merged_sections.append(current_chunk)
@@ -236,10 +289,15 @@ def _merge_short_sections(sections: List[Dict[str, Any]], min_length: int = MIN_
     if current_chunk is not None:
         merged_sections.append(current_chunk)
 
-    logger.debug(f"短Chunk合并完成：原{len(sections)}个 → 合并后{len(merged_sections)}个")
+    logger.debug(
+        f"短Chunk合并完成：原{len(sections)}个 → 合并后{len(merged_sections)}个"
+    )
     return merged_sections
 
-def step_4_refine_chunks(sections: List[Dict[str, Any]], max_len: int) -> List[Dict[str, Any]]:
+
+def step_4_refine_chunks(
+    sections: List[Dict[str, Any]], max_len: int
+) -> List[Dict[str, Any]]:
     """
     【步骤4】Chunk精细化处理（核心：长切短合，适配大模型/检索）
     执行流程：1.切分超长章节 2.合并过短章节 3.父标题兜底（适配Milvus向量库schema）
@@ -269,16 +327,19 @@ def step_4_refine_chunks(sections: List[Dict[str, Any]], max_len: int) -> List[D
     for sec in final_sections:
         if not isinstance(sec, dict):
             continue
-        
+
         # 补全缺失的part字段（默认0），适配Milvus schema
         if "part" not in sec:
             sec["part"] = 0
-            
+
         if not sec.get("parent_title"):
             sec["parent_title"] = sec.get("title") or ""
+        if "image_urls" not in sec:
+            sec["image_urls"] = _extract_image_urls(sec.get("content") or "")
     logger.debug(f"步骤4-3：父标题兜底完成，所有Chunk均包含parent_title字段")
 
     return final_sections
+
 
 def step_5_print_stats(lines_count: int, sections: List[Dict[str, Any]]) -> None:
     """
@@ -295,6 +356,7 @@ def step_5_print_stats(lines_count: int, sections: List[Dict[str, Any]]) -> None
         first_title = sections[0].get("title", "无标题")
         logger.info(f"首个Chunk标题预览：{first_title}")
     logger.info("-" * 110)
+
 
 def step_6_backup(state: ImportGraphState, sections: List[Dict[str, Any]]) -> None:
     """
@@ -324,15 +386,16 @@ def step_6_backup(state: ImportGraphState, sections: List[Dict[str, Any]]) -> No
             json.dump(
                 sections,
                 f,
-                #开启 True："title": "\u4e00\u7ea7\u6807\u9898"（乱码，无法直接看）；
-                #开启 False："title": "一级标题"（正常中文，人工可直接阅读）。
+                # 开启 True："title": "\u4e00\u7ea7\u6807\u9898"（乱码，无法直接看）；
+                # 开启 False："title": "一级标题"（正常中文，人工可直接阅读）。
                 ensure_ascii=False,  # 保留中文，不转义为\u编码
-                indent=2             # 格式化缩进，便于阅读
+                indent=2,  # 格式化缩进，便于阅读
             )
         logger.info(f"步骤6：Chunk结果备份成功，备份文件路径：{backup_path}")
     except Exception as e:
         # 备份失败仅记录日志，不终止主流程
         logger.error(f"步骤6：Chunk结果备份失败，错误信息：{str(e)}", exc_info=False)
+
 
 def node_document_split(state: ImportGraphState) -> ImportGraphState:
     """
@@ -387,16 +450,24 @@ def node_document_split(state: ImportGraphState) -> ImportGraphState:
         step_6_backup(state, sections)
 
         # 节点执行完成日志
-        logger.info(f">>> 核心节点执行完成：【文档切分】{node_name}，已生成{len(sections)}个有效Chunk，结果已写入状态字典")
+        logger.info(
+            f">>> 核心节点执行完成：【文档切分】{node_name}，已生成{len(sections)}个有效Chunk，结果已写入状态字典"
+        )
 
     except Exception as e:
         # 全局异常捕获：保证节点执行失败不崩溃整个流程，记录详细错误日志便于排查
-        logger.error(f">>> 核心节点执行失败：【文档切分】{node_name}，错误信息：{str(e)}", exc_info=True)
+        logger.error(
+            f">>> 核心节点执行失败：【文档切分】{node_name}，错误信息：{str(e)}",
+            exc_info=True,
+        )
+    finally:
+        add_done_task(state["task_id"], node_name)
 
     # 返回更新后的状态字典，传递Chunk结果到下游节点
     return state
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     """
     单元测试：联合node_md_img（图片处理节点）进行集成测试
     测试条件：1.已配置.env（MinIO/大模型环境） 2.存在测试MD文件 3.能导入node_md_img
@@ -424,7 +495,7 @@ if __name__ == '__main__':
             "task_id": "test_task_123456",
             "md_content": "",
             "file_title": "hak180产品安全手册",
-            "local_dir":os.path.join(PROJECT_ROOT, "output"),
+            "local_dir": os.path.join(PROJECT_ROOT, "output"),
         }
         logger.info("开始本地测试 - MD图片处理全流程")
         # 执行核心处理流程
@@ -435,4 +506,6 @@ if __name__ == '__main__':
         logger.info(">> 开始运行当前节点：node_document_split（文档切分）")
         final_state = node_document_split(result_state)
         final_chunks = final_state.get("chunks", [])
-        logger.info(f"✅ 测试成功：最终生成{len(final_chunks)}个有效Chunk{final_chunks}")
+        logger.info(
+            f"✅ 测试成功：最终生成{len(final_chunks)}个有效Chunk{final_chunks}"
+        )

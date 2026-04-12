@@ -100,27 +100,56 @@ def step_2_upload_and_poll(pdf_path_obj: Path, output_dir_obj: Path):
     with open(pdf_path_obj, "rb") as f:
         file_data = f.read()
 
-    # 创建Session（复用TCP连接，禁用代理避免签名验证失败）
+    # 创建Session并配置连接池（禁用代理避免签名验证失败）
     upload_session = requests.Session()
     upload_session.trust_env = False
+    # 调大urllib3连接池参数，提升大文件上传稳定性
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+    retry_strategy = Retry(total=3, backoff_factor=2, status_forcelist={500, 502, 503, 504})
+    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=1, pool_maxsize=1)
+    upload_session.mount("https://", adapter)
+    upload_session.mount("http://", adapter)
 
-    try:
-        # 首次上传：自动识别文件类型
-        put_resp = upload_session.put(url=signed_url, data=file_data, timeout=60)
-        # 重试逻辑：首次失败则强制指定PDF的Content-Type
-        if put_resp.status_code != 200:
-            logger.warning(f"[文件上传] 首次上传失败（状态码：{put_resp.status_code}），强制指定PDF类型重试")
-            pdf_headers = {"Content-Type": "application/pdf"}
-            put_resp = upload_session.put(url=signed_url, data=file_data, headers=pdf_headers, timeout=60)
-            # 重试仍失败则抛出异常
-            if put_resp.status_code != 200:
-                raise RuntimeError(f"[文件上传] 重试后仍失败，状态码：{put_resp.status_code}，响应内容：{put_resp.text}")
-        logger.info(f"[文件上传] 成功，文件{pdf_path_obj.name}已存入云存储")
-    except Exception as e:
-        raise RuntimeError(f"[文件上传] 网络异常导致上传失败，错误信息：{str(e)}")
-    finally:
-        # 无论成败，关闭Session释放网络连接，避免资源泄漏
-        upload_session.close()
+    # 上传重试间隔和配置
+    retry_interval = 5  # 上传重试间隔5秒
+    upload_config = [
+        {"timeout": (10, 120),  "headers": None},
+        {"timeout": (15, 180),  "headers": {"Content-Type": "application/pdf"}},
+        {"timeout": (20, 300),  "headers": {"Content-Type": "application/pdf"}},
+        {"timeout": (30, 600),  "headers": {"Content-Type": "application/pdf"}},
+    ]
+
+    upload_success = False
+    last_err = None
+    for idx, cfg in enumerate(upload_config):
+        try:
+            put_resp = upload_session.put(
+                url=signed_url,
+                data=file_data,
+                headers=cfg["headers"],
+                timeout=cfg["timeout"]
+            )
+            if put_resp.status_code == 200:
+                logger.info(f"[文件上传] 成功（第{idx + 1}次尝试），文件{pdf_path_obj.name}已存入云存储")
+                upload_success = True
+                break
+            last_err = RuntimeError(f"[文件上传] 第{idx + 1}次尝试失败，状态码：{put_resp.status_code}，响应：{put_resp.text}")
+            logger.warning(f"[文件上传] 第{idx + 1}次尝试失败（状态码：{put_resp.status_code}），{retry_interval}秒后重试...")
+            time.sleep(retry_interval)
+        except requests.exceptions.Timeout:
+            last_err = requests.exceptions.Timeout(f"[文件上传] 第{idx + 1}次尝试超时（read={cfg['timeout'][1]}s）")
+            logger.warning(f"[文件上传] 第{idx + 1}次尝试超时（read={cfg['timeout'][1]}s），{retry_interval}秒后重试...")
+            time.sleep(retry_interval)
+        except Exception as e:
+            last_err = RuntimeError(f"[文件上传] 第{idx + 1}次尝试异常：{str(e)}")
+            logger.warning(f"[文件上传] 第{idx + 1}次尝试异常，{retry_interval}秒后重试：{str(e)}")
+            time.sleep(retry_interval)
+
+    upload_session.close()
+
+    if not upload_success:
+        raise RuntimeError(f"[文件上传] 所有重试均失败，最终错误：{str(last_err)}")
 
     # 3. 根据batch_id轮询任务状态，直至完成/失败/超时
     poll_url = f"{MINERU_BASE_URL}/extract-results/batch/{batch_id}"

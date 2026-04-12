@@ -1,10 +1,12 @@
 import os
+import threading
 from pymilvus import MilvusClient, AnnSearchRequest, WeightedRanker
 from app.conf.milvus_config import milvus_config
 from app.core.logger import logger
 
 # 全局Milvus客户端实例，实现单例复用
 _milvus_client = None
+_milvus_lock = threading.Lock()
 
 
 def get_milvus_client():
@@ -13,10 +15,13 @@ def get_milvus_client():
     实现客户端连接复用，避免重复创建连接消耗资源
     :return: MilvusClient实例，连接失败返回None
     """
-    try:
-        global _milvus_client
-        # 单例判断：未初始化则创建新连接
-        if _milvus_client is None:
+    global _milvus_client
+    if _milvus_client is not None:
+        return _milvus_client
+    with _milvus_lock:
+        if _milvus_client is not None:
+            return _milvus_client
+        try:
             milvus_uri = milvus_config.milvus_url
             # 校验Milvus连接地址配置
             if not milvus_uri:
@@ -25,10 +30,10 @@ def get_milvus_client():
             # 初始化Milvus客户端
             _milvus_client = MilvusClient(uri=milvus_uri)
             logger.info("Milvus客户端连接成功")
-        return _milvus_client
-    except Exception as e:
-        logger.error(f"Milvus客户端连接异常：{str(e)}", exc_info=True)
-        return None
+            return _milvus_client
+        except Exception as e:
+            logger.error(f"Milvus客户端连接异常：{str(e)}", exc_info=True)
+            return None
 
 
 def _coerce_int64_ids(ids):
@@ -39,7 +44,7 @@ def _coerce_int64_ids(ids):
     :return: 元组(ok_ids, bad_ids)，ok_ids为可转换的int64类型ID列表，bad_ids为无效ID列表
     """
     ok, bad = [], []
-    for x in (ids or []):
+    for x in ids or []:
         if x is None:
             continue
         try:
@@ -50,12 +55,12 @@ def _coerce_int64_ids(ids):
 
 
 def fetch_chunks_by_chunk_ids(
-        client,
-        collection_name: str,
-        chunk_ids,
-        *,
-        output_fields=None,
-        batch_size: int = 100,
+    client,
+    collection_name: str,
+    chunk_ids,
+    *,
+    output_fields=None,
+    batch_size: int = 100,
 ):
     """
     通过chunk_id主键批量查询Milvus中的切片数据
@@ -90,12 +95,16 @@ def fetch_chunks_by_chunk_ids(
     results = []
     # 分批查询：按batch_size切分有效ID，循环查询
     for i in range(0, len(ok_ids), batch_size):
-        batch = ok_ids[i: i + batch_size]
+        batch = ok_ids[i : i + batch_size]
 
         # 方式1：优先使用主键get方法查询（性能最优）
         if hasattr(client, "get"):
             try:
-                got = client.get(collection_name=collection_name, ids=batch, output_fields=output_fields)
+                got = client.get(
+                    collection_name=collection_name,
+                    ids=batch,
+                    output_fields=output_fields,
+                )
                 if got:
                     results.extend(got)
                 continue
@@ -105,17 +114,29 @@ def fetch_chunks_by_chunk_ids(
         # 方式2：get方法失败，回退使用filter过滤查询
         try:
             expr = f"chunk_id in [{', '.join(str(x) for x in batch)}]"
-            q = client.query(collection_name=collection_name, filter=expr, output_fields=output_fields)
+            q = client.query(
+                collection_name=collection_name,
+                filter=expr,
+                output_fields=output_fields,
+            )
             if q:
                 results.extend(q)
         except Exception as e:
-            logger.error(f"Milvus query方法批量查询chunk_id失败：{str(e)}", exc_info=True)
+            logger.error(
+                f"Milvus query方法批量查询chunk_id失败：{str(e)}", exc_info=True
+            )
 
     return results
 
 
-def create_hybrid_search_requests(dense_vector, sparse_vector, dense_params=None, sparse_params=None, expr=None,
-                                  limit=5):
+def create_hybrid_search_requests(
+    dense_vector,
+    sparse_vector,
+    dense_params=None,
+    sparse_params=None,
+    expr=None,
+    limit=5,
+):
     """
     构建Milvus混合搜索请求对象
     分别创建稠密/稀疏向量的搜索请求，用于后续混合搜索融合
@@ -134,13 +155,16 @@ def create_hybrid_search_requests(dense_vector, sparse_vector, dense_params=None
     if sparse_params is None:
         sparse_params = {"metric_type": "IP"}
 
+    # pymilvus AnnSearchRequest 的 expr 默认值为 ""，传入 None 可能导致异常
+    safe_expr = expr or ""
+
     # 构建稠密向量搜索请求，关联Milvus的dense_vector字段 近似最近邻（ANN）检索请求的核心类
     dense_req = AnnSearchRequest(
         data=[dense_vector],
         anns_field="dense_vector",
         param=dense_params,
-        expr=expr,
-        limit=limit
+        expr=safe_expr,
+        limit=limit,
     )
 
     # 构建稀疏向量搜索请求，关联Milvus的sparse_vector字段
@@ -148,15 +172,23 @@ def create_hybrid_search_requests(dense_vector, sparse_vector, dense_params=None
         data=[sparse_vector],
         anns_field="sparse_vector",
         param=sparse_params,
-        expr=expr,
-        limit=limit
+        expr=safe_expr,
+        limit=limit,
     )
 
     return [dense_req, sparse_req]
 
 
-def hybrid_search(client, collection_name, reqs, ranker_weights=(0.5, 0.5), norm_score=False, limit=5,
-                  output_fields=None, search_params=None):
+def hybrid_search(
+    client,
+    collection_name,
+    reqs,
+    ranker_weights=(0.5, 0.5),
+    norm_score=False,
+    limit=5,
+    output_fields=None,
+    search_params=None,
+):
     """
     执行Milvus稠密+稀疏向量混合搜索
     基于WeightedRanker实现双向量搜索结果加权融合，提升检索准确性
@@ -173,7 +205,9 @@ def hybrid_search(client, collection_name, reqs, ranker_weights=(0.5, 0.5), norm
     try:
         # 初始化加权排名器：按权重融合稠密/稀疏向量的搜索结果
         # norm_score=True：先将两个向量评分归一化到0~1区间，再加权计算
-        rerank = WeightedRanker(ranker_weights[0], ranker_weights[1], norm_score=norm_score)
+        rerank = WeightedRanker(
+            ranker_weights[0], ranker_weights[1], norm_score=norm_score
+        )
 
         # 默认返回字段：文档标识字段
         if output_fields is None:
@@ -186,11 +220,15 @@ def hybrid_search(client, collection_name, reqs, ranker_weights=(0.5, 0.5), norm
             ranker=rerank,
             limit=limit,
             output_fields=output_fields,
-            search_params=search_params
+            search_params=search_params,
         )
 
-        logger.info(f"Milvus混合搜索完成，集合[{collection_name}]共检索到{len(res[0])}条结果")
+        logger.info(
+            f"Milvus混合搜索完成，集合[{collection_name}]共检索到{len(res[0])}条结果"
+        )
         return res
     except Exception as e:
-        logger.error(f"Milvus混合搜索执行失败，集合[{collection_name}]：{str(e)}", exc_info=True)
+        logger.error(
+            f"Milvus混合搜索执行失败，集合[{collection_name}]：{str(e)}", exc_info=True
+        )
         return None

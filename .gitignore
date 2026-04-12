@@ -1,9 +1,12 @@
 .env
+.env.local
+.env.production
 .cache/
 .docker-data/
 .run/
 logs/
 output/
+temp-files/
 __pycache__/
 *.pyc
 *.pyo
@@ -14,3 +17,11 @@ __pycache__/
 .idea/
 .vscode/
 doc/
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+test/
+tests/
+*.md
