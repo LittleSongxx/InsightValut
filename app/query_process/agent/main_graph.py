@@ -13,6 +13,7 @@ from app.query_process.agent.nodes.node_query_kg import node_query_kg
 from app.query_process.agent.nodes.node_answer_output import node_answer_output
 from app.query_process.agent.nodes.node_rerank import node_rerank
 from app.query_process.agent.nodes.node_rrf import node_rrf
+from app.query_process.agent.nodes.node_search_bm25 import node_search_bm25
 from app.query_process.agent.nodes.node_search_embedding import node_search_embedding
 from app.query_process.agent.nodes.node_search_embedding_hyde import (
     node_search_embedding_hyde,
@@ -59,6 +60,7 @@ builder.add_node("node_multi_search", lambda x: x)  # 虚拟节点：多路搜�
 builder.add_node(
     "node_search_embedding", _perf_wrap("node_search_embedding", node_search_embedding)
 )  # 向量搜索
+builder.add_node("node_search_bm25", _perf_wrap("node_search_bm25", node_search_bm25))
 builder.add_node(
     "node_search_embedding_hyde",
     _perf_wrap("node_search_embedding_hyde", node_search_embedding_hyde),
@@ -138,14 +140,16 @@ builder.add_conditional_edges("node_item_name_confirm", route_after_item_confirm
 # 2. 复合问题分解 → (条件分叉) → 多路搜索 / 直接重排
 builder.add_conditional_edges("node_query_decompose", route_after_decompose)
 
-# 3. 并发执行四路搜索
+# 3. 并发执行五路搜索
 builder.add_edge("node_multi_search", "node_search_embedding")
+builder.add_edge("node_multi_search", "node_search_bm25")
 builder.add_edge("node_multi_search", "node_search_embedding_hyde")
 builder.add_edge("node_multi_search", "node_web_search_mcp")
 builder.add_edge("node_multi_search", "node_query_kg")
 
-# 4. 四路搜索 → 结果合并
+# 4. 五路搜索 → 结果合并
 builder.add_edge("node_search_embedding", "node_join")
+builder.add_edge("node_search_bm25", "node_join")
 builder.add_edge("node_search_embedding_hyde", "node_join")
 builder.add_edge("node_web_search_mcp", "node_join")
 builder.add_edge("node_query_kg", "node_join")

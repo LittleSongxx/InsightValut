@@ -11,6 +11,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # 项目内部工具/状态/日志导入（保持原有路径）
 from app.utils.task_utils import add_running_task, add_done_task
+from app.utils.markdown_image_utils import extract_markdown_image_urls
 from app.import_process.agent.state import ImportGraphState
 from app.core.logger import logger  # 项目统一日志工具，核心替换print
 
@@ -149,15 +150,7 @@ def _extract_image_urls(text: str) -> List[str]:
     :param text: 待提取的文本内容（通常是 chunk.content）
     :return: 图片 URL 列表（去重）
     """
-    md_img_pattern = re.compile(r"!\[.*?\]\((.*?)\)")
-    seen = set()
-    urls = []
-    for match in md_img_pattern.finditer(text):
-        url = match.group(1).strip()
-        if url and url not in seen:
-            seen.add(url)
-            urls.append(url)
-    return urls
+    return extract_markdown_image_urls(text)
 
 
 def _split_long_section(
@@ -272,7 +265,9 @@ def _merge_short_sections(
             # 合并图片URL列表，去重
             next_urls = sec.get("image_urls") or []
             existing_urls = set(current_chunk.get("image_urls") or [])
-            merged_urls = list(existing_urls) + [u for u in next_urls if u not in existing_urls]
+            merged_urls = list(existing_urls) + [
+                u for u in next_urls if u not in existing_urls
+            ]
             current_chunk["image_urls"] = merged_urls
             # 更新子Chunk序号：保留最新序号，便于溯源
             if "part" in sec:

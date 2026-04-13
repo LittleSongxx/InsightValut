@@ -1,4 +1,4 @@
-import type { HistoryItem, PerformanceSummary, PerformanceTimePoint, StageBreakdown } from '../types';
+import type { HistoryItem, ImportTask, PerformanceSummary, PerformanceTimePoint, StageBreakdown } from '../types';
 
 const QUERY_BASE = '/api/query';
 const IMPORT_BASE = '/api/import';
@@ -63,15 +63,47 @@ export async function uploadFile(file: File, onProgress?: (pct: number) => void)
   });
 }
 
-export async function getImportStatus(taskId: string) {
+export interface ImportStatusResponse {
+  code: number;
+  task_id: string;
+  status: string;
+  done_list: string[];
+  running_list: string[];
+  error_message: string;
+  item_name: string;
+  file_name: string;
+  file_title: string;
+}
+
+export async function getImportStatus(taskId: string): Promise<ImportStatusResponse> {
   const res = await fetch(`${IMPORT_BASE}/status/${taskId}`);
   if (!res.ok) throw new Error(`Status failed: ${res.status}`);
   return res.json();
 }
 
-export async function getImportList() {
-  const res = await fetch(`${IMPORT_BASE}/tasks`);
+export async function getImportList(limit = 100, status?: string): Promise<{ code: number; tasks: ImportTask[] }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (status) params.append('status', status);
+  const res = await fetch(`${IMPORT_BASE}/tasks?${params.toString()}`);
   if (!res.ok) throw new Error(`Task list failed: ${res.status}`);
+  return res.json();
+}
+
+export interface DeleteImportTasksResponse {
+  code: number;
+  requested_count: number;
+  deleted_count: number;
+  deleted_task_ids: string[];
+  skipped: Array<{ task_id: string; reason: string }>;
+}
+
+export async function deleteImportTasks(taskIds: string[]): Promise<DeleteImportTasksResponse> {
+  const res = await fetch(`${IMPORT_BASE}/tasks/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_ids: taskIds }),
+  });
+  if (!res.ok) throw new Error(`Delete tasks failed: ${res.status}`);
   return res.json();
 }
 

@@ -1,17 +1,32 @@
 import sys
+from urllib.parse import urlsplit
 from app.utils.task_utils import add_running_task, add_done_task, set_task_result
 from app.utils.sse_utils import push_to_session, SSEEvent
+from app.utils.markdown_image_utils import extract_markdown_image_urls
 from app.query_process.agent.state import QueryGraphState
 from app.core.logger import logger
 from app.core.load_prompt import load_prompt
 from app.lm.lm_utils import get_llm_client
 from app.clients.mongo_history_utils import save_chat_message
 from app.conf.query_threshold_config import query_threshold_config
-import re
 
 _IMAGE_BLOCK_MARKER = "【图片】"
 cfg = query_threshold_config
 MAX_CONTEXT_CHARS = cfg.max_context_chars
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg")
+
+
+def _is_probably_image_url(url: str) -> bool:
+    candidate = (url or "").strip()
+    if not candidate:
+        return False
+    if candidate.startswith("data:image/") or candidate.startswith("blob:"):
+        return True
+    if any(ch.isspace() for ch in candidate):
+        return False
+
+    path = urlsplit(candidate).path.lower()
+    return path.endswith(IMAGE_SUFFIXES)
 
 
 def step_1_check_answer(state) -> bool:
@@ -169,15 +184,13 @@ def _extract_images_from_docs(docs):
     if not docs:
         return []
 
-    md_img_pattern = re.compile(r"!\[.*?\]\((.*?)\)")
-
     for i, doc in enumerate(docs):
         # 策略1：优先从 image_urls 字段获取（推荐，数据已结构化存储）
         field_urls = doc.get("image_urls") or []
         if isinstance(field_urls, list):
             for url in field_urls:
                 url = (url or "").strip()
-                if url and url not in seen:
+                if _is_probably_image_url(url) and url not in seen:
                     seen.add(url)
                     images.append(url)
                     logger.debug(f"文档[{i}] 从 image_urls 字段获取图片: {url}")
@@ -196,10 +209,10 @@ def _extract_images_from_docs(docs):
         # 策略3：正则扫描 text 正文（兜底，适用于旧数据或不规范存储）
         text = (doc.get("text") or "").strip()
         if text:
-            matches = md_img_pattern.findall(text)
+            matches = extract_markdown_image_urls(text)
             for img_url in matches:
                 img_url = img_url.strip()
-                if img_url and img_url not in seen:
+                if _is_probably_image_url(img_url) and img_url not in seen:
                     logger.debug(f"文档[{i}] 正则提取正文图片: {img_url}")
                     seen.add(img_url)
                     images.append(img_url)
@@ -301,7 +314,10 @@ if __name__ == "__main__":
             "source": "local",
             "title": "HAK 180 烫金机操作手册_v2.pdf",
             "score": 0.95,
-            "image_urls": ["http://local-server/images/panel_view.jpg", "http://local-server/images/knob_detail.png"],
+            "image_urls": [
+                "http://local-server/images/panel_view.jpg",
+                "http://local-server/images/knob_detail.png",
+            ],
             "text": """
             HAK 180 烫金机的操作面板位于机器正前方。
             开启电源后，您需要先设置温度，默认建议设置在 110℃ 左右。

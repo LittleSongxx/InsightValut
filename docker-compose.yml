@@ -1,7 +1,6 @@
 name: insightvault
 
-x-common-backend-env: &common-backend-env
-  # 项目路径（写死在镜像里，不需要改）
+x-common-backend-env: &common-backend-env # 项目路径（写死在镜像里，不需要改）
   PROJECT_ROOT: /app
   PYTHONUNBUFFERED: "1"
 
@@ -41,6 +40,23 @@ x-common-backend-env: &common-backend-env
   LOG_FILE_ENABLE: "True"
   LOG_FILE_LEVEL: INFO
   LOG_FILE_RETENTION: "7 days"
+  MONGO_DB_NAME: ${MONGO_DB_NAME:-insightvault_rag}
+  CHUNKS_COLLECTION: ${CHUNKS_COLLECTION:-kb_chunks}
+  ITEM_NAME_COLLECTION: ${ITEM_NAME_COLLECTION:-kb_item_names}
+  ENTITY_NAME_COLLECTION: ${ENTITY_NAME_COLLECTION:-kb_entities}
+  MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-127.0.0.1:19100}
+  HYBRID_DENSE_WEIGHT: ${HYBRID_DENSE_WEIGHT:-0.75}
+  HYBRID_SPARSE_WEIGHT: ${HYBRID_SPARSE_WEIGHT:-0.25}
+  ITEM_NAME_DENSE_WEIGHT: ${ITEM_NAME_DENSE_WEIGHT:-0.85}
+  ITEM_NAME_SPARSE_WEIGHT: ${ITEM_NAME_SPARSE_WEIGHT:-0.15}
+  BM25_TOP_K: ${BM25_TOP_K:-8}
+  BM25_CANDIDATE_LIMIT: ${BM25_CANDIDATE_LIMIT:-800}
+  BM25_K1: ${BM25_K1:-1.5}
+  BM25_B: ${BM25_B:-0.75}
+  RRF_WEIGHT_EMBEDDING: ${RRF_WEIGHT_EMBEDDING:-1.0}
+  RRF_WEIGHT_HYDE: ${RRF_WEIGHT_HYDE:-0.9}
+  RRF_WEIGHT_BM25: ${RRF_WEIGHT_BM25:-0.7}
+  RRF_WEIGHT_KG: ${RRF_WEIGHT_KG:-0.8}
 
 services:
   # ──────────────────────────────────────────

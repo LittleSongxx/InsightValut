@@ -3,24 +3,49 @@ import type { Message, ProgressData } from '../types';
 import { ChatWindow, ChatInput, ProgressPanel, ImportProgressPanel } from '../components';
 import type { UploadingFile } from '../components/chat/ChatInput';
 import { sendQuery, createSSEConnection, getHistory, uploadFile, getImportStatus } from '../services/api';
+import { useSession } from '../contexts';
+import { normalizeAssetUrls } from '../utils/media';
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
+function parsePayload<T>(raw: string): T | null {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error) return error;
+  return fallback;
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [sessionId, setSessionId] = useState<string>(() => generateId());
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [suggestionText, setSuggestionText] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [serviceHealth, setServiceHealth] = useState<{ query: boolean; import: boolean }>({ query: false, import: false });
+  const { currentSessionId, createNewSession, selectSession, refreshSessions } = useSession();
   const eventSourceRef = useRef<EventSource | null>(null);
   const assistantMsgIdRef = useRef<string | null>(null);
   const startTimeRef = useRef<number>(0);
   const uploadPollingRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const historyLoadingSessionRef = useRef<string | null>(null);
+  const skipHistoryReloadSessionRef = useRef<string | null>(null);
+
+  const closeSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  }, []);
 
   // Health check on mount
   useEffect(() => {
@@ -38,34 +63,65 @@ export default function ChatPage() {
 
   // Load session history on mount if there's a stored session
   useEffect(() => {
-    const stored = localStorage.getItem('iv_session_id');
-    if (stored) {
-      setSessionId(stored);
-      getHistory(stored, 50)
-        .then((data) => {
-          const loaded: Message[] = data.items.map((item, idx) => ({
-            id: `hist-${idx}`,
-            role: item.role === 'user' ? 'user' : 'assistant',
-            content: item.text,
-            timestamp: new Date(item.ts * 1000),
-          }));
-          setMessages(loaded);
-        })
-        .catch(() => { });
+    if (skipHistoryReloadSessionRef.current === currentSessionId) {
+      skipHistoryReloadSessionRef.current = null;
+      return;
     }
-  }, []);
 
-  // Persist session ID
+    closeSSE();
+    assistantMsgIdRef.current = null;
+    queueMicrotask(() => {
+      setIsStreaming(false);
+      setIsLoading(false);
+      setProgress(null);
+      if (!currentSessionId) {
+        setMessages([]);
+      }
+    });
+
+    if (!currentSessionId) {
+      return;
+    }
+
+    let cancelled = false;
+    historyLoadingSessionRef.current = currentSessionId;
+
+    getHistory(currentSessionId, 50)
+      .then((data) => {
+        if (cancelled) return;
+        const loaded: Message[] = data.items.map((item, idx) => ({
+          id: `hist-${idx}`,
+          role: item.role === 'user' ? 'user' : 'assistant',
+          content: item.text,
+          timestamp: new Date(item.ts * 1000),
+          images: normalizeAssetUrls(item.image_urls),
+        }));
+        setMessages((prev) => {
+          if (historyLoadingSessionRef.current !== currentSessionId) {
+            return prev;
+          }
+          if (loaded.length === 0 && prev.length > 0) {
+            return prev;
+          }
+          return loaded;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMessages((prev) => (historyLoadingSessionRef.current === currentSessionId && prev.length === 0 ? [] : prev));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [closeSSE, currentSessionId]);
+
   useEffect(() => {
-    localStorage.setItem('iv_session_id', sessionId);
-  }, [sessionId]);
-
-  const closeSSE = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-  }, []);
+    return () => {
+      closeSSE();
+    };
+  }, [closeSSE]);
 
   const handleCancel = useCallback(() => {
     closeSSE();
@@ -85,6 +141,12 @@ export default function ChatPage() {
 
   const handleSend = useCallback(
     async (text: string) => {
+      let activeSessionId = currentSessionId;
+      if (!activeSessionId) {
+        activeSessionId = createNewSession();
+        skipHistoryReloadSessionRef.current = activeSessionId;
+      }
+
       // Add user message
       const userMsg: Message = {
         id: generateId(),
@@ -98,9 +160,11 @@ export default function ChatPage() {
 
       try {
         // Send query (stream mode)
-        const res = await sendQuery(text, sessionId, true);
-        const sid = res.session_id || sessionId;
-        if (sid !== sessionId) setSessionId(sid);
+        const res = await sendQuery(text, activeSessionId, true);
+        const sid = res.session_id || activeSessionId;
+        if (sid !== currentSessionId) {
+          selectSession(sid);
+        }
 
         // Create assistant message placeholder
         const assistantId = generateId();
@@ -122,15 +186,15 @@ export default function ChatPage() {
         eventSourceRef.current = es;
 
         es.addEventListener('progress', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
+          const data = parsePayload<ProgressData>(e.data);
+          if (data) {
             setProgress(data);
-          } catch { }
+          }
         });
 
         es.addEventListener('delta', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
+          const data = parsePayload<{ chunk?: string; content?: string }>(e.data);
+          if (data) {
             const chunk = data.chunk || data.content || '';
             setMessages((prev) =>
               prev.map((m) =>
@@ -139,14 +203,14 @@ export default function ChatPage() {
                   : m,
               ),
             );
-          } catch { }
+          }
         });
 
         es.addEventListener('final', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
+          const data = parsePayload<{ answer?: string; content?: string; image_urls?: string[] }>(e.data);
+          if (data) {
             const answer = data.answer || data.content || '';
-            const images = data.image_urls || [];
+            const images = normalizeAssetUrls(data.image_urls || []);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -160,18 +224,19 @@ export default function ChatPage() {
                   : m,
               ),
             );
-          } catch { }
+          }
           setIsStreaming(false);
           setIsLoading(false);
           setProgress((prev) => prev ? { ...prev, status: 'completed' } : null);
           // Auto-hide progress panel after a short delay
           setTimeout(() => setProgress(null), 3000);
+          refreshSessions().catch(() => undefined);
           closeSSE();
         });
 
         es.addEventListener('error', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse((e as any).data || '{}');
+          const data = parsePayload<{ error?: string }>(e.data || '{}');
+          if (data) {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -179,10 +244,11 @@ export default function ChatPage() {
                   : m,
               ),
             );
-          } catch { }
+          }
           setIsStreaming(false);
           setIsLoading(false);
           setProgress(null);
+          refreshSessions().catch(() => undefined);
           closeSSE();
         });
 
@@ -190,39 +256,32 @@ export default function ChatPage() {
           setIsStreaming(false);
           setIsLoading(false);
           setProgress(null);
+          refreshSessions().catch(() => undefined);
           closeSSE();
         };
-      } catch (err: any) {
-        const isNetworkError = err?.message === 'Failed to fetch' || err?.message?.includes('fetch');
+      } catch (err: unknown) {
+        const message = getErrorMessage(err, '网络错误');
+        const isNetworkError = message === 'Failed to fetch' || message.includes('fetch');
         const errorMsg: Message = {
           id: generateId(),
           role: 'assistant',
           content: isNetworkError
             ? `请求失败: 无法连接到查询服务。请确认后端服务（app-query）是否已启动，并检查是否在 Vite dev server（localhost:3000）环境下运行。`
-            : `请求失败: ${err.message || '网络错误'}`,
+            : `请求失败: ${message}`,
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, errorMsg]);
         setIsLoading(false);
       }
     },
-    [sessionId, closeSSE],
+    [closeSSE, createNewSession, currentSessionId, refreshSessions, selectSession],
   );
-
-  const handleNewChat = useCallback(() => {
-    closeSSE();
-    setMessages([]);
-    setProgress(null);
-    setIsLoading(false);
-    setIsStreaming(false);
-    const newSid = generateId();
-    setSessionId(newSid);
-  }, [closeSSE]);
 
   // --- File upload from chat input ---
   useEffect(() => {
+    const pollingMap = uploadPollingRef.current;
     return () => {
-      uploadPollingRef.current.forEach((t) => clearInterval(t));
+      pollingMap.forEach((t) => clearInterval(t));
     };
   }, []);
 
@@ -250,17 +309,18 @@ export default function ChatPage() {
           clearInterval(uploadPollingRef.current.get(fileId));
           uploadPollingRef.current.delete(fileId);
           if (res.status === 'completed') {
+            const importedName = (res.item_name || res.file_title || fileName.replace(/\.[^.]+$/, '')).trim();
             const sysMsg: Message = {
               id: generateId(),
               role: 'assistant',
-              content: `${fileName} 已成功导入产品知识库，您现在可以针对该产品进行提问。`,
+              content: `${importedName} 已成功导入产品知识库，您现在可以针对该产品进行提问。`,
               timestamp: new Date(),
             };
             setMessages((prev) => [...prev, sysMsg]);
           }
         }
       } catch {
-        // ignore polling errors
+        return;
       }
     }, 2000);
     uploadPollingRef.current.set(fileId, timer);
@@ -291,18 +351,19 @@ export default function ChatPage() {
           ),
         );
         startUploadPolling(fileId, res.task_id, file.name);
-      } catch (err: any) {
-        const isNetworkError = err?.message === 'Failed to fetch' || err?.message?.includes('fetch') || err?.message?.includes('network');
+      } catch (err: unknown) {
+        const message = getErrorMessage(err, '上传失败');
+        const isNetworkError = message === 'Failed to fetch' || message.includes('fetch') || message.includes('network');
         setUploadingFiles((prev) =>
           prev.map((f) =>
             f.id === fileId
               ? {
-                  ...f,
-                  status: 'failed',
-                  errorMessage: isNetworkError
-                    ? '无法连接到导入服务，请确认后端服务（app-import）是否已启动'
-                    : (err?.message || '上传失败'),
-                }
+                ...f,
+                status: 'failed',
+                errorMessage: isNetworkError
+                  ? '无法连接到导入服务，请确认后端服务（app-import）是否已启动'
+                  : message,
+              }
               : f,
           ),
         );

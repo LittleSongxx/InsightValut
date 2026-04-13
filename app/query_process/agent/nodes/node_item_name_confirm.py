@@ -185,12 +185,14 @@ def step_4_vectorize_and_query(item_names: List[str]) -> List[Dict]:
                 )
 
                 # 执行混合搜索
-                # 权重调整为 0.8 (Dense) / 0.2 (Sparse) 以优化评分
                 search_res = hybrid_search(
                     client=client,
                     collection_name=collection_name,
                     reqs=reqs,
-                    ranker_weights=(0.8, 0.2),
+                    ranker_weights=(
+                        query_threshold_config.item_name_dense_weight,
+                        query_threshold_config.item_name_sparse_weight,
+                    ),
                     limit=5,
                     norm_score=True,
                     output_fields=["item_name"],

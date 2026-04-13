@@ -13,6 +13,7 @@ class QueryGraphState(TypedDict):
     # 检索过程中的中间数据
     embedding_chunks: list  # 普通向量检索回来的切片
     hyde_embedding_chunks: list  # HyDE 检索回来的切片
+    bm25_chunks: list  # BM25 检索回来的切片
     kg_chunks: list  # 图谱检索回来的切片
     web_search_docs: list  # 网络搜索回来的文档
 

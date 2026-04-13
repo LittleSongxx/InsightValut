@@ -1,17 +1,7 @@
 import sys
-import os
 from app.utils.task_utils import add_running_task, add_done_task
-from app.lm.embedding_utils import generate_embeddings
-from app.clients.milvus_utils import (
-    create_hybrid_search_requests,
-    hybrid_search,
-    get_milvus_client,
-)
 from app.core.logger import logger
-from app.conf.query_threshold_config import query_threshold_config
-from dotenv import load_dotenv, find_dotenv
-
-load_dotenv(find_dotenv())
+from app.query_process.agent.retrieval_utils import run_embedding_hybrid_search
 
 
 def node_search_embedding(state):
@@ -42,65 +32,26 @@ def node_search_embedding(state):
 
     logger.info(f"核心入参提取: query='{query}', item_names={item_names}")
 
-    # 2. 对改写后的用户问题执行向量化，生成BGEM3稠密+稀疏向量
-    logger.info(
-        f"开始为文本获取嵌入值: {query[:50]}..."
-        if len(query) > 50
-        else f"开始为“{query}”文本获取嵌入值..."
-    )
-    # 调用向量化函数，入参为列表（支持批量，此处仅单条查询）
-    # 生成与商品名匹配的语义向量，用于后续相似性检索
-    embeddings = generate_embeddings([query])
-
-    dense_vec = embeddings.get("dense")[0]
-    sparse_vec = embeddings.get("sparse")[0]
-    # 打印稠密/稀疏向量日志，便于调试向量生成结果
-    logger.debug(
-        f"向量生成成功: dense_dim={len(dense_vec)}, sparse_len={len(sparse_vec)}"
-    )
-
-    # 3. 准备Milvus向量数据库连接相关配置，指定检索的集合
-    # 从环境变量中获取Milvus中存储「文本片段向量」的集合名（表名），避免硬编码
-    collection_name = os.environ.get("CHUNKS_COLLECTION")
-    logger.info(f"正在连接到 Milvus 并准备集合 '{collection_name}'...")
-
-    # 4. 构造Milvus混合搜索请求对象（核心步骤）
-    # 有 item_names 时构造过滤表达式精准缩小范围，无则全库搜索
-    expr = None
-    if item_names:
-        quoted = ", ".join(f'"{v}"' for v in item_names)
-        expr = f"item_name in [{quoted}]"
-        logger.info(f"创建搜索请求过滤表达式: {expr}")
-    else:
-        logger.info("item_names 为空，执行全库语义检索（无过滤）")
-
-    cfg = query_threshold_config
-    # 构造稠密+稀疏混合搜索请求，整合向量、过滤条件、搜索参数
-    reqs = create_hybrid_search_requests(
-        dense_vector=dense_vec,
-        sparse_vector=sparse_vec,
-        expr=expr,
-        limit=cfg.embedding_req_limit,
-    )
-
-    # 执行Milvus稠密+稀疏混合向量检索（核心调用）
-    logger.info("开始执行 Milvus 混合检索...")
-    client = get_milvus_client()
-    res = hybrid_search(
-        client=client,
-        collection_name=collection_name,
-        reqs=reqs,
-        ranker_weights=(0.8, 0.2),
-        norm_score=True,
-        limit=cfg.embedding_top_k,
-        output_fields=["chunk_id", "content", "item_name", "image_urls"],
+    results = run_embedding_hybrid_search(
+        query_text=query,
+        item_names=item_names,
+        output_fields=[
+            "chunk_id",
+            "content",
+            "title",
+            "parent_title",
+            "part",
+            "file_title",
+            "item_name",
+            "image_urls",
+        ],
     )
 
     # 打印节点处理成功日志，输出原始检索结果，便于调试
-    hit_count = len(res[0]) if res and len(res) > 0 else 0
+    hit_count = len(results)
     logger.info(f"节点 search_embedding 处理成功，检索到 {hit_count} 条相关片段")
     if hit_count > 0:
-        logger.debug(f"Top1 检索结果示例: {res[0][0]}")
+        logger.debug(f"Top1 检索结果示例: {results[0]}")
 
     # 标记当前任务完成，更新任务状态
     add_done_task(
@@ -109,7 +60,7 @@ def node_search_embedding(state):
 
     # 6. 构造并返回结果：若检索结果非空，取res[0]（适配Milvus批量搜索格式），否则返回空列表
     # res[0]为当前单条查询的检索结果，包含TOP5匹配的向量数据及业务字段
-    return {"embedding_chunks": res[0] if res else []}
+    return {"embedding_chunks": results}
 
 
 if __name__ == "__main__":

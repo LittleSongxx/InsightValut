@@ -1,17 +1,17 @@
 import sys
-import os
 import json
 from typing import List, Dict
 
 from app.utils.task_utils import add_running_task, add_done_task
 from app.lm.lm_utils import get_llm_client
-from app.lm.embedding_utils import generate_embeddings
-from app.clients.milvus_utils import (
-    get_milvus_client,
-    create_hybrid_search_requests,
-    hybrid_search,
+from app.query_process.agent.nodes.node_rrf import (
+    reciprocal_rank_fusion,
+    _as_entity_list,
 )
-from app.query_process.agent.nodes.node_rrf import reciprocal_rank_fusion, _as_entity_list
+from app.query_process.agent.retrieval_utils import (
+    run_bm25_search,
+    run_embedding_hybrid_search,
+)
 from app.core.load_prompt import load_prompt
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
@@ -82,57 +82,61 @@ def step_2_search_sub_queries(
     """
     logger.info(f"Step 2: 开始执行 {len(sub_queries)} 个子查询的独立检索")
 
-    collection_name = os.environ.get("CHUNKS_COLLECTION")
-    if not collection_name:
-        logger.error("Step 2: 环境变量 CHUNKS_COLLECTION 未设置")
-        return []
-
-    # 构造 item_name 过滤表达式
-    expr = None
-    if item_names:
-        quoted = ", ".join(f'"{v}"' for v in item_names)
-        expr = f"item_name in [{quoted}]"
-
-    client = get_milvus_client()
-    if not client:
-        logger.error("Step 2: 无法连接到 Milvus")
-        return []
-
     # 收集每个子查询的检索结果，用于后续 RRF 融合
     all_source_weights = []
 
     for i, sub_q in enumerate(sub_queries):
         logger.info(f"Step 2: 子查询 [{i + 1}/{len(sub_queries)}]: {sub_q}")
         try:
-            # 向量化
-            embeddings = generate_embeddings([sub_q])
-            dense_vec = embeddings.get("dense")[0]
-            sparse_vec = embeddings.get("sparse")[0]
-
-            # 构造混合搜索请求
-            reqs = create_hybrid_search_requests(
-                dense_vector=dense_vec,
-                sparse_vector=sparse_vec,
-                expr=expr,
-                limit=10,
+            embedding_results = run_embedding_hybrid_search(
+                query_text=sub_q,
+                item_names=item_names,
+                req_limit=cfg.embedding_req_limit,
+                top_k=cfg.embedding_top_k,
+                output_fields=[
+                    "chunk_id",
+                    "content",
+                    "title",
+                    "parent_title",
+                    "part",
+                    "file_title",
+                    "item_name",
+                    "image_urls",
+                ],
             )
+            embedding_entities = _as_entity_list(embedding_results)
+            if embedding_entities:
+                all_source_weights.append(
+                    (embedding_entities, cfg.rrf_weight_embedding)
+                )
+                logger.info(
+                    f"Step 2: 子查询 [{i + 1}] Embedding 检索到 {len(embedding_entities)} 条结果"
+                )
 
-            # 执行检索
-            res = hybrid_search(
-                client=client,
-                collection_name=collection_name,
-                reqs=reqs,
-                ranker_weights=(0.8, 0.2),
-                norm_score=True,
-                limit=5,
-                output_fields=["chunk_id", "content", "item_name"],
+            bm25_results = run_bm25_search(
+                query_text=sub_q,
+                item_names=item_names,
+                top_k=cfg.bm25_top_k,
+                candidate_limit=cfg.bm25_candidate_limit,
+                output_fields=[
+                    "chunk_id",
+                    "content",
+                    "title",
+                    "parent_title",
+                    "part",
+                    "file_title",
+                    "item_name",
+                    "image_urls",
+                ],
             )
+            bm25_entities = _as_entity_list(bm25_results)
+            if bm25_entities:
+                all_source_weights.append((bm25_entities, cfg.rrf_weight_bm25))
+                logger.info(
+                    f"Step 2: 子查询 [{i + 1}] BM25 检索到 {len(bm25_entities)} 条结果"
+                )
 
-            if res and len(res) > 0:
-                entities = _as_entity_list(res[0])
-                all_source_weights.append((entities, 1.0))
-                logger.info(f"Step 2: 子查询 [{i + 1}] 检索到 {len(entities)} 条结果")
-            else:
+            if not embedding_entities and not bm25_entities:
                 logger.warning(f"Step 2: 子查询 [{i + 1}] 无检索结果")
 
         except Exception as e:
@@ -143,7 +147,11 @@ def step_2_search_sub_queries(
         logger.warning("Step 2: 所有子查询均无结果")
         return []
 
-    rrf_results = reciprocal_rank_fusion(all_source_weights, k=60, max_results=10)
+    rrf_results = reciprocal_rank_fusion(
+        all_source_weights,
+        k=cfg.rrf_k,
+        max_results=cfg.rrf_max_results,
+    )
     merged_chunks = [doc for doc, score in rrf_results]
 
     logger.info(f"Step 2: RRF 融合完成，共 {len(merged_chunks)} 条结果")

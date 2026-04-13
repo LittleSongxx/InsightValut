@@ -46,9 +46,12 @@ export function ChatInput({
 
   useEffect(() => {
     if (externalValue !== undefined && externalValue !== '') {
-      setInput(externalValue);
-      onExternalValueConsumed?.();
-      textareaRef.current?.focus();
+      const frameId = window.requestAnimationFrame(() => {
+        setInput(externalValue);
+        onExternalValueConsumed?.();
+        textareaRef.current?.focus();
+      });
+      return () => window.cancelAnimationFrame(frameId);
     }
   }, [externalValue, onExternalValueConsumed]);
 

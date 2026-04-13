@@ -78,7 +78,11 @@ def step_1_grade_retrieval(question: str, reranked_docs: list) -> dict:
     except Exception as e:
         logger.error(f"Step 1: 检索质量评估失败: {e}", exc_info=True)
         # 降级：评估失败时默认通过（避免阻塞主流程）
-        return {"grade": "sufficient", "reason": f"评估失败(降级通过): {e}", "suggested_query": ""}
+        return {
+            "grade": "sufficient",
+            "reason": f"评估失败(降级通过): {e}",
+            "suggested_query": "",
+        }
 
 
 def node_retrieval_grader(state):
@@ -134,6 +138,8 @@ def node_retrieval_grader(state):
         # 清空旧检索结果，为新一轮检索做准备
         result["embedding_chunks"] = []
         result["hyde_embedding_chunks"] = []
+        result["bm25_chunks"] = []
+        result["kg_chunks"] = []
         result["rrf_chunks"] = []
         result["reranked_docs"] = []
         result["web_search_docs"] = []
@@ -148,7 +154,9 @@ def node_retrieval_grader(state):
     add_done_task(
         state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
     )
-    logger.info(f"---node_retrieval_grader 处理结束, grade={result.get('retrieval_grade')}---")
+    logger.info(
+        f"---node_retrieval_grader 处理结束, grade={result.get('retrieval_grade')}---"
+    )
     return result
 
 
@@ -221,7 +229,9 @@ if __name__ == "__main__":
             print(f"retrieval_grade: {result.get('retrieval_grade')}")
             if result.get("rewritten_query"):
                 print(f"new_query: {result.get('rewritten_query')}")
-            print(f"retry_count: {result.get('retry_count', state.get('retry_count', 0))}")
+            print(
+                f"retry_count: {result.get('retry_count', state.get('retry_count', 0))}"
+            )
             print("-" * 30)
         except Exception as e:
             logger.exception(f"测试 [{name}] 失败: {e}")

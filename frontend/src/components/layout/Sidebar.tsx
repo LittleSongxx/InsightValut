@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   MessageSquarePlus,
+  BookOpen,
   Upload,
   BarChart3,
   Moon,
@@ -102,6 +103,13 @@ export function Sidebar({
         {/* Navigation */}
         <nav className="px-2 space-y-1 shrink-0">
           <NavButton
+            icon={<BookOpen className="w-4 h-4" />}
+            label="知识库"
+            isOpen={isOpen}
+            active={isActive('/knowledge')}
+            onClick={() => navigate('/knowledge')}
+          />
+          <NavButton
             icon={<Upload className="w-4 h-4" />}
             label="文件导入"
             isOpen={isOpen}
@@ -136,8 +144,8 @@ export function Sidebar({
                 <button
                   onClick={() => onSelectSession(s.session_id)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-xs truncate transition-colors ${s.session_id === currentSessionId
-                      ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-medium'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
+                    ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-medium'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
                     }`}
                   title={s.title}
                 >
@@ -190,8 +198,8 @@ function NavButton({
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${active
-          ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-medium'
-          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
+        ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-medium'
+        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
         } ${!isOpen ? 'justify-center' : ''}`}
       title={label}
     >

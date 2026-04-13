@@ -8,10 +8,14 @@ import uvicorn
 # 第三方库
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # 项目内部工具/配置/客户端
 from app.clients.minio_utils import get_minio_client
+from app.clients.milvus_utils import get_milvus_client
+from app.clients.neo4j_utils import delete_product
 from app.utils.path_util import PROJECT_ROOT
+from app.utils.escape_milvus_string_utils import escape_milvus_string
 from app.utils.task_utils import (
     add_running_task,
     add_done_task,
@@ -21,6 +25,7 @@ from app.utils.task_utils import (
     get_task_status,
     set_task_result,
     get_task_result,
+    clear_task,
 )
 from app.import_process.agent.state import get_default_state
 from app.import_process.agent.main_graph import kb_import_app  # LangGraph全流程编译实例
@@ -29,7 +34,9 @@ from app.clients.mongo_import_utils import (
     create_import_task,
     update_import_task,
     get_import_task,
+    get_import_tasks_by_ids,
     list_import_tasks,
+    delete_import_task,
 )
 
 # 初始化FastAPI应用实例
@@ -55,6 +62,51 @@ async def health():
     return {"ok": True}
 
 
+class DeleteImportTasksRequest(BaseModel):
+    task_ids: List[str]
+
+
+def _delete_milvus_records_by_item_name(item_name: str, collection_name: str) -> None:
+    cleaned_item_name = (item_name or "").strip()
+    if not cleaned_item_name or not collection_name:
+        return
+    client = get_milvus_client()
+    if client is None:
+        raise RuntimeError("Milvus client is unavailable")
+    if not client.has_collection(collection_name=collection_name):
+        return
+    if hasattr(client, "load_collection"):
+        client.load_collection(collection_name=collection_name)
+    safe_item_name = escape_milvus_string(cleaned_item_name)
+    client.delete(
+        collection_name=collection_name,
+        filter=f'item_name == "{safe_item_name}"',
+    )
+    if hasattr(client, "flush"):
+        try:
+            client.flush(collection_name=collection_name)
+        except Exception:
+            pass
+
+
+def _resolve_task_local_dir(task: Dict[str, Any]) -> str:
+    local_dir = (task.get("local_dir") or "").strip()
+    if local_dir:
+        return local_dir
+    task_id = (task.get("task_id") or "").strip()
+    created_at = task.get("created_at")
+    if not task_id or not created_at:
+        return ""
+    date_dir = datetime.fromtimestamp(created_at).strftime("%Y%m%d")
+    return os.path.join(PROJECT_ROOT, "output", date_dir, task_id)
+
+
+def _delete_task_local_dir(task: Dict[str, Any]) -> None:
+    local_dir = _resolve_task_local_dir(task)
+    if local_dir and os.path.isdir(local_dir):
+        shutil.rmtree(local_dir, ignore_errors=True)
+
+
 # --------------------------
 # 后台任务：LangGraph全流程执行
 # 独立于主请求线程，由BackgroundTasks触发，避免阻塞接口响应
@@ -70,9 +122,18 @@ def run_graph_task(task_id: str, local_dir: str, local_file_path: str):
     :param local_dir: 该任务的本地文件存储目录（含临时文件/解析结果）
     :param local_file_path: 上传文件的本地绝对路径
     """
+    final_state: Dict[str, Any] = {}
+    resolved_file_title = os.path.splitext(os.path.basename(local_file_path))[0]
     try:
         # 1. 更新任务全局状态为：处理中
         update_task_status(task_id, "processing")
+        update_import_task(
+            task_id,
+            status="processing",
+            done_list=get_done_task_list(task_id),
+            running_list=get_running_task_list(task_id),
+            file_title=resolved_file_title,
+        )
         logger.info(
             f"[{task_id}] 开始执行LangGraph全流程，本地文件路径：{local_file_path}"
         )
@@ -82,14 +143,27 @@ def run_graph_task(task_id: str, local_dir: str, local_file_path: str):
         init_state["task_id"] = task_id  # 任务ID关联
         init_state["local_dir"] = local_dir  # 任务本地目录
         init_state["local_file_path"] = local_file_path  # 上传文件本地路径
+        final_state = init_state
 
         # 3. 流式执行LangGraph全流程（stream模式：实时获取每个节点的执行结果）
         for event in kb_import_app.stream(init_state):
             for node_name, node_result in event.items():
                 # 记录每个节点完成的日志，包含任务ID和节点名，方便追踪执行顺序
                 logger.info(f"[{task_id}] LangGraph节点执行完成：{node_name}")
+                if isinstance(node_result, dict):
+                    final_state = node_result
                 # 将完成的节点名加入【已完成列表】，前端轮询/status/{task_id}可实时获取
                 add_done_task(task_id, node_name)
+                update_import_task(
+                    task_id,
+                    status="processing",
+                    done_list=get_done_task_list(task_id),
+                    running_list=get_running_task_list(task_id),
+                    item_name=(final_state.get("item_name") or "").strip(),
+                    file_title=(
+                        final_state.get("file_title") or resolved_file_title
+                    ).strip(),
+                )
 
         # 4. 全流程执行完成，更新任务全局状态为：已完成
         update_task_status(task_id, "completed")
@@ -98,6 +172,8 @@ def run_graph_task(task_id: str, local_dir: str, local_file_path: str):
             status="completed",
             done_list=get_done_task_list(task_id),
             running_list=[],
+            item_name=(final_state.get("item_name") or "").strip(),
+            file_title=(final_state.get("file_title") or resolved_file_title).strip(),
         )
         logger.info(f"[{task_id}] LangGraph全流程执行完毕，任务完成")
 
@@ -111,6 +187,8 @@ def run_graph_task(task_id: str, local_dir: str, local_file_path: str):
             error_message=str(e),
             done_list=get_done_task_list(task_id),
             running_list=[],
+            item_name=(final_state.get("item_name") or "").strip(),
+            file_title=(final_state.get("file_title") or resolved_file_title).strip(),
         )
         logger.error(
             f"[{task_id}] LangGraph全流程执行失败，异常信息：{str(e)}", exc_info=True
@@ -161,12 +239,19 @@ async def upload_files(
         # 3. 标记「文件上传」阶段为「运行中」，前端轮询可查
         add_running_task(task_id, "upload_file")
         create_import_task(task_id, file.filename, status="uploading")
+        update_import_task(
+            task_id,
+            status="uploading",
+            done_list=get_done_task_list(task_id),
+            running_list=get_running_task_list(task_id),
+        )
 
         # 4. 构建该任务的本地独立目录：output/YYYYMMDD/TaskID，避免多文件重名冲突
         task_local_dir = os.path.join(date_based_root_dir, task_id)
         os.makedirs(task_local_dir, exist_ok=True)  # 目录不存在则创建，存在则不做处理
         # 构建上传文件的本地保存绝对路径
         local_file_abs_path = os.path.join(task_local_dir, file.filename)
+        update_import_task(task_id, local_dir=task_local_dir)
 
         # 5. 将上传的文件保存到本地临时目录（后续MinIO上传/文件解析均基于此文件）
         with open(local_file_abs_path, "wb") as file_buffer:
@@ -215,6 +300,12 @@ async def upload_files(
 
         # 7. 标记「文件上传」阶段为「已完成」，前端轮询可查
         add_done_task(task_id, "upload_file")
+        update_import_task(
+            task_id,
+            status="uploading",
+            done_list=get_done_task_list(task_id),
+            running_list=get_running_task_list(task_id),
+        )
 
         # 8. 将LangGraph全流程处理加入FastAPI后台任务（异步执行，不阻塞当前接口响应）
         background_tasks.add_task(
@@ -254,6 +345,7 @@ async def get_task_progress(task_id: str):
     """
     # 优先从内存获取（处理中的任务实时性最好）
     mem_status = get_task_status(task_id)
+    db_task = get_import_task(task_id)
 
     if mem_status:
         # 内存中有数据 → 正在处理或刚完成
@@ -264,10 +356,12 @@ async def get_task_progress(task_id: str):
             "done_list": get_done_task_list(task_id),
             "running_list": get_running_task_list(task_id),
             "error_message": get_task_result(task_id, "error"),
+            "item_name": (db_task or {}).get("item_name", ""),
+            "file_name": (db_task or {}).get("file_name", ""),
+            "file_title": (db_task or {}).get("file_title", ""),
         }
     else:
         # 内存中无数据（服务重启过） → 回退到 MongoDB 持久化记录
-        db_task = get_import_task(task_id)
         if db_task:
             task_status_info = {
                 "code": 200,
@@ -276,6 +370,9 @@ async def get_task_progress(task_id: str):
                 "done_list": db_task.get("done_list", []),
                 "running_list": db_task.get("running_list", []),
                 "error_message": db_task.get("error_message", ""),
+                "item_name": db_task.get("item_name", ""),
+                "file_name": db_task.get("file_name", ""),
+                "file_title": db_task.get("file_title", ""),
             }
         else:
             task_status_info = {
@@ -285,6 +382,9 @@ async def get_task_progress(task_id: str):
                 "done_list": [],
                 "running_list": [],
                 "error_message": "任务不存在",
+                "item_name": "",
+                "file_name": "",
+                "file_title": "",
             }
 
     logger.info(
@@ -305,6 +405,86 @@ async def get_all_tasks(limit: int = 100, status: str = None):
     """
     tasks = list_import_tasks(limit=limit, status=status)
     return {"code": 200, "tasks": tasks}
+
+
+@app.post(
+    "/tasks/delete",
+    summary="批量删除导入任务",
+    description="批量删除历史导入任务，并在安全情况下清理关联知识数据",
+)
+async def delete_tasks(payload: DeleteImportTasksRequest):
+    task_ids = []
+    for task_id in payload.task_ids or []:
+        cleaned_task_id = (task_id or "").strip()
+        if cleaned_task_id and cleaned_task_id not in task_ids:
+            task_ids.append(cleaned_task_id)
+
+    if not task_ids:
+        raise HTTPException(status_code=400, detail="task_ids is required")
+
+    tasks = get_import_tasks_by_ids(task_ids)
+    task_map = {task.get("task_id"): task for task in tasks if task.get("task_id")}
+    all_tasks = list_import_tasks(limit=1000)
+    remaining_completed_items = {
+        (task.get("item_name") or "").strip()
+        for task in all_tasks
+        if task.get("task_id") not in task_ids
+        and (task.get("status") or "").strip() == "completed"
+        and (task.get("item_name") or "").strip()
+    }
+
+    deleted_task_ids = []
+    skipped = []
+    cleaned_items = set()
+    chunks_collection = os.getenv("CHUNKS_COLLECTION") or ""
+    item_name_collection = os.getenv("ITEM_NAME_COLLECTION") or ""
+
+    for task_id in task_ids:
+        task = task_map.get(task_id)
+        if not task:
+            skipped.append({"task_id": task_id, "reason": "导入记录不存在或已删除"})
+            continue
+
+        task_status = (task.get("status") or "").strip()
+        if task_status in {"pending", "uploading", "processing"}:
+            skipped.append(
+                {"task_id": task_id, "reason": "任务仍在处理中，暂不支持删除"}
+            )
+            continue
+
+        item_name = (task.get("item_name") or "").strip()
+
+        try:
+            if (
+                item_name
+                and item_name not in remaining_completed_items
+                and item_name not in cleaned_items
+            ):
+                _delete_milvus_records_by_item_name(item_name, chunks_collection)
+                _delete_milvus_records_by_item_name(item_name, item_name_collection)
+                delete_product(item_name)
+                cleaned_items.add(item_name)
+
+            _delete_task_local_dir(task)
+            clear_task(task_id)
+
+            deleted_count = delete_import_task(task_id)
+            if deleted_count == 0:
+                skipped.append({"task_id": task_id, "reason": "导入记录不存在或已删除"})
+                continue
+
+            deleted_task_ids.append(task_id)
+        except Exception as e:
+            logger.error(f"[{task_id}] 删除导入任务失败：{e}", exc_info=True)
+            skipped.append({"task_id": task_id, "reason": str(e)})
+
+    return {
+        "code": 200,
+        "requested_count": len(task_ids),
+        "deleted_count": len(deleted_task_ids),
+        "deleted_task_ids": deleted_task_ids,
+        "skipped": skipped,
+    }
 
 
 # --------------------------

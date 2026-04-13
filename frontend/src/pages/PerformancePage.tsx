@@ -117,8 +117,8 @@ export default function PerformancePage() {
       setSummary(summaryData);
       setTimeSeries(timeSeriesData);
       setStages(stageData);
-    } catch (err: any) {
-      setError(err.message || '加载性能数据失败');
+    } catch (err: unknown) {
+      setError(err instanceof Error && err.message ? err.message : '加载性能数据失败');
     } finally {
       setLoading(false);
     }

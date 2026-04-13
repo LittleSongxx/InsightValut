@@ -1,19 +1,11 @@
 # HyDE节点
 import sys
-import os
 from app.utils.task_utils import add_running_task, add_done_task
 from app.lm.lm_utils import get_llm_client
-from app.lm.embedding_utils import generate_embeddings
-from app.clients.milvus_utils import (
-    get_milvus_client,
-    create_hybrid_search_requests,
-    hybrid_search,
-)
 from app.core.logger import logger
 from app.core.load_prompt import load_prompt
-from dotenv import load_dotenv, find_dotenv
-
-load_dotenv(find_dotenv())
+from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.retrieval_utils import run_embedding_hybrid_search
 
 
 def step_1_create_hyde_doc(rewritten_query: str) -> str:
@@ -81,95 +73,72 @@ def step_2_search_by_query_and_hyde(
     if not hyde_doc:
         raise ValueError("hypothetical_doc 不能为空")
 
-    collection_name = os.environ.get("CHUNKS_COLLECTION")
-    if not collection_name:
-        logger.error("Step 2 Error: 环境变量 CHUNKS_COLLECTION 未设置")
-        return []
-
-    expr = None
-    if item_names:
-        quoted = ", ".join(f'"{v}"' for v in item_names)
-        expr = f"item_name in [{quoted}]"
-
-    client = get_milvus_client()
-    if not client:
-        logger.error("Step 2 Error: 无法连接到 Milvus")
-        return []
+    cfg = query_threshold_config
 
     # ---- 2a. Query 单独检索 ----
     logger.info("Step 2a: Query 单独向量化并检索...")
-    query_chunks = []
     try:
-        query_embeddings = generate_embeddings([rewritten_query])
-        query_reqs = create_hybrid_search_requests(
-            dense_vector=query_embeddings.get("dense")[0],
-            sparse_vector=query_embeddings.get("sparse")[0],
-            expr=expr,
-            limit=req_limit,
-        )
-        query_res = hybrid_search(
-            client=client,
-            collection_name=collection_name,
-            reqs=query_reqs,
+        query_chunks = run_embedding_hybrid_search(
+            query_text=rewritten_query,
+            item_names=item_names,
+            req_limit=req_limit,
+            top_k=top_k,
+            output_fields=list(output_fields),
             ranker_weights=ranker_weights,
             norm_score=norm_score,
-            limit=top_k,
-            output_fields=list(output_fields),
         )
-        query_chunks = query_res[0] if query_res else []
         logger.info(f"Step 2a: Query 单独检索完成，召回 {len(query_chunks)} 条")
     except Exception as e:
         logger.error(f"Step 2a: Query 单独检索失败: {e}")
+        query_chunks = []
 
     # ---- 2b. (Query + 假设文档) 拼接检索 ----
     combined_text = rewritten_query + " " + hyde_doc
     logger.info(f"Step 2b: (Query+假设文档) 向量化并检索, 总长度: {len(combined_text)}")
-    combined_chunks = []
     try:
-        combined_embeddings = generate_embeddings([combined_text])
-        combined_reqs = create_hybrid_search_requests(
-            dense_vector=combined_embeddings.get("dense")[0],
-            sparse_vector=combined_embeddings.get("sparse")[0],
-            expr=expr,
-            limit=req_limit,
-        )
-        combined_res = hybrid_search(
-            client=client,
-            collection_name=collection_name,
-            reqs=combined_reqs,
+        combined_chunks = run_embedding_hybrid_search(
+            query_text=combined_text,
+            item_names=item_names,
+            req_limit=req_limit,
+            top_k=top_k,
+            output_fields=list(output_fields),
             ranker_weights=ranker_weights,
             norm_score=norm_score,
-            limit=top_k,
-            output_fields=list(output_fields),
         )
-        combined_chunks = combined_res[0] if combined_res else []
-        logger.info(f"Step 2b: (Query+假设文档) 检索完成，召回 {len(combined_chunks)} 条")
+        logger.info(
+            f"Step 2b: (Query+假设文档) 检索完成，召回 {len(combined_chunks)} 条"
+        )
     except Exception as e:
         logger.error(f"Step 2b: (Query+假设文档) 检索失败: {e}")
+        combined_chunks = []
 
     if not query_chunks and not combined_chunks:
         logger.warning("Step 2: 两路检索均无结果，返回空列表")
         return []
 
-    from app.query_process.agent.nodes.node_rrf import _as_entity_list, reciprocal_rank_fusion
+    from app.query_process.agent.nodes.node_rrf import (
+        _as_entity_list,
+        reciprocal_rank_fusion,
+    )
+
     query_entities = _as_entity_list(query_chunks)
     combined_entities = _as_entity_list(combined_chunks)
 
-    # RRF 融合：Query 路权重 1.0，HyDE 路权重 1.0
     rrf_results = reciprocal_rank_fusion(
         source_weights=[(query_entities, 1.0), (combined_entities, 1.0)],
-        k=60,
+        k=cfg.rrf_k,
         max_results=top_k,
     )
 
-    # 转换回 Milvus 原始格式（带 id/score/entity）
     merged = []
     for doc, score in rrf_results:
-        merged.append({
-            "entity": doc,
-            "score": score,
-            "id": doc.get("chunk_id") or doc.get("id"),
-        })
+        merged.append(
+            {
+                "entity": doc,
+                "distance": score,
+                "id": doc.get("chunk_id") or doc.get("id"),
+            }
+        )
 
     logger.info(f"Step 2: RRF 融合完成，输出 {len(merged)} 条结果")
     return merged
@@ -220,11 +189,14 @@ def node_search_embedding_hyde(state):
     # 阶段2：双路检索 + RRF 融合
     try:
         logger.info("Step 2: 开始双路检索 + RRF 融合...")
+        cfg = query_threshold_config
         res = step_2_search_by_query_and_hyde(
             rewritten_query=rewritten_query,
             hyde_doc=hyde_doc,
             item_names=item_names,
-            top_k=5,
+            req_limit=cfg.hyde_req_limit,
+            top_k=cfg.hyde_top_k,
+            ranker_weights=(cfg.hybrid_dense_weight, cfg.hybrid_sparse_weight),
         )
 
         hit_count = len(res) if res else 0
@@ -232,7 +204,7 @@ def node_search_embedding_hyde(state):
 
         if hit_count > 0:
             first_hit = res[0]
-            score = first_hit.get("score")
+            score = first_hit.get("distance")
             content_preview = first_hit.get("entity", {}).get("content", "")[:30]
             logger.debug(f"Top1 结果: Score={score}, Content='{content_preview}...'")
 
@@ -275,7 +247,7 @@ if __name__ == "__main__":
         chunks = result.get("hyde_embedding_chunks", [])
         print(f"Chunks Found: {len(chunks)}")
         if chunks:
-            print(f"Top Chunk Score: {chunks[0].get('score')}")
+            print(f"Top Chunk Distance: {chunks[0].get('distance')}")
         print("=" * 50)
 
     except Exception as e:

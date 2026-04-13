@@ -30,10 +30,17 @@ def _as_entity_list(state_list) -> List[Dict[str, Any]]:
         # 情况A: doc 是 Pymilvus 的 Hit 对象 (具有 entity 属性)
         # Hit 对象结构通常是: id=xxx, distance=xxx, entity={field1: val1, ...}
         # 这里的 id 是 Milvus 内部的主键 ID (int64 或 str)
-        if hasattr(doc, "entity") and hasattr(doc, "id"):
+        if hasattr(doc, "entity"):
             # 1. 提取 entity 中的业务字段 (如 content, item_name, chunk_id 等)
             # 注意: doc.entity 可能是一个 Entity 对象，也可能直接是 dict
-            entity_content = doc.entity
+            entity_content = None
+            if hasattr(doc, "get"):
+                try:
+                    entity_content = doc.get("entity")
+                except Exception:
+                    entity_content = None
+            if entity_content is None:
+                entity_content = getattr(doc, "entity", None)
             if hasattr(entity_content, "to_dict"):
                 final_ent = entity_content.to_dict()
             elif isinstance(entity_content, dict):
@@ -47,8 +54,20 @@ def _as_entity_list(state_list) -> List[Dict[str, Any]]:
 
             # 2. 补充最外层的 id 和 distance
             # 优先保留 entity 内部已有的 chunk_id/id，如果没有，则把外层的 id 补进去
-            if "id" not in final_ent and "chunk_id" not in final_ent:
-                final_ent["id"] = doc.id
+            doc_id = None
+            if hasattr(doc, "get"):
+                try:
+                    doc_id = doc.get("id") or doc.get("chunk_id")
+                except Exception:
+                    doc_id = None
+            if doc_id is None and hasattr(doc, "id"):
+                doc_id = doc.id
+            if (
+                "id" not in final_ent
+                and "chunk_id" not in final_ent
+                and doc_id is not None
+            ):
+                final_ent["id"] = doc_id
 
             # 补充 distance (score)
             if hasattr(doc, "distance"):
@@ -170,11 +189,12 @@ def node_rrf(state):
     # RRF 需要使用 chunk_id 做去重与计分，因此这里必须保留 entity（而不是仅抽取 content 字符串）。
     embedding_chunks = _as_entity_list(state.get("embedding_chunks"))
     hyde_embedding_chunks = _as_entity_list(state.get("hyde_embedding_chunks"))
+    bm25_chunks = _as_entity_list(state.get("bm25_chunks"))
     kg_chunks = _as_entity_list(state.get("kg_chunks"))
 
     logger.info(
         f"RRF 输入统计: Embedding源={len(embedding_chunks)}条, "
-        f"HyDE源={len(hyde_embedding_chunks)}条, KG源={len(kg_chunks)}条"
+        f"HyDE源={len(hyde_embedding_chunks)}条, BM25源={len(bm25_chunks)}条, KG源={len(kg_chunks)}条"
     )
 
     # Debug 日志：打印部分 ID 以便核对
@@ -186,6 +206,10 @@ def node_rrf(state):
         logger.debug(
             f"HyDE源 chunk_ids (前5个): {[c.get('chunk_id') for c in hyde_embedding_chunks[:5]]}"
         )
+    if bm25_chunks:
+        logger.debug(
+            f"BM25源 chunk_ids (前5个): {[c.get('chunk_id') for c in bm25_chunks[:5]]}"
+        )
     if kg_chunks:
         logger.debug(
             f"KG源 chunk_ids (前5个): {[c.get('chunk_id') for c in kg_chunks[:5]]}"
@@ -195,10 +219,13 @@ def node_rrf(state):
     source_weights = [
         (embedding_chunks, cfg.rrf_weight_embedding),
         (hyde_embedding_chunks, cfg.rrf_weight_hyde),
+        (bm25_chunks, cfg.rrf_weight_bm25),
         (kg_chunks, cfg.rrf_weight_kg),
     ]
 
-    rrf_res = reciprocal_rank_fusion(source_weights, k=cfg.rrf_k, max_results=cfg.rrf_max_results)
+    rrf_res = reciprocal_rank_fusion(
+        source_weights, k=cfg.rrf_k, max_results=cfg.rrf_max_results
+    )
 
     # 第四步：解包结果，提取文档和分数
     rrf_chunks = [doc for doc, score in rrf_res]

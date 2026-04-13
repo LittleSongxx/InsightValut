@@ -3,6 +3,7 @@ Query 流程阈值配置
 
 集中管理 RAG 流程中所有 hard-coded 的阈值常量，便于根据不同模型/场景调整。
 """
+
 from dataclasses import dataclass
 import os
 from dotenv import load_dotenv
@@ -26,6 +27,14 @@ class QueryThresholdConfig:
     # 每路检索最终返回的 TopK
     embedding_top_k: int
     hyde_top_k: int
+    hybrid_dense_weight: float
+    hybrid_sparse_weight: float
+    item_name_dense_weight: float
+    item_name_sparse_weight: float
+    bm25_top_k: int
+    bm25_candidate_limit: int
+    bm25_k1: float
+    bm25_b: float
 
     # --- RRF 融合参数 ---
     # RRF 融合的 k 常数（经典值为 60）
@@ -35,6 +44,7 @@ class QueryThresholdConfig:
     # 各路检索的 RRF 权重
     rrf_weight_embedding: float
     rrf_weight_hyde: float
+    rrf_weight_bm25: float
     rrf_weight_kg: float
 
     # --- Rerank 参数 ---
@@ -93,40 +103,43 @@ query_threshold_config = QueryThresholdConfig(
     # 商品名确认阈值
     item_name_high_threshold=_float(os.getenv("ITEM_NAME_HIGH_THRESHOLD"), 0.85),
     item_name_mid_threshold=_float(os.getenv("ITEM_NAME_MID_THRESHOLD"), 0.60),
-
     # 检索召回数量
     embedding_req_limit=_int(os.getenv("EMBEDDING_REQ_LIMIT"), 10),
     hyde_req_limit=_int(os.getenv("HYDE_REQ_LIMIT"), 10),
     embedding_top_k=_int(os.getenv("EMBEDDING_TOP_K"), 5),
     hyde_top_k=_int(os.getenv("HYDE_TOP_K"), 5),
-
+    hybrid_dense_weight=_float(os.getenv("HYBRID_DENSE_WEIGHT"), 0.8),
+    hybrid_sparse_weight=_float(os.getenv("HYBRID_SPARSE_WEIGHT"), 0.2),
+    item_name_dense_weight=_float(os.getenv("ITEM_NAME_DENSE_WEIGHT"), 0.8),
+    item_name_sparse_weight=_float(os.getenv("ITEM_NAME_SPARSE_WEIGHT"), 0.2),
+    bm25_top_k=_int(os.getenv("BM25_TOP_K"), 8),
+    bm25_candidate_limit=_int(os.getenv("BM25_CANDIDATE_LIMIT"), 1000),
+    bm25_k1=_float(os.getenv("BM25_K1"), 1.5),
+    bm25_b=_float(os.getenv("BM25_B"), 0.75),
     # RRF 融合参数
     rrf_k=_int(os.getenv("RRF_K"), 60),
     rrf_max_results=_int(os.getenv("RRF_MAX_RESULTS"), 10),
     rrf_weight_embedding=_float(os.getenv("RRF_WEIGHT_EMBEDDING"), 1.0),
     rrf_weight_hyde=_float(os.getenv("RRF_WEIGHT_HYDE"), 1.0),
-    rrf_weight_kg=_float(os.getenv("RRF_WEIGHT_KG"), 0.8),  # 启用 KG 路，与 Embedding/HyDE 互补
-
+    rrf_weight_bm25=_float(os.getenv("RRF_WEIGHT_BM25"), 0.7),
+    rrf_weight_kg=_float(
+        os.getenv("RRF_WEIGHT_KG"), 0.8
+    ),  # 启用 KG 路，与 Embedding/HyDE 互补
     # Rerank 参数
     rerank_max_topk=_int(os.getenv("RERANK_MAX_TOPK"), 10),
     rerank_min_topk=_int(os.getenv("RERANK_MIN_TOPK"), 1),
     rerank_gap_abs=_float(os.getenv("RERANK_GAP_ABS"), 0.5),
     rerank_gap_ratio=_float(os.getenv("RERANK_GAP_RATIO"), 0.25),
-
     # CRAG 参数
     crag_max_retries=_int(os.getenv("CRAG_MAX_RETRIES"), 1),
     crag_min_docs=_int(os.getenv("CRAG_MIN_DOCS"), 1),
-
     # 幻觉检查参数
     hallucination_max_retries=_int(os.getenv("HALLUCINATION_MAX_RETRIES"), 1),
-
     # HyDE 参数
     hyde_max_doc_chars=_int(os.getenv("HYDE_MAX_DOC_CHARS"), 300),
     hyde_combined_max_chars=_int(os.getenv("HYDE_COMBINED_MAX_CHARS"), 1000),
-
     # 复合问题分解
     max_sub_queries=_int(os.getenv("MAX_SUB_QUERIES"), 4),
-
     # Prompt 上下文限制
     max_context_chars=_int(os.getenv("MAX_CONTEXT_CHARS"), 12000),
     grader_doc_max_chars=_int(os.getenv("GRADER_DOC_MAX_CHARS"), 6000),

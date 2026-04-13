@@ -1,11 +1,12 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
-import { Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useCallback, lazy, Suspense } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { Sidebar } from './components';
-import { getSessions, clearHistory } from './services/api';
-import type { SessionInfo } from './services/api';
+import { clearHistory } from './services/api';
+import { useSession } from './contexts';
 
 const ChatPage = lazy(() => import('./pages/ChatPage'));
+const KnowledgePage = lazy(() => import('./pages/KnowledgePage'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
 const PerformancePage = lazy(() => import('./pages/PerformancePage'));
 
@@ -20,53 +21,35 @@ function RouteFallback() {
 function MainLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(
-    () => localStorage.getItem('iv_session_id'),
-  );
-
-  // 从后端加载会话列表
-  const refreshSessions = useCallback(() => {
-    getSessions(50)
-      .then((list) => setSessions(list))
-      .catch(() => { });
-  }, []);
-
-  useEffect(() => {
-    refreshSessions();
-  }, [refreshSessions]);
+  const { sessions, currentSessionId, createNewSession, selectSession, refreshSessions } = useSession();
 
   const handleNewChat = useCallback(() => {
-    localStorage.removeItem('iv_session_id');
-    setCurrentSessionId(null);
+    createNewSession();
     navigate('/chat');
-    window.location.reload();
-  }, [navigate]);
+  }, [createNewSession, navigate]);
 
   const handleSelectSession = useCallback(
     (id: string) => {
-      localStorage.setItem('iv_session_id', id);
-      setCurrentSessionId(id);
+      selectSession(id);
       navigate('/chat');
-      window.location.reload();
     },
-    [navigate],
+    [navigate, selectSession],
   );
 
   const handleDeleteSession = useCallback(
     async (id: string) => {
       try {
         await clearHistory(id);
-        setSessions((prev) => prev.filter((s) => s.session_id !== id));
         if (currentSessionId === id) {
-          localStorage.removeItem('iv_session_id');
-          setCurrentSessionId(null);
+          selectSession(null);
           navigate('/chat');
-          window.location.reload();
         }
-      } catch { }
+        await refreshSessions();
+      } catch {
+        return;
+      }
     },
-    [currentSessionId, navigate],
+    [currentSessionId, navigate, refreshSessions, selectSession],
   );
 
   return (
@@ -117,6 +100,14 @@ function App() {
           element={
             <MainLayout>
               <ChatPage />
+            </MainLayout>
+          }
+        />
+        <Route
+          path="/knowledge"
+          element={
+            <MainLayout>
+              <KnowledgePage />
             </MainLayout>
           }
         />

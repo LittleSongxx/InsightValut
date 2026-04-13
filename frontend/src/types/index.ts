@@ -23,16 +23,21 @@ export interface HistoryItem {
   text: string;
   rewritten_query: string;
   item_names: string[];
+  image_urls: string[] | null;
   ts: number;
 }
 
 export interface ImportTask {
   task_id: string;
   file_name: string;
+  file_title: string;
+  item_name: string;
   status: string;
   done_list: string[];
   running_list: string[];
-  created_at: string;
+  error_message?: string;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface PerformanceRecord {

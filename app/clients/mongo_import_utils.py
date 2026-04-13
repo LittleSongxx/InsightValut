@@ -23,7 +23,9 @@ def _get_collection():
     global _collection
     if _collection is None:
         mongo_url = os.getenv("MONGO_URL")
-        db_name = os.getenv("MONGO_DB_NAME")
+        db_name = os.getenv("MONGO_DB_NAME") or "insightvault_rag"
+        if not mongo_url:
+            raise RuntimeError("MONGO_URL is not configured")
         client = MongoClient(mongo_url)
         db = client[db_name]
         _collection = db["import_tasks"]
@@ -36,6 +38,7 @@ def _get_collection():
 
 
 # --------------- CRUD ---------------
+
 
 def create_import_task(
     task_id: str,
@@ -50,6 +53,7 @@ def create_import_task(
     doc = {
         "task_id": task_id,
         "file_name": file_name,
+        "file_title": os.path.splitext(file_name)[0],
         "status": status,
         "done_list": [],
         "running_list": [],
@@ -90,6 +94,19 @@ def get_import_task(task_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_import_tasks_by_ids(task_ids: List[str]) -> List[Dict[str, Any]]:
+    col = _get_collection()
+    cleaned_task_ids = [task_id for task_id in task_ids if task_id]
+    if not cleaned_task_ids:
+        return []
+    try:
+        cursor = col.find({"task_id": {"$in": cleaned_task_ids}}, {"_id": 0})
+        return list(cursor)
+    except Exception as e:
+        logging.error(f"批量查询导入任务记录失败: {e}")
+        return []
+
+
 def list_import_tasks(limit: int = 100, status: str = None) -> List[Dict[str, Any]]:
     """
     查询导入任务列表，按创建时间倒序
@@ -101,11 +118,7 @@ def list_import_tasks(limit: int = 100, status: str = None) -> List[Dict[str, An
         query = {}
         if status:
             query["status"] = status
-        cursor = (
-            col.find(query, {"_id": 0})
-            .sort("created_at", DESCENDING)
-            .limit(limit)
-        )
+        cursor = col.find(query, {"_id": 0}).sort("created_at", DESCENDING).limit(limit)
         return list(cursor)
     except Exception as e:
         logging.error(f"查询导入任务列表失败: {e}")

@@ -5,6 +5,7 @@ import base64
 from pathlib import Path
 from typing import Dict, List, Tuple
 from collections import deque
+from urllib.parse import quote
 
 # MinIO相关依赖
 from minio import Minio
@@ -326,12 +327,16 @@ def upload_to_minio(
         # MinIO 接收到 %5C 后，会自动解析回 \，保证对象名的正确性；
         # 后续通过 URL 访问时，%5C 会被正确解码，不会出现路径错误。
         object_name = object_name.replace("\\", "%5C")
+        encoded_object_name = quote(object_name.lstrip("/"), safe="/%")
         # 根据配置选择HTTP/HTTPS协议
         protocol = "https" if minio_config.minio_secure else "http"
         # 构造MinIO基础访问URL
-        base_url = f"{protocol}://{minio_config.endpoint}/{minio_config.bucket_name}"
+        public_endpoint = (
+            minio_config.public_endpoint or minio_config.endpoint or ""
+        ).rstrip("/")
+        base_url = f"{protocol}://{public_endpoint}/{minio_config.bucket_name}"
         # 拼接完整图片访问URL base_url 后面带 / 中间直接两个字符串拼接即可
-        img_url = f"{base_url}{object_name}"
+        img_url = f"{base_url}/{encoded_object_name}"
         logger.info(f"图片上传成功，访问URL：{img_url}")
         return img_url
     except Exception as e:

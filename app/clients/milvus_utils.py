@@ -3,6 +3,7 @@ import threading
 from pymilvus import MilvusClient, AnnSearchRequest, WeightedRanker
 from app.conf.milvus_config import milvus_config
 from app.core.logger import logger
+from app.clients.milvus_schema import CHUNKS_OUTPUT_FIELDS
 
 # 全局Milvus客户端实例，实现单例复用
 _milvus_client = None
@@ -127,6 +128,58 @@ def fetch_chunks_by_chunk_ids(
             )
 
     return results
+
+
+def query_chunks_by_filter(
+    client,
+    collection_name: str,
+    *,
+    filter_expr: str = "",
+    output_fields=None,
+    batch_size: int = 1000,
+    limit: int = -1,
+):
+    if client is None:
+        return []
+    if not collection_name:
+        return []
+    if output_fields is None:
+        output_fields = list(CHUNKS_OUTPUT_FIELDS)
+
+    iterator = None
+    results = []
+    try:
+        if hasattr(client, "query_iterator"):
+            iterator = client.query_iterator(
+                collection_name=collection_name,
+                batch_size=batch_size,
+                limit=limit,
+                filter=filter_expr or "",
+                output_fields=output_fields,
+            )
+            while True:
+                batch = iterator.next()
+                if not batch:
+                    break
+                results.extend(batch)
+            return results
+
+        kwargs = {"filter": filter_expr or "", "output_fields": output_fields}
+        if limit is not None and limit >= 0:
+            kwargs["limit"] = limit
+        return client.query(collection_name=collection_name, **kwargs)
+    except Exception as e:
+        logger.error(
+            f"Milvus 按过滤条件查询失败，集合[{collection_name}]：{str(e)}",
+            exc_info=True,
+        )
+        return []
+    finally:
+        if iterator is not None:
+            try:
+                iterator.close()
+            except Exception:
+                pass
 
 
 def create_hybrid_search_requests(
