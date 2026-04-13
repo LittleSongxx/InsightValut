@@ -57,6 +57,7 @@ builder.add_node(
     "node_query_decompose", _perf_wrap("node_query_decompose", node_query_decompose)
 )  # 复合问题分解
 builder.add_node("node_multi_search", lambda x: x)  # 虚拟节点：多路搜索分叉点
+builder.add_node("node_multi_search_graph_first", lambda x: x)
 builder.add_node(
     "node_search_embedding", _perf_wrap("node_search_embedding", node_search_embedding)
 )  # 向量搜索
@@ -66,6 +67,9 @@ builder.add_node(
     _perf_wrap("node_search_embedding_hyde", node_search_embedding_hyde),
 )
 builder.add_node("node_query_kg", _perf_wrap("node_query_kg", node_query_kg))
+builder.add_node(
+    "node_query_kg_primary", _perf_wrap("node_query_kg_primary", node_query_kg)
+)
 builder.add_node(
     "node_web_search_mcp", _perf_wrap("node_web_search_mcp", node_web_search_mcp)
 )
@@ -99,6 +103,8 @@ def route_after_item_confirm(state: QueryGraphState):
     # 若判定为通用对话，不走RAG检索，直接由生成节点回答
     if state.get("need_rag") is False:
         return "node_answer_output"
+    if state.get("graph_preferred"):
+        return "node_query_kg_primary"
     # 否则进入复合问题分解（新增）
     return "node_query_decompose"
 
@@ -109,6 +115,8 @@ def route_after_decompose(state: QueryGraphState):
         # 复合查询已在 node_query_decompose 中完成内联检索并生成 rrf_chunks
         # 直接跳到 rerank
         return "node_rerank"
+    if state.get("graph_preferred"):
+        return "node_query_kg_primary"
     # 简单查询走正常多路搜索
     return "node_multi_search"
 
@@ -146,6 +154,12 @@ builder.add_edge("node_multi_search", "node_search_bm25")
 builder.add_edge("node_multi_search", "node_search_embedding_hyde")
 builder.add_edge("node_multi_search", "node_web_search_mcp")
 builder.add_edge("node_multi_search", "node_query_kg")
+
+builder.add_edge("node_query_kg_primary", "node_multi_search_graph_first")
+builder.add_edge("node_multi_search_graph_first", "node_search_embedding")
+builder.add_edge("node_multi_search_graph_first", "node_search_bm25")
+builder.add_edge("node_multi_search_graph_first", "node_search_embedding_hyde")
+builder.add_edge("node_multi_search_graph_first", "node_web_search_mcp")
 
 # 4. 五路搜索 → 结果合并
 builder.add_edge("node_search_embedding", "node_join")

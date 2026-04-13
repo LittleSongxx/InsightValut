@@ -4,6 +4,7 @@ import asyncio
 from app.utils.task_utils import add_done_task, add_running_task
 from app.conf.bailian_mcp_config import mcp_config
 from app.core.logger import logger
+from app.query_process.agent.graph_query_utils import should_run_retriever
 
 try:
     from agents.mcp import MCPServerSse
@@ -91,6 +92,13 @@ def node_web_search_mcp(state):
     add_running_task(
         state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
     )
+
+    if not should_run_retriever(state, "web"):
+        logger.info("联网搜索按题型计划跳过")
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        return {"web_search_docs": []}
 
     # 2. 获取查询词
     query = state.get("rewritten_query", "")

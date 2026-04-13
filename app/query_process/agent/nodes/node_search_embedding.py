@@ -2,6 +2,7 @@ import sys
 from app.utils.task_utils import add_running_task, add_done_task
 from app.core.logger import logger
 from app.query_process.agent.retrieval_utils import run_embedding_hybrid_search
+from app.query_process.agent.graph_query_utils import should_run_retriever
 
 
 def node_search_embedding(state):
@@ -25,6 +26,13 @@ def node_search_embedding(state):
     add_running_task(
         state["session_id"], sys._getframe().f_code.co_name, state["is_stream"]
     )
+
+    if not should_run_retriever(state, "embedding"):
+        logger.info("Embedding 检索按题型计划跳过")
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        return {"embedding_chunks": []}
 
     # 1. 从会话状态中提取核心入参，为后续检索做准备
     query = state.get("rewritten_query")  # 提取改写后的用户问题（含商品名，独立完整）

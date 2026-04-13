@@ -32,6 +32,12 @@ class QueryGraphState(TypedDict):
     is_stream: bool  # 是否流式输出标记
     need_rag: bool  # 是否需要走RAG检索流程
     route_mode: str  # 路由模式：rag / general_chat
+    query_type: str  # 问题类型：general / navigation / comparison / relation / constraint / explain
+    graph_preferred: bool  # 当前问题是否优先走图谱检索
+    query_focus_terms: list  # 图谱检索时使用的焦点词
+    query_route_reason: str  # 问题类型识别原因
+    retrieval_plan: dict  # 按题型生成的检索执行计划
+    kg_query_summary: dict  # 图谱查询摘要（命中模板、结果数等）
 
     # CRAG（Corrective RAG）检索质量判断
     retry_count: int  # 当前检索重试次数

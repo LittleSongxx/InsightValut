@@ -33,6 +33,7 @@ def step_1_merge_docs(state):
 
         chunk_id = extract_chunk_id(entity)
         title = get_entity_field(entity, "title") or get_entity_field(entity, "item_name") or ""
+        source = get_entity_field(entity, "source") or "local"
 
         doc_items.append(
             {
@@ -41,7 +42,7 @@ def step_1_merge_docs(state):
                 "chunk_id": chunk_id,
                 "title": title,
                 "url": "",
-                "source": "local",
+                "source": source,
             }
         )
 

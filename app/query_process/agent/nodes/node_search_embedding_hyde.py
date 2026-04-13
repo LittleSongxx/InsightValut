@@ -5,6 +5,7 @@ from app.lm.lm_utils import get_llm_client
 from app.core.logger import logger
 from app.core.load_prompt import load_prompt
 from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.graph_query_utils import should_run_retriever
 from app.query_process.agent.retrieval_utils import run_embedding_hybrid_search
 
 
@@ -163,6 +164,13 @@ def node_search_embedding_hyde(state):
     add_running_task(
         state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
     )
+
+    if not should_run_retriever(state, "hyde"):
+        logger.info("HyDE 检索按题型计划跳过")
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        return {"hyde_embedding_chunks": [], "hyde_doc": ""}
 
     rewritten_query = state.get("rewritten_query")
     if not rewritten_query:

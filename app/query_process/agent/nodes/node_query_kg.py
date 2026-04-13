@@ -2,7 +2,9 @@ import sys
 from typing import Dict, Any, List
 
 from app.utils.task_utils import add_running_task, add_done_task
-from app.clients.neo4j_utils import query_chunks_by_product, verify_connection
+from app.clients.neo4j_utils import verify_connection
+from app.clients.neo4j_graph_utils import query_graph_context
+from app.query_process.agent.graph_query_utils import should_run_retriever
 from app.core.logger import logger
 
 
@@ -25,22 +27,38 @@ def node_query_kg(state: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     kg_chunks: List[Dict[str, Any]] = []
+    kg_query_summary: Dict[str, Any] = {}
 
     try:
+        if not should_run_retriever(state, "kg"):
+            logger.info("node_query_kg: 按题型计划跳过图谱查询")
+            return {"kg_chunks": kg_chunks, "kg_query_summary": kg_query_summary}
+
         item_names = state.get("item_names") or []
-        if not item_names:
-            logger.info("node_query_kg: item_names 为空，跳过图谱查询")
-            return {"kg_chunks": kg_chunks}
+        question = state.get("rewritten_query") or state.get("original_query") or ""
+        query_type = state.get("query_type") or "general"
+        focus_terms = state.get("query_focus_terms") or []
+        retrieval_plan = state.get("retrieval_plan") or {}
+        if not item_names and query_type == "general":
+            logger.info("node_query_kg: item_names 为空且非图优先题型，跳过图谱查询")
+            return {"kg_chunks": kg_chunks, "kg_query_summary": kg_query_summary}
 
         # 验证 Neo4j 连接
         if not verify_connection():
             logger.warning("node_query_kg: Neo4j 连接不可用，跳过图谱查询")
-            return {"kg_chunks": kg_chunks}
+            return {"kg_chunks": kg_chunks, "kg_query_summary": kg_query_summary}
 
-        # 根据产品名称查询关联切片
-        kg_chunks = query_chunks_by_product(item_names, limit=5)
+        graph_result = query_graph_context(
+            question,
+            item_names,
+            query_type=query_type,
+            focus_terms=focus_terms,
+            limit=int(retrieval_plan.get("graph_limit", 8) or 8),
+        )
+        kg_chunks = graph_result.get("kg_chunks") or []
+        kg_query_summary = graph_result.get("summary") or {}
         logger.info(
-            f"node_query_kg: 查询完成, item_names={item_names}, "
+            f"node_query_kg: 查询完成, item_names={item_names}, query_type={query_type}, "
             f"返回 {len(kg_chunks)} 条切片"
         )
 
@@ -54,7 +72,7 @@ def node_query_kg(state: Dict[str, Any]) -> Dict[str, Any]:
             state.get("is_stream"),
         )
 
-    return {"kg_chunks": kg_chunks}
+    return {"kg_chunks": kg_chunks, "kg_query_summary": kg_query_summary}
 
 
 if __name__ == "__main__":

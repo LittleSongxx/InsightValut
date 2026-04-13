@@ -11,7 +11,7 @@ import sys
 from typing import Dict, Any
 
 from app.import_process.agent.state import ImportGraphState
-from app.clients.neo4j_utils import import_chunks_to_kg
+from app.clients.neo4j_graph_utils import import_chunks_to_graph
 from app.utils.task_utils import add_running_task, add_done_task
 from app.core.logger import logger
 
@@ -26,7 +26,7 @@ def node_import_kg(state: Dict[str, Any]) -> Dict[str, Any]:
 
     执行逻辑：
       1. 从 state 中提取 item_name 和 chunks
-      2. 调用 neo4j_utils.import_chunks_to_kg 批量写入
+      2. 调用 neo4j_graph_utils.import_chunks_to_graph 批量写入
       3. 幂等：自动清理同 item_name 的旧数据后再写入
     """
     current_node = sys._getframe().f_code.co_name
@@ -54,7 +54,7 @@ def node_import_kg(state: Dict[str, Any]) -> Dict[str, Any]:
             )
             return state
 
-        count = import_chunks_to_kg(item_name, chunks)
+        count = import_chunks_to_graph(item_name, chunks)
         logger.info(f"node_import_kg 完成: {item_name}, 写入 {count} 个节点")
 
     except Exception as e:

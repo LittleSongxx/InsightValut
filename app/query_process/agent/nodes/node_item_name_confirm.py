@@ -23,6 +23,7 @@ from app.clients.milvus_utils import (
 from dotenv import load_dotenv, find_dotenv
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.graph_query_utils import build_query_route
 
 load_dotenv(find_dotenv())
 
@@ -450,6 +451,13 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     if not use_rag:
         logger.info("Node: 判定为通用对话，跳过 RAG 检索流程")
         state["item_names"] = []
+        route_info = build_query_route(rewritten_query, state.get("item_names", []))
+        state["query_type"] = route_info.get("query_type", "general")
+        state["graph_preferred"] = False
+        state["query_focus_terms"] = route_info.get("focus_terms", [])
+        state["query_route_reason"] = route_info.get("reason", "general_chat")
+        state["retrieval_plan"] = route_info.get("retrieval_plan", {})
+        state["kg_query_summary"] = {}
         if "answer" in state:
             del state["answer"]
 
@@ -476,6 +484,15 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
         state["item_names"] = []
         if "answer" in state:
             del state["answer"]
+
+    route_info = build_query_route(rewritten_query, state.get("item_names", []))
+    state["query_type"] = route_info.get("query_type", "general")
+    state["graph_preferred"] = bool(route_info.get("graph_preferred", False))
+    state["query_focus_terms"] = route_info.get("focus_terms", [])
+    state["query_route_reason"] = route_info.get("reason", "")
+    state["retrieval_plan"] = route_info.get("retrieval_plan", {})
+    if not state.get("kg_query_summary"):
+        state["kg_query_summary"] = {}
 
     # 7. 写入最终历史
     final_state = step_7_write_history(

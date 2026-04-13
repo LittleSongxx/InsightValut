@@ -13,7 +13,7 @@ from pydantic import BaseModel
 # 项目内部工具/配置/客户端
 from app.clients.minio_utils import get_minio_client
 from app.clients.milvus_utils import get_milvus_client
-from app.clients.neo4j_utils import delete_product
+from app.clients.neo4j_graph_utils import delete_product_graph
 from app.utils.path_util import PROJECT_ROOT
 from app.utils.escape_milvus_string_utils import escape_milvus_string
 from app.utils.task_utils import (
@@ -462,7 +462,7 @@ async def delete_tasks(payload: DeleteImportTasksRequest):
             ):
                 _delete_milvus_records_by_item_name(item_name, chunks_collection)
                 _delete_milvus_records_by_item_name(item_name, item_name_collection)
-                delete_product(item_name)
+                delete_product_graph(item_name)
                 cleaned_items.add(item_name)
 
             _delete_task_local_dir(task)

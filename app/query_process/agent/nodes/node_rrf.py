@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from app.utils.task_utils import add_running_task, add_done_task
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.graph_query_utils import get_rrf_weight_multipliers
 from app.clients.milvus_schema import (
     get_entity_field,
     extract_chunk_id,
@@ -216,11 +217,12 @@ def node_rrf(state):
         )
 
     cfg = query_threshold_config
+    weight_multipliers = get_rrf_weight_multipliers(state)
     source_weights = [
-        (embedding_chunks, cfg.rrf_weight_embedding),
-        (hyde_embedding_chunks, cfg.rrf_weight_hyde),
-        (bm25_chunks, cfg.rrf_weight_bm25),
-        (kg_chunks, cfg.rrf_weight_kg),
+        (embedding_chunks, cfg.rrf_weight_embedding * weight_multipliers["embedding"]),
+        (hyde_embedding_chunks, cfg.rrf_weight_hyde * weight_multipliers["hyde"]),
+        (bm25_chunks, cfg.rrf_weight_bm25 * weight_multipliers["bm25"]),
+        (kg_chunks, cfg.rrf_weight_kg * weight_multipliers["kg"]),
     ]
 
     rrf_res = reciprocal_rank_fusion(
