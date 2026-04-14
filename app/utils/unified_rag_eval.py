@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 try:
     from langchain_core.embeddings import Embeddings
@@ -63,6 +63,8 @@ DEFAULT_VARIANTS = [
     "neo4j_graph_first",
     "final_system",
 ]
+
+ProgressCallback = Optional[Callable[[Dict[str, Any]], None]]
 
 
 def _ensure_ragas_ready() -> None:
@@ -204,6 +206,21 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+
+def get_variant_catalog() -> List[Dict[str, Any]]:
+    catalog: List[Dict[str, Any]] = []
+    for name, config in VARIANTS.items():
+        catalog.append(
+            {
+                "name": name,
+                "description": config.get("description") or name,
+                "technique": config.get("technique") or name,
+                "compare_to": config.get("compare_to"),
+                "is_default": name in DEFAULT_VARIANTS,
+            }
+        )
+    return catalog
+
 RAGAS_METRICS = [
     {
         "name": "llm_context_recall",
@@ -329,7 +346,7 @@ def _pct(values: Sequence[Any], ratio: float) -> Optional[float]:
 
 
 def _default_output_path() -> Path:
-    output_dir = Path(PROJECT_ROOT) / "output" / "eval"
+    output_dir = Path(PROJECT_ROOT) / "reports" / "eval"
     output_dir.mkdir(parents=True, exist_ok=True)
     return (
         output_dir / f"unified_rag_eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -822,13 +839,34 @@ def _build_comparison_report(variants: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def evaluate_variants(
-    dataset_path: str, variant_names: Sequence[str]
+    dataset_path: str,
+    variant_names: Sequence[str],
+    progress_callback: ProgressCallback = None,
 ) -> Dict[str, Any]:
     cases = load_cases(dataset_path)
     resolved_variants = _resolve_variants(variant_names)
     variants_payload: Dict[str, Any] = {}
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "dataset_loaded",
+                "dataset_path": str(Path(dataset_path).resolve()),
+                "case_count": len(cases),
+                "total_variants": len(resolved_variants),
+            }
+        )
 
-    for variant_name in resolved_variants:
+    total_variants = len(resolved_variants)
+    for index, variant_name in enumerate(resolved_variants, start=1):
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "variant_started",
+                    "variant_name": variant_name,
+                    "variant_index": index,
+                    "total_variants": total_variants,
+                }
+            )
         case_results = [_run_single_case(case, variant_name) for case in cases]
         ragas_bundle = _run_ragas(case_results)
         _merge_ragas_scores(case_results, ragas_bundle.get("per_case_scores") or [])
@@ -849,11 +887,20 @@ def evaluate_variants(
             "by_query_type": grouped_summaries,
             "case_results": case_results,
         }
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "variant_completed",
+                    "variant_name": variant_name,
+                    "variant_index": index,
+                    "total_variants": total_variants,
+                }
+            )
 
     final_variant = (
         "final_system" if "final_system" in variants_payload else resolved_variants[-1]
     )
-    return {
+    report = {
         "generated_at": datetime.now().isoformat(),
         "dataset_path": str(Path(dataset_path).resolve()),
         "case_count": len(cases),
@@ -863,6 +910,47 @@ def evaluate_variants(
             "summary", {}
         ),
         "comparisons": _build_comparison_report(variants_payload),
+    }
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "report_ready",
+                "final_variant": final_variant,
+                "case_count": len(cases),
+                "total_variants": total_variants,
+            }
+        )
+    return report
+
+
+def evaluate_variants_to_file(
+    dataset_path: str,
+    variant_names: Sequence[str],
+    output_path: str | None = None,
+    progress_callback: ProgressCallback = None,
+) -> Dict[str, Any]:
+    report = evaluate_variants(
+        dataset_path,
+        variant_names,
+        progress_callback=progress_callback,
+    )
+    resolved_output_path = (
+        Path(output_path) if output_path else _default_output_path()
+    )
+    resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_output_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "report_saved",
+                "output_path": str(resolved_output_path.resolve()),
+            }
+        )
+    return {
+        "report": report,
+        "output_path": str(resolved_output_path.resolve()),
     }
 
 
@@ -885,12 +973,9 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    report = evaluate_variants(args.dataset, args.variants)
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    result = evaluate_variants_to_file(args.dataset, args.variants, args.output)
+    report = result["report"]
+    output_path = Path(result["output_path"])
     print(
         json.dumps(
             {

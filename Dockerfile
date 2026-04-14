@@ -39,7 +39,9 @@ RUN pip install --no-cache-dir \
     starlette
 
 COPY app/ ./app/
+COPY docs/ ./docs/
 COPY prompts/ ./prompts/
+COPY reports/ ./reports/
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

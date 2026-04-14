@@ -1,4 +1,14 @@
-import type { HistoryItem, ImportTask, PerformanceSummary, PerformanceTimePoint, StageBreakdown } from '../types';
+import type {
+  EvaluationConfig,
+  EvaluationJob,
+  EvaluationReportDetail,
+  EvaluationReportListItem,
+  HistoryItem,
+  ImportTask,
+  PerformanceSummary,
+  PerformanceTimePoint,
+  StageBreakdown,
+} from '../types';
 
 const QUERY_BASE = '/api/query';
 const IMPORT_BASE = '/api/import';
@@ -158,5 +168,73 @@ export async function getStageBreakdown(
   const query = params.toString();
   const res = await fetch(`${QUERY_BASE}/performance/stages${query ? '?' + query : ''}`);
   if (!res.ok) throw new Error(`Stage breakdown failed: ${res.status}`);
+  return res.json();
+}
+
+// ─── Evaluation Service ──────────────────────────────────────
+export async function getEvaluationReports(): Promise<{
+  reports: EvaluationReportListItem[];
+  latest_report_id: string | null;
+}> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/reports`);
+  if (!res.ok) throw new Error(`Evaluation reports failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getLatestEvaluationReport(): Promise<{
+  report: { meta: EvaluationReportListItem; report: EvaluationReportDetail } | null;
+}> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/reports/latest`);
+  if (!res.ok) throw new Error(`Latest evaluation report failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getEvaluationReport(reportId: string): Promise<{
+  meta: EvaluationReportListItem;
+  report: EvaluationReportDetail;
+}> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/reports/${encodeURIComponent(reportId)}`);
+  if (!res.ok) throw new Error(`Evaluation report failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getEvaluationConfig(): Promise<EvaluationConfig> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/config`);
+  if (!res.ok) throw new Error(`Evaluation config failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getEvaluationJobs(limit = 10): Promise<{ jobs: EvaluationJob[] }> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/jobs?limit=${limit}`);
+  if (!res.ok) throw new Error(`Evaluation jobs failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getEvaluationJob(jobId: string): Promise<EvaluationJob> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/jobs/${encodeURIComponent(jobId)}`);
+  if (!res.ok) throw new Error(`Evaluation job failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createEvaluationJob(payload: {
+  dataset_path: string;
+  variants: string[];
+  output_path?: string;
+}): Promise<EvaluationJob> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let message = `Create evaluation job failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
   return res.json();
 }

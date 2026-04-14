@@ -4,7 +4,15 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$PROJECT_ROOT/.run"
 LOG_DIR="$PROJECT_ROOT/logs"
+FRONTEND_DIR="$PROJECT_ROOT/frontend"
+START_LOCK_FILE="$RUN_DIR/start.lock"
 FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
+FRONTEND_PREFERRED_PORT="${FRONTEND_PORT:-3002}"
+FRONTEND_PORT="$FRONTEND_PREFERRED_PORT"
+FRONTEND_HOST="127.0.0.1"
+FRONTEND_URL="http://$FRONTEND_HOST:$FRONTEND_PORT"
+FRONTEND_LOG_FILE="$LOG_DIR/frontend.log"
+FRONTEND_BIN="$FRONTEND_DIR/node_modules/.bin/vite"
 ENV_FILE="$PROJECT_ROOT/.env"
 ENV_EXAMPLE_FILE="$PROJECT_ROOT/.env.example"
 DO_BUILD=0
@@ -16,6 +24,8 @@ wait_http() {
   local name="$1"
   local url="$2"
   local max_retry="${3:-90}"
+  local pid="${4:-}"
+  local log_file="${5:-}"
 
   local i
   for ((i=1; i<=max_retry; i++)); do
@@ -24,6 +34,13 @@ wait_http() {
     if [[ "$code" == "200" ]]; then
       echo "[ok] $name ready: $url"
       return 0
+    fi
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "[error] $name exited before becoming ready: $url"
+      if [[ -n "$log_file" ]] && [[ -f "$log_file" ]]; then
+        tail -n 20 "$log_file"
+      fi
+      return 1
     fi
     sleep 1
   done
@@ -66,6 +83,18 @@ parse_args() {
     esac
     shift
   done
+}
+
+acquire_start_lock() {
+  if ! command -v flock >/dev/null 2>&1; then
+    return 0
+  fi
+
+  exec 9>"$START_LOCK_FILE"
+  if ! flock -n 9; then
+    echo "[error] another start_insightvault.sh process is already running"
+    return 1
+  fi
 }
 
 log_step() {
@@ -114,46 +143,156 @@ post_json() {
 
 port_in_use() {
   local port="$1"
-  ss -ltn "( sport = :$port )" 2>/dev/null | awk 'NR>1 {print $0}' | grep -q .
+  if command -v fuser >/dev/null 2>&1 && fuser -n tcp "$port" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v ss >/dev/null 2>&1 && ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$port$"; then
+    return 0
+  fi
+
+  return 1
+}
+
+port_bindable() {
+  local port="$1"
+
+  if ! command -v node >/dev/null 2>&1; then
+    if port_in_use "$port"; then
+      return 1
+    fi
+    return 0
+  fi
+
+  node -e 'const net = require("node:net"); const port = Number(process.argv[1]); const hosts = ["0.0.0.0", "127.0.0.1", "::"]; (async () => { for (const host of hosts) { const ok = await new Promise((resolve) => { const server = net.createServer(); server.once("error", (err) => { server.close(() => resolve(err.code !== "EADDRINUSE")); }); server.listen(port, host, () => { server.close(() => resolve(true)); }); }); if (!ok) process.exit(1); } process.exit(0); })().catch(() => process.exit(1));' "$port" >/dev/null 2>&1
+}
+
+pick_frontend_port() {
+  local start_port="$1"
+  local max_offset="${2:-20}"
+  local port
+
+  for ((port=start_port; port<=start_port+max_offset; port++)); do
+    if port_bindable "$port"; then
+      FRONTEND_PORT="$port"
+      FRONTEND_URL="http://$FRONTEND_HOST:$FRONTEND_PORT"
+      if [[ "$FRONTEND_PORT" != "$FRONTEND_PREFERRED_PORT" ]]; then
+        echo "[warn] frontend port $FRONTEND_PREFERRED_PORT unavailable, using $FRONTEND_PORT"
+      fi
+      return 0
+    fi
+  done
+
+  echo "[error] no available frontend port found in range $start_port-$((start_port + max_offset))"
+  return 1
 }
 
 ensure_port_free() {
   local port="$1"
-  if port_in_use "$port"; then
+  local max_retry="${2:-10}"
+  local i
+
+  for ((i=1; i<=max_retry; i++)); do
+    if ! port_in_use "$port"; then
+      return 0
+    fi
+
     echo "[warn] port $port already in use, trying to release..."
     if command -v fuser >/dev/null 2>&1; then
       fuser -k "${port}/tcp" >/dev/null 2>&1 || true
-      sleep 1
     fi
+    sleep 1
+  done
+
+  echo "[error] port $port is still occupied, please free it manually"
+  return 1
+}
+
+stop_frontend_processes() {
+  if [[ -f "$FRONTEND_PID_FILE" ]]; then
+    local pid
+    pid="$(cat "$FRONTEND_PID_FILE" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+    rm -f "$FRONTEND_PID_FILE"
   fi
 
-  if port_in_use "$port"; then
-    echo "[error] port $port is still occupied, please free it manually"
-    return 1
+  if command -v pgrep >/dev/null 2>&1; then
+    local pid
+    while IFS= read -r pid; do
+      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+    done < <(pgrep -f "$FRONTEND_BIN" 2>/dev/null || true)
   fi
 }
 
 ensure_frontend_deps() {
-  local frontend_dir="$PROJECT_ROOT/frontend"
-
   if ! command -v npm >/dev/null 2>&1; then
     echo "[error] npm command not found"
     return 1
   fi
 
-  if [[ -x "$frontend_dir/node_modules/.bin/vite" ]]; then
+  if [[ -x "$FRONTEND_BIN" ]]; then
     return 0
   fi
 
   echo "[info] frontend dependencies missing, installing..."
   (
-    cd "$frontend_dir"
+    cd "$FRONTEND_DIR"
     if [[ -f package-lock.json ]]; then
       npm ci
     else
       npm install
     fi
   )
+}
+
+start_frontend() {
+  local frontend_pid=""
+  local attempt
+  local max_attempts=3
+  local search_port="$FRONTEND_PREFERRED_PORT"
+
+  ensure_frontend_deps
+
+  for ((attempt=1; attempt<=max_attempts; attempt++)); do
+    stop_frontend_processes
+    pick_frontend_port "$search_port" 20
+    : > "$FRONTEND_LOG_FILE"
+
+    (
+      cd "$FRONTEND_DIR"
+      nohup "$FRONTEND_BIN" --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort >"$FRONTEND_LOG_FILE" 2>&1 &
+      echo "$!" > "$FRONTEND_PID_FILE"
+    )
+
+    frontend_pid="$(cat "$FRONTEND_PID_FILE" 2>/dev/null || true)"
+    if [[ -z "$frontend_pid" ]]; then
+      echo "[error] failed to capture frontend pid"
+      return 1
+    fi
+
+    if wait_http "frontend" "$FRONTEND_URL" 30 "$frontend_pid" "$FRONTEND_LOG_FILE"; then
+      return 0
+    fi
+
+    if [[ "$attempt" -lt "$max_attempts" ]] && [[ -f "$FRONTEND_LOG_FILE" ]] && grep -Fq "Port $FRONTEND_PORT is already in use" "$FRONTEND_LOG_FILE"; then
+      echo "[warn] frontend port $FRONTEND_PORT became busy during startup, retrying..."
+      search_port=$((FRONTEND_PORT + 1))
+      sleep 1
+      continue
+    fi
+
+    return 1
+  done
+
+  return 1
 }
 
 ensure_env_file() {
@@ -197,6 +336,8 @@ fi
 
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
+acquire_start_lock
+
 cd "$PROJECT_ROOT"
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -220,30 +361,21 @@ if (( DO_WARMUP )); then
 fi
 
 log_step "stopping stale frontend dev server..."
-if [[ -f "$FRONTEND_PID_FILE" ]]; then
-  kill "$(cat "$FRONTEND_PID_FILE")" 2>/dev/null || true
-  rm -f "$FRONTEND_PID_FILE"
-fi
+stop_frontend_processes
 
 log_step "preparing and starting frontend dev server..."
-ensure_port_free 3002
-ensure_frontend_deps
-cd "$PROJECT_ROOT/frontend"
-nohup npm run dev >"$LOG_DIR/frontend.log" 2>&1 &
-echo $! > "$FRONTEND_PID_FILE"
-cd "$PROJECT_ROOT"
-wait_http "frontend" "http://127.0.0.1:3002" 30
+start_frontend
 
 echo ""
 echo "insightvault started successfully"
 echo "- docker logs  : docker compose logs -f"
-echo "- frontend log: $LOG_DIR/frontend.log"
+echo "- frontend log: $FRONTEND_LOG_FILE"
 echo ""
 echo "- fast start  : ./start_insightvault.sh"
 echo "- with build  : ./start_insightvault.sh --build"
 echo "- with warmup : ./start_insightvault.sh --warmup"
 echo "- full start  : ./start_insightvault.sh --build --warmup"
-echo "- frontend    : http://127.0.0.1:3002"
+echo "- frontend    : $FRONTEND_URL"
 echo "- import API  : http://127.0.0.1:8000/health"
 echo "- query  API  : http://127.0.0.1:8001/health"
 echo "- stop command: ./stop_insightvault.sh"

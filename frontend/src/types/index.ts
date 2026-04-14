@@ -78,3 +78,113 @@ export interface PerformanceTimePoint {
   avg_total_duration_ms: number;
   p95_total_duration_ms: number;
 }
+
+export interface EvaluationMetricDelta {
+  current: number | null;
+  baseline: number | null;
+  delta: number | null;
+  relative_pct: number | null;
+}
+
+export interface EvaluationStageSummary {
+  stage: string;
+  avg_duration_ms: number | null;
+  p95_duration_ms: number | null;
+  count: number;
+}
+
+export interface EvaluationSummary {
+  variant: string;
+  description: string;
+  technique: string;
+  case_count: number;
+  ragas_metrics: Record<string, number | null>;
+  ragas_coverage: Record<string, number>;
+  ragas_errors: Record<string, string>;
+  retrieval_metrics: Record<string, number | null>;
+  pipeline_metrics: Record<string, number | null>;
+  performance_metrics: {
+    avg_total_duration_ms?: number | null;
+    p50_total_duration_ms?: number | null;
+    p95_total_duration_ms?: number | null;
+    avg_first_answer_ms?: number | null;
+    p50_first_answer_ms?: number | null;
+    p95_first_answer_ms?: number | null;
+    stages?: EvaluationStageSummary[];
+    [key: string]: number | EvaluationStageSummary[] | null | undefined;
+  };
+  headline_metrics: Record<string, number | null>;
+}
+
+export interface EvaluationVariantResult {
+  description: string;
+  technique: string;
+  compare_to?: string;
+  summary: EvaluationSummary;
+  by_query_type: Record<string, EvaluationSummary>;
+}
+
+export interface EvaluationComparison {
+  variant: string;
+  compare_to: string;
+  technique: string;
+  overall: Record<string, EvaluationMetricDelta>;
+  by_query_type: Record<string, Record<string, EvaluationMetricDelta>>;
+}
+
+export interface EvaluationReportListItem {
+  report_id: string;
+  file_name: string;
+  generated_at: string;
+  updated_at: string;
+  dataset_path: string;
+  dataset_name: string;
+  case_count: number;
+  final_variant: string;
+  variants: string[];
+  headline_metrics: Record<string, number | null>;
+  size_bytes: number;
+}
+
+export interface EvaluationReportDetail {
+  generated_at: string;
+  dataset_path: string;
+  case_count: number;
+  final_variant: string;
+  final_system_metrics: EvaluationSummary;
+  variants: Record<string, EvaluationVariantResult>;
+  comparisons: Record<string, EvaluationComparison>;
+}
+
+export interface EvaluationVariantOption {
+  name: string;
+  description: string;
+  technique: string;
+  compare_to?: string | null;
+  is_default: boolean;
+}
+
+export interface EvaluationConfig {
+  template_dataset_path: string;
+  default_variants: string[];
+  variant_catalog: EvaluationVariantOption[];
+}
+
+export interface EvaluationJob {
+  job_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  dataset_path: string;
+  variants: string[];
+  output_path: string;
+  progress_message: string;
+  current_variant: string;
+  completed_variants: number;
+  total_variants: number;
+  case_count: number;
+  report_id: string;
+  report_path: string;
+  error: string;
+  created_at: string;
+  started_at: string;
+  finished_at: string;
+}

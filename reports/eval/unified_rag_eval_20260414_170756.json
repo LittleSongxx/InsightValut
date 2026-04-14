@@ -1,0 +1,1869 @@
+{
+  "generated_at": "2026-04-14T17:07:56.212233",
+  "dataset_path": "/app/docs/graph_eval_cases.docs.json",
+  "case_count": 18,
+  "variants": {
+    "baseline_rag": {
+      "description": "最原始基线：仅 embedding 检索 + rerank + answer",
+      "technique": "Baseline RAG",
+      "compare_to": null,
+      "summary": {
+        "variant": "baseline_rag",
+        "description": "最原始基线：仅 embedding 检索 + rerank + answer",
+        "technique": "Baseline RAG",
+        "case_count": 18,
+        "ragas_metrics": {
+          "llm_context_recall": 1.0,
+          "faithfulness": 0.9455,
+          "response_relevancy": 0.2777
+        },
+        "ragas_coverage": {
+          "llm_context_recall": 5,
+          "faithfulness": 5,
+          "factual_correctness": 18,
+          "response_relevancy": 18,
+          "id_based_context_precision": 0,
+          "id_based_context_recall": 0
+        },
+        "ragas_errors": {
+          "factual_correctness": "未在 RAGAS 输出中找到指标列"
+        },
+        "retrieval_metrics": {
+          "empty_retrieval_rate": 0.7222,
+          "hit@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "hit@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "hit@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0
+        },
+        "pipeline_metrics": {
+          "empty_answer_rate": 0.0,
+          "crag_retry_rate": 0.2222,
+          "hallucination_retry_rate": 0.0556,
+          "graph_preferred_rate": 0.0,
+          "need_rag_rate": 1.0,
+          "error_rate": 0.0
+        },
+        "performance_metrics": {
+          "avg_total_duration_ms": 10131.7883,
+          "p50_total_duration_ms": 10104.66,
+          "p95_total_duration_ms": 38060.72,
+          "avg_first_answer_ms": 8982.2022,
+          "p50_first_answer_ms": 10101.1,
+          "p95_first_answer_ms": 21619.17,
+          "stages": [
+            {
+              "stage": "node_answer_output",
+              "avg_duration_ms": 3175.7733,
+              "p95_duration_ms": 11790.49,
+              "count": 18
+            },
+            {
+              "stage": "node_hallucination_check",
+              "avg_duration_ms": 290.9178,
+              "p95_duration_ms": 1202.57,
+              "count": 18
+            },
+            {
+              "stage": "node_item_name_confirm",
+              "avg_duration_ms": 2037.1794,
+              "p95_duration_ms": 3222.29,
+              "count": 18
+            },
+            {
+              "stage": "node_query_decompose",
+              "avg_duration_ms": 3006.0456,
+              "p95_duration_ms": 7989.91,
+              "count": 9
+            },
+            {
+              "stage": "node_query_kg",
+              "avg_duration_ms": 20.3778,
+              "p95_duration_ms": 25.76,
+              "count": 9
+            },
+            {
+              "stage": "node_rerank",
+              "avg_duration_ms": 179.99,
+              "p95_duration_ms": 423.99,
+              "count": 9
+            },
+            {
+              "stage": "node_retrieval_grader",
+              "avg_duration_ms": 1646.7467,
+              "p95_duration_ms": 3298.65,
+              "count": 9
+            },
+            {
+              "stage": "node_rrf",
+              "avg_duration_ms": 2.1244,
+              "p95_duration_ms": 2.84,
+              "count": 9
+            },
+            {
+              "stage": "node_search_bm25",
+              "avg_duration_ms": 21.01,
+              "p95_duration_ms": 24.03,
+              "count": 9
+            },
+            {
+              "stage": "node_search_embedding",
+              "avg_duration_ms": 186.1067,
+              "p95_duration_ms": 212.41,
+              "count": 9
+            },
+            {
+              "stage": "node_search_embedding_hyde",
+              "avg_duration_ms": 18.4678,
+              "p95_duration_ms": 22.06,
+              "count": 9
+            },
+            {
+              "stage": "node_web_search_mcp",
+              "avg_duration_ms": 19.7922,
+              "p95_duration_ms": 21.98,
+              "count": 9
+            }
+          ]
+        },
+        "headline_metrics": {
+          "faithfulness": 0.9455,
+          "response_relevancy": 0.2777,
+          "llm_context_recall": 1.0,
+          "hit@1": 0.0,
+          "hit@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "avg_total_duration_ms": 10131.7883,
+          "p95_total_duration_ms": 38060.72
+        }
+      },
+      "by_query_type": {
+        "comparison": {
+          "variant": "comparison",
+          "description": "query_type=comparison",
+          "technique": "QueryType Slice",
+          "case_count": 1,
+          "ragas_metrics": {
+            "response_relevancy": 0.0
+          },
+          "ragas_coverage": {},
+          "ragas_errors": {},
+          "retrieval_metrics": {
+            "empty_retrieval_rate": 1.0,
+            "hit@1": 0.0,
+            "recall@1": 0.0,
+            "mrr@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "hit@5": 0.0,
+            "recall@5": 0.0,
+            "mrr@5": 0.0
+          },
+          "pipeline_metrics": {
+            "empty_answer_rate": 0.0,
+            "crag_retry_rate": 0.0,
+            "hallucination_retry_rate": 0.0,
+            "graph_preferred_rate": 0.0,
+            "need_rag_rate": 1.0,
+            "error_rate": 0.0
+          },
+          "performance_metrics": {
+            "avg_total_duration_ms": 1754.87,
+            "p50_total_duration_ms": 1754.87,
+            "p95_total_duration_ms": 1754.87,
+            "avg_first_answer_ms": 1752.27,
+            "p50_first_answer_ms": 1752.27,
+            "p95_first_answer_ms": 1752.27,
+            "stages": [
+              {
+                "stage": "node_answer_output",
+                "avg_duration_ms": 4.1,
+                "p95_duration_ms": 4.1,
+                "count": 1
+              },
+              {
+                "stage": "node_hallucination_check",
+                "avg_duration_ms": 2.19,
+                "p95_duration_ms": 2.19,
+                "count": 1
+              },
+              {
+                "stage": "node_item_name_confirm",
+                "avg_duration_ms": 1747.42,
+                "p95_duration_ms": 1747.42,
+                "count": 1
+              }
+            ]
+          },
+          "headline_metrics": {
+            "response_relevancy": 0.0,
+            "hit@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "avg_total_duration_ms": 1754.87,
+            "p95_total_duration_ms": 1754.87
+          }
+        },
+        "constraint": {
+          "variant": "constraint",
+          "description": "query_type=constraint",
+          "technique": "QueryType Slice",
+          "case_count": 4,
+          "ragas_metrics": {
+            "faithfulness": 1.0,
+            "llm_context_recall": 1.0,
+            "response_relevancy": 0.2018
+          },
+          "ragas_coverage": {},
+          "ragas_errors": {},
+          "retrieval_metrics": {
+            "empty_retrieval_rate": 0.75,
+            "hit@1": 0.0,
+            "recall@1": 0.0,
+            "mrr@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "hit@5": 0.0,
+            "recall@5": 0.0,
+            "mrr@5": 0.0
+          },
+          "pipeline_metrics": {
+            "empty_answer_rate": 0.0,
+            "crag_retry_rate": 0.5,
+            "hallucination_retry_rate": 0.25,
+            "graph_preferred_rate": 0.0,
+            "need_rag_rate": 1.0,
+            "error_rate": 0.0
+          },
+          "performance_metrics": {
+            "avg_total_duration_ms": 15718.45,
+            "p50_total_duration_ms": 11477.12,
+            "p95_total_duration_ms": 38060.72,
+            "avg_first_answer_ms": 11605.3925,
+            "p50_first_answer_ms": 11473.39,
+            "p95_first_answer_ms": 21619.17,
+            "stages": [
+              {
+                "stage": "node_answer_output",
+                "avg_duration_ms": 3857.53,
+                "p95_duration_ms": 11590.72,
+                "count": 4
+              },
+              {
+                "stage": "node_hallucination_check",
+                "avg_duration_ms": 252.64,
+                "p95_duration_ms": 1002.87,
+                "count": 4
+              },
+              {
+                "stage": "node_item_name_confirm",
+                "avg_duration_ms": 2036.2675,
+                "p95_duration_ms": 3222.29,
+                "count": 4
+              },
+              {
+                "stage": "node_query_decompose",
+                "avg_duration_ms": 2401.4933,
+                "p95_duration_ms": 3345.33,
+                "count": 3
+              },
+              {
+                "stage": "node_query_kg",
+                "avg_duration_ms": 20.15,
+                "p95_duration_ms": 21.84,
+                "count": 3
+              },
+              {
+                "stage": "node_rerank",
+                "avg_duration_ms": 119.3833,
+                "p95_duration_ms": 344.11,
+                "count": 3
+              },
+              {
+                "stage": "node_retrieval_grader",
+                "avg_duration_ms": 1103.1667,
+                "p95_duration_ms": 3298.65,
+                "count": 3
+              },
+              {
+                "stage": "node_rrf",
+                "avg_duration_ms": 1.9667,
+                "p95_duration_ms": 2.12,
+                "count": 3
+              },
+              {
+                "stage": "node_search_bm25",
+                "avg_duration_ms": 19.5567,
+                "p95_duration_ms": 20.89,
+                "count": 3
+              },
+              {
+                "stage": "node_search_embedding",
+                "avg_duration_ms": 182.5733,
+                "p95_duration_ms": 192.59,
+                "count": 3
+              },
+              {
+                "stage": "node_search_embedding_hyde",
+                "avg_duration_ms": 18.4767,
+                "p95_duration_ms": 22.06,
+                "count": 3
+              },
+              {
+                "stage": "node_web_search_mcp",
+                "avg_duration_ms": 20.8933,
+                "p95_duration_ms": 21.98,
+                "count": 3
+              }
+            ]
+          },
+          "headline_metrics": {
+            "faithfulness": 1.0,
+            "response_relevancy": 0.2018,
+            "llm_context_recall": 1.0,
+            "hit@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "avg_total_duration_ms": 15718.45,
+            "p95_total_duration_ms": 38060.72
+          }
+        },
+        "explain": {
+          "variant": "explain",
+          "description": "query_type=explain",
+          "technique": "QueryType Slice",
+          "case_count": 3,
+          "ragas_metrics": {
+            "faithfulness": 0.8889,
+            "llm_context_recall": 1.0,
+            "response_relevancy": 0.3018
+          },
+          "ragas_coverage": {},
+          "ragas_errors": {},
+          "retrieval_metrics": {
+            "empty_retrieval_rate": 0.6667,
+            "hit@1": 0.0,
+            "recall@1": 0.0,
+            "mrr@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "hit@5": 0.0,
+            "recall@5": 0.0,
+            "mrr@5": 0.0
+          },
+          "pipeline_metrics": {
+            "empty_answer_rate": 0.0,
+            "crag_retry_rate": 0.3333,
+            "hallucination_retry_rate": 0.0,
+            "graph_preferred_rate": 0.0,
+            "need_rag_rate": 1.0,
+            "error_rate": 0.0
+          },
+          "performance_metrics": {
+            "avg_total_duration_ms": 11836.3667,
+            "p50_total_duration_ms": 14298.62,
+            "p95_total_duration_ms": 19672.32,
+            "avg_first_answer_ms": 11498.5167,
+            "p50_first_answer_ms": 13291.41,
+            "p95_first_answer_ms": 19668.83,
+            "stages": [
+              {
+                "stage": "node_answer_output",
+                "avg_duration_ms": 2915.14,
+                "p95_duration_ms": 5116.01,
+                "count": 3
+              },
+              {
+                "stage": "node_hallucination_check",
+                "avg_duration_ms": 336.8567,
+                "p95_duration_ms": 1005.93,
+                "count": 3
+              },
+              {
+                "stage": "node_item_name_confirm",
+                "avg_duration_ms": 2256.9467,
+                "p95_duration_ms": 3066.18,
+                "count": 3
+              },
+              {
+                "stage": "node_query_decompose",
+                "avg_duration_ms": 5155.845,
+                "p95_duration_ms": 7989.91,
+                "count": 2
+              },
+              {
+                "stage": "node_query_kg",
+                "avg_duration_ms": 23.965,
+                "p95_duration_ms": 25.76,
+                "count": 2
+              },
+              {
+                "stage": "node_rerank",
+                "avg_duration_ms": 128.615,
+                "p95_duration_ms": 250.73,
+                "count": 2
+              },
+              {
+                "stage": "node_retrieval_grader",
+                "avg_duration_ms": 1607.225,
+                "p95_duration_ms": 3209.06,
+                "count": 2
+              },
+              {
+                "stage": "node_rrf",
+                "avg_duration_ms": 1.97,
+                "p95_duration_ms": 2.02,
+                "count": 2
+              },
+              {
+                "stage": "node_search_bm25",
+                "avg_duration_ms": 22.36,
+                "p95_duration_ms": 23.65,
+                "count": 2
+              },
+              {
+                "stage": "node_search_embedding",
+                "avg_duration_ms": 199.65,
+                "p95_duration_ms": 212.41,
+                "count": 2
+              },
+              {
+                "stage": "node_search_embedding_hyde",
+                "avg_duration_ms": 17.05,
+                "p95_duration_ms": 17.86,
+                "count": 2
+              },
+              {
+                "stage": "node_web_search_mcp",
+                "avg_duration_ms": 19.845,
+                "p95_duration_ms": 20.5,
+                "count": 2
+              }
+            ]
+          },
+          "headline_metrics": {
+            "faithfulness": 0.8889,
+            "response_relevancy": 0.3018,
+            "llm_context_recall": 1.0,
+            "hit@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "avg_total_duration_ms": 11836.3667,
+            "p95_total_duration_ms": 19672.32
+          }
+        },
+        "general": {
+          "variant": "general",
+          "description": "query_type=general",
+          "technique": "QueryType Slice",
+          "case_count": 3,
+          "ragas_metrics": {
+            "faithfulness": 1.0,
+            "llm_context_recall": 1.0,
+            "response_relevancy": 0.3167
+          },
+          "ragas_coverage": {},
+          "ragas_errors": {},
+          "retrieval_metrics": {
+            "empty_retrieval_rate": 0.6667,
+            "hit@1": 0.0,
+            "recall@1": 0.0,
+            "mrr@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "hit@5": 0.0,
+            "recall@5": 0.0,
+            "mrr@5": 0.0
+          },
+          "pipeline_metrics": {
+            "empty_answer_rate": 0.0,
+            "crag_retry_rate": 0.3333,
+            "hallucination_retry_rate": 0.0,
+            "graph_preferred_rate": 0.0,
+            "need_rag_rate": 1.0,
+            "error_rate": 0.0
+          },
+          "performance_metrics": {
+            "avg_total_duration_ms": 11558.4267,
+            "p50_total_duration_ms": 13696.41,
+            "p95_total_duration_ms": 19462.9,
+            "avg_first_answer_ms": 11259.5933,
+            "p50_first_answer_ms": 13689.31,
+            "p95_first_answer_ms": 18576.43,
+            "stages": [
+              {
+                "stage": "node_answer_output",
+                "avg_duration_ms": 3974.09,
+                "p95_duration_ms": 9766.07,
+                "count": 3
+              },
+              {
+                "stage": "node_hallucination_check",
+                "avg_duration_ms": 296.8233,
+                "p95_duration_ms": 885.02,
+                "count": 3
+              },
+              {
+                "stage": "node_item_name_confirm",
+                "avg_duration_ms": 2236.2467,
+                "p95_duration_ms": 2922.89,
+                "count": 3
+              },
+              {
+                "stage": "node_query_decompose",
+                "avg_duration_ms": 2811.855,
+                "p95_duration_ms": 3634.62,
+                "count": 2
+              },
+              {
+                "stage": "node_query_kg",
+                "avg_duration_ms": 18.195,
+                "p95_duration_ms": 23.71,
+                "count": 2
+              },
+              {
+                "stage": "node_rerank",
+                "avg_duration_ms": 99.855,
+                "p95_duration_ms": 192.24,
+                "count": 2
+              },
+              {
+                "stage": "node_retrieval_grader",
+                "avg_duration_ms": 1260.585,
+                "p95_duration_ms": 2515.27,
+                "count": 2
+              },
+              {
+                "stage": "node_rrf",
+                "avg_duration_ms": 2.515,
+                "p95_duration_ms": 2.84,
+                "count": 2
+              },
+              {
+                "stage": "node_search_bm25",
+                "avg_duration_ms": 23.185,
+                "p95_duration_ms": 24.03,
+                "count": 2
+              },
+              {
+                "stage": "node_search_embedding",
+                "avg_duration_ms": 184.51,
+                "p95_duration_ms": 186.19,
+                "count": 2
+              },
+              {
+                "stage": "node_search_embedding_hyde",
+                "avg_duration_ms": 18.72,
+                "p95_duration_ms": 21.03,
+                "count": 2
+              },
+              {
+                "stage": "node_web_search_mcp",
+                "avg_duration_ms": 18.115,
+                "p95_duration_ms": 20.82,
+                "count": 2
+              }
+            ]
+          },
+          "headline_metrics": {
+            "faithfulness": 1.0,
+            "response_relevancy": 0.3167,
+            "llm_context_recall": 1.0,
+            "hit@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "avg_total_duration_ms": 11558.4267,
+            "p95_total_duration_ms": 19462.9
+          }
+        },
+        "navigation": {
+          "variant": "navigation",
+          "description": "query_type=navigation",
+          "technique": "QueryType Slice",
+          "case_count": 7,
+          "ragas_metrics": {
+            "faithfulness": 0.9194,
+            "llm_context_recall": 1.0,
+            "response_relevancy": 0.3338
+          },
+          "ragas_coverage": {},
+          "ragas_errors": {},
+          "retrieval_metrics": {
+            "empty_retrieval_rate": 0.7143,
+            "hit@1": 0.0,
+            "recall@1": 0.0,
+            "mrr@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "hit@5": 0.0,
+            "recall@5": 0.0,
+            "mrr@5": 0.0
+          },
+          "pipeline_metrics": {
+            "empty_answer_rate": 0.0,
+            "crag_retry_rate": 0.0,
+            "hallucination_retry_rate": 0.0,
+            "graph_preferred_rate": 0.0,
+            "need_rag_rate": 1.0,
+            "error_rate": 0.0
+          },
+          "performance_metrics": {
+            "avg_total_duration_ms": 6794.1629,
+            "p50_total_duration_ms": 2109.96,
+            "p95_total_duration_ms": 20593.83,
+            "avg_first_answer_ms": 6461.6386,
+            "p50_first_answer_ms": 2107.5,
+            "p95_first_answer_ms": 19482.4,
+            "stages": [
+              {
+                "stage": "node_answer_output",
+                "avg_duration_ms": 3008.8586,
+                "p95_duration_ms": 11790.49,
+                "count": 7
+              },
+              {
+                "stage": "node_hallucination_check",
+                "avg_duration_ms": 331.8186,
+                "p95_duration_ms": 1202.57,
+                "count": 7
+              },
+              {
+                "stage": "node_item_name_confirm",
+                "avg_duration_ms": 1899.5943,
+                "p95_duration_ms": 2203.67,
+                "count": 7
+              },
+              {
+                "stage": "node_query_decompose",
+                "avg_duration_ms": 1957.265,
+                "p95_duration_ms": 2139.57,
+                "count": 2
+              },
+              {
+                "stage": "node_query_kg",
+                "avg_duration_ms": 19.315,
+                "p95_duration_ms": 22.26,
+                "count": 2
+              },
+              {
+                "stage": "node_rerank",
+                "avg_duration_ms": 402.41,
+                "p95_duration_ms": 423.99,
+                "count": 2
+              },
+              {
+                "stage": "node_retrieval_grader",
+                "avg_duration_ms": 2887.8,
+                "p95_duration_ms": 2989.11,
+                "count": 2
+              },
+              {
+                "stage": "node_rrf",
+                "avg_duration_ms": 2.125,
+                "p95_duration_ms": 2.22,
+                "count": 2
+              },
+              {
+                "stage": "node_search_bm25",
+                "avg_duration_ms": 19.665,
+                "p95_duration_ms": 23.85,
+                "count": 2
+              },
+              {
+                "stage": "node_search_embedding",
+                "avg_duration_ms": 179.46,
+                "p95_duration_ms": 193.2,
+                "count": 2
+              },
+              {
+                "stage": "node_search_embedding_hyde",
+                "avg_duration_ms": 19.62,
+                "p95_duration_ms": 20.05,
+                "count": 2
+              },
+              {
+                "stage": "node_web_search_mcp",
+                "avg_duration_ms": 19.765,
+                "p95_duration_ms": 20.06,
+                "count": 2
+              }
+            ]
+          },
+          "headline_metrics": {
+            "faithfulness": 0.9194,
+            "response_relevancy": 0.3338,
+            "llm_context_recall": 1.0,
+            "hit@1": 0.0,
+            "hit@3": 0.0,
+            "recall@3": 0.0,
+            "mrr@3": 0.0,
+            "avg_total_duration_ms": 6794.1629,
+            "p95_total_duration_ms": 20593.83
+          }
+        }
+      },
+      "case_results": [
+        {
+          "case_id": "hak180_env_range",
+          "query": "HAK 180 烫金机适用的温度和湿度范围是什么？",
+          "query_type": "constraint",
+          "item_names": [
+            "HAK180烫金机"
+          ],
+          "reference_answer": "HAK 180 烫金机应在温度 10℃ 至 32℃、湿度 20% 至 80% 且无冷凝的环境中使用。",
+          "relevant_chunk_ids": [
+            "465580465677681359"
+          ],
+          "response": "当前知识库中缺少关于 **HAK180 烫金机** 适用温度和湿度范围的具体信息。\n\n为了获取准确的操作环境参数，建议您：\n- 提供更具体的产品型号或序列号；\n- 上传对应的产品用户手册或技术规格书；\n- 联系设备制造商或供应商获取官方技术支持。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "insufficient",
+          "retry_count": 1,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 11477.12,
+          "first_answer_ms": 11473.39,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1549.53,
+            "node_query_decompose": 2189.89,
+            "node_search_bm25": 20.89,
+            "node_query_kg": 16.98,
+            "node_web_search_mcp": 21.96,
+            "node_search_embedding_hyde": 16.38,
+            "node_search_embedding": 169.67,
+            "node_rrf": 1.88,
+            "node_rerank": 6.76,
+            "node_retrieval_grader": 5.65,
+            "node_answer_output": 1882.97,
+            "node_hallucination_check": 2.44
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "hak180_power_requirement",
+          "query": "HAK 180 烫金机的电源要求是什么？",
+          "query_type": "constraint",
+          "item_names": [
+            "HAK180烫金机"
+          ],
+          "reference_answer": "设备通过 AC 220V-240V、50/60Hz 电源供电，不应连接到直流电源或逆变器。",
+          "relevant_chunk_ids": [
+            "465580465677681360"
+          ],
+          "response": "当前知识库中缺少关于 **HAK180 烫金机** 电源要求的具体信息。\n\n为了获取准确的技术参数，建议您：\n- 提供更具体的产品型号或版本信息；\n- 上传该产品的用户手册或规格说明书；\n- 查看设备机身铭牌上的电气参数标识（通常包含电压、频率和功率等信息）。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "insufficient",
+          "retry_count": 1,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 10104.66,
+          "first_answer_ms": 10101.1,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1420.76,
+            "node_query_decompose": 1669.26,
+            "node_search_embedding_hyde": 22.06,
+            "node_web_search_mcp": 21.98,
+            "node_search_bm25": 20.7,
+            "node_query_kg": 21.63,
+            "node_search_embedding": 185.46,
+            "node_rrf": 2.12,
+            "node_rerank": 7.28,
+            "node_retrieval_grader": 5.2,
+            "node_answer_output": 1951.6,
+            "node_hallucination_check": 2.29
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "hak180_overheat_smoke",
+          "query": "HAK 180 烫金机异常高温或冒烟时应该怎么处理？",
+          "query_type": "explain",
+          "item_names": [
+            "HAK180烫金机"
+          ],
+          "reference_answer": "如果设备异常高温、冒烟或出现强烈气味，应立即从电源插座拔掉插头，并联系 Brother 呼叫中心或当地经销商，不要继续使用。",
+          "relevant_chunk_ids": [
+            "465580465677681359"
+          ],
+          "response": "当前知识库中缺少关于 **HAK180 烫金机** 在异常高温或冒烟时的具体处理步骤和故障排除信息。\n\n为了确保操作安全及设备完好，建议您采取以下通用紧急措施，并进一步获取官方支持：\n\n1.  **立即断电**：迅速切断设备电源，防止火势蔓延或电路进一步损坏。\n2.  **保持通风**：若出现冒烟，请确保周围空气流通，避免吸入有害烟雾。\n3.  **联系售后**：请勿自行拆解维修，建议联系产品供应商或专业维修人员进行检查。\n\n由于当前缺乏该型号的具体手册信息，**建议您提供更具体的产品版本信息，或上传对应的产品使用手册/维修指南**，以便我为您提供更准确的操作指导。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "insufficient",
+          "retry_count": 1,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 19672.32,
+          "first_answer_ms": 19668.83,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 3066.18,
+            "node_query_decompose": 7989.91,
+            "node_query_kg": 25.76,
+            "node_web_search_mcp": 19.19,
+            "node_search_bm25": 23.65,
+            "node_search_embedding_hyde": 16.24,
+            "node_search_embedding": 186.89,
+            "node_rrf": 2.02,
+            "node_rerank": 6.5,
+            "node_retrieval_grader": 5.39,
+            "node_answer_output": 3624.97,
+            "node_hallucination_check": 2.22
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "hak180_long_idle_power",
+          "query": "HAK 180 烫金机长时间不使用时，电源线应该怎么处理？",
+          "query_type": "general",
+          "item_names": [
+            "HAK180烫金机"
+          ],
+          "reference_answer": "如果长时间不使用 HAK 180 烫金机，应从电源插座中拔掉电源线以确保安全。",
+          "relevant_chunk_ids": [
+            "465580465677681361"
+          ],
+          "response": "当前知识库中缺少关于 HAK180 烫金机在长时间不使用时电源线具体处理方式的相关信息。\n\n建议您提供更具体的产品型号，或上传对应的产品使用手册，以便我为您提供准确的操作指导。\n\n通常情况下，为了安全起见，电器设备在长时间不使用时，建议**拔掉电源插头**并妥善收纳电源线，避免线路老化或意外通电，但具体操作请以官方说明书为准。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "insufficient",
+          "retry_count": 1,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 13696.41,
+          "first_answer_ms": 13689.31,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 2922.89,
+            "node_query_decompose": 1989.09,
+            "node_web_search_mcp": 20.82,
+            "node_search_embedding_hyde": 16.41,
+            "node_search_bm25": 22.34,
+            "node_query_kg": 12.68,
+            "node_search_embedding": 186.19,
+            "node_rrf": 2.19,
+            "node_rerank": 7.47,
+            "node_retrieval_grader": 5.9,
+            "node_answer_output": 2151.65,
+            "node_hallucination_check": 2.94
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "matebook_fn_key_mode",
+          "query": "HUAWEI MateBook B7-420 怎么把 F1、F2 这些键切换成标准功能键？",
+          "query_type": "general",
+          "item_names": [],
+          "reference_answer": "可以按 Fn 键把 F1、F2 等键锁定为功能键模式；也可以进入华为电脑管家设置中心，把键盘设置为“功能键优先”。若要切回热键模式，可再次按 Fn，或把设置改回“热键优先”。",
+          "relevant_chunk_ids": [],
+          "response": "要将 HUAWEI MateBook B7-420 的 F1、F2 等键切换为标准功能键（即直接按下 F1-F12 执行对应软件功能，而非调节亮度、音量等快捷键），您可以采用以下两种方法：\n\n## 方法一：使用 Fn 键临时切换/锁定\n\n1.  **锁定为功能键模式**：按下键盘上的 **Fn** 键。当 **Fn 键指示灯亮起**时，表示 F1、F2 等键已锁定为**功能键模式**。此时直接按 F1、F2 将作为标准功能键使用。\n2.  **返回快捷键模式**：再次按下 **Fn** 键，当 **Fn 键指示灯熄灭**时，即可返回默认的**快捷键（热键）模式**。\n\n## 方法二：通过华为电脑管家永久设置\n\n如果您希望 F1、F2 等键**默认**就作为标准功能键使用，可以通过软件设置进行更改：\n\n1.  打开 **华为电脑管家**。\n2.  进入 **设置中心**。\n3.  找到键盘设置选项，将键盘设置为 **“功能键优先”**。\n    *   设置后，F1、F2 等键将默认作为标准功能键使用。\n    *   若需改回默认的热键模式，只需在相同位置将设置改为 **“热键优先”** 即可。\n\n> **注意**：不同机型键盘按键可能略有差异，请以实物为准。默认情况下，F1-F12 通常为快捷键模式（如 F1 降低亮度，F2 增强亮度等）。\n\n【图片】\nhttp://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/487ea23345772dac73a8dde919be383b7a656458a17aa60ae03e2631fde9101f.jpg",
+          "retrieved_contexts": [
+            "# 快捷键与功能键切换\n\n在功能键模式下，运行不同的软件时，F1、F2 等键被定义不同的功能。\n\n若要将 F1、F2 等键作为功能键使用，您可以：\n\n• 按下 Fn 键，当 Fn 键指示灯亮起，表示已将 F1、F2 等键锁定为功能键模式。只需再次按 Fn键，当 Fn 键指示灯熄灭，即可返回快捷键（热键）模式。  \n• 前往华为电脑管家的设置中心，将键盘设置为功能键优先，设置后，F1、F2 等键将默认作为功能键使用。若要切换回快捷键模式，将键盘设置为热键优先即可。\n\n\n# 触摸板\n\n键盘上的触摸板拥有类似鼠标的功能，让您更方便的操控计算机。\n\n$\\textcircled{8}$ 并非所有手势都可用于所有应用，请以实际为准。\n\n<table><tr><td colspan=\"2\">单指点击: 相当于单击鼠标左键</td></tr><tr><td colspan=\"2\">单指双击: 相当于双击鼠标左键</td></tr><tr><td colspan=\"2\">单指移动: 移动桌面上的光标</td></tr><tr><td colspan=\"2\">左键单击: 相当于单击鼠标左键</td></tr><tr><td colspan=\"2\">右键单击: 相当于单击鼠标右键</td></tr><tr><td colspan=\"2\">双指点击: 相当于单击鼠标右键</td></tr><tr><td colspan=\"2\">双指上下滑动: 滚动浏览屏幕或文档</td></tr><tr><td colspan=\"2\">双指张开或闭合: 浏览图片、网页等时, 可以放大或缩小图片、网页等</td></tr><tr><td colspan=\"2\">三指点击：使用搜索</td></tr><tr><td colspan=\"2\">三指向上滑动：多任务视图</td></tr><tr><td colspan=\"2\">三指向下滑动：显示桌面</td></tr><tr><td colspan=\"2\">三指左右滑动：切换应用</td></tr><tr><td colspan=\"2\">四指点击：快速打开通知中心和日历</td></tr></table>",
+            "# 键盘\n\n$\\textcircled{8}$ 不同机型，键盘按键不同，请以实际为准。\n\n\n# 快捷键功能介绍\n\n计算机键盘的 F1、F2 等键默认为快捷键（热键）模式，可用于轻松执行常见任务。\n\n<table><tr><td>F1</td><td>降低屏幕亮度</td></tr><tr><td>F2</td><td>增强屏幕亮度</td></tr><tr><td>F3</td><td>开启或关闭键盘背光,调节键盘背光亮度\n如果此按键上无图标,则不支持背光。</td></tr><tr><td>F4</td><td>开启或关闭静音</td></tr><tr><td>F5</td><td>减小音量</td></tr><tr><td>F6</td><td>增大音量</td></tr><tr><td>F7</td><td>开启或关闭麦克风</td></tr><tr><td>F8</td><td>切换屏幕投影模式</td></tr><tr><td>F9</td><td>开启或关闭无线网络</td></tr><tr><td>F10</td><td>开启华为电脑管家</td></tr><tr><td></td><td>开启或关闭智慧语音</td></tr></table>",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n# 法律声明\n\n\n# 了解计算机\n\n\n# 外观介绍\n\n0 键盘布局可能会因国家、地区存在差异，请以实物为准。\n\n![华为 MateBook B7-420 笔记本电脑外观结构示意图，标注了摄像头、麦克风、扬声器、屏幕边框、电源键、键盘、触控板及接口等主要部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/487ea23345772dac73a8dde919be383b7a656458a17aa60ae03e2631fde9101f.jpg)\n\n![华为MateBook B7-420笔记本电脑外观结构示意图，标注了环境光传感器、接口及底座部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/89419b40084d121d32f8e8a5ed51a1c3d9e117306c8d2cc4a5614d65a1c47373.jpg)\n\n<table><tr><td>1</td><td>隐藏式环境光传感器\n感知周围光线情况，自动调节屏幕显示亮度。\n请不要在环境光感应器位置上覆盖物体，以免影响正常使用。如果要使用屏幕保护膜，建议您购买为感应器留了小开口的专用屏幕保护膜。</td></tr><tr><td>2</td><td>摄像头\n可以进行拍照或视频交流以及人脸识别登录。</td></tr><tr><td>3</td><td>摄像头指示灯\n了解摄像头使用状态。摄像头开启时，指示灯白色常亮。</td></tr><tr><td>4</td><td>触摸显示屏\n轻触屏幕可操作计算机。</td></tr><tr><td>5</td><td>指纹电源键\n录入指纹后，您只需使用已录入指纹的手指按一下电源键，即可同时实现开机、解锁，无需输入密码，快捷安全。</td></tr><tr><td>6</td><td>扬声器×6\n声音从扬声器中发出。</td></tr><tr><td>7</td><td>触摸板\n·支持压力触控板功能，可更灵活自由地操控计算机。更多内容，请查看触摸板章节。\n·部分华为手机的NFC感应区域与计算机的华为分享感应区域轻触，实现华为分享功能。\n华为分享感应区域大致位于触摸板中间，外部不可见。</td></tr><tr><td>8</td><td>麦克风×4\n使用麦克风进行视频会议、语音通话或录音。</td></tr><tr><td>9</td><td>耳机接口\n连接耳机。</td></tr><tr><td>10</td><td>ThunderboltTM 4接口×2\n·外接雷电存储设备传输数据，传输速度更快。\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。</td></tr><tr><td>11</td><td>充电指示灯\n充电时，显示电池充电状态：\n·白色闪烁表示正在充电。\n·白色常亮表示电池充满电，停止充电。</td></tr><tr><td>12</td><td>USB-C接口×2\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。\n·连接手机、U盘等外接设备传输数据。</td></tr></table>",
+            "# 获取精彩功能\n\n请点击桌面底部任务栏上的 华为电脑管家 > 玩机技巧，获取更多精彩功能。\n\n\n# F10 一键恢复出厂\n\n计算机内置的 F10 系统恢复出厂功能，能短时间内帮您将计算机系统恢复到初始状态。\n\n$\\textcircled{8}$ 系统恢复出厂会删除 C 盘中数据（也包含桌面文件、下载、文档等个人数据），请您备份 C盘内的个人数据。\n\n1 将计算机连接电源，开机过程中连续快速点按 F10 键。  \n2 进入界面后，根据界面提示进行恢复出厂。\n\n\n# 护眼模式\n\n长期阅读时，建议您开启计算机护眼模式。\n\n右键点击桌面空白处，点击 显示更多选项 > 显示管理，点击开启护眼模式开关。\n\n$\\textcircled{8}$ 开启护眼模式后，屏幕显示偏黄为正常现象。\n\n![开启护眼模式操作指引：右键桌面 → 显示更多选项 → 显示管理，点击开关；开启后屏幕偏黄属正常现象。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/e1399ea7df4178a49cc366c893fdd234238daefdbdc493aa90260af1c95c19a6.jpg)",
+            "# 了解 HUAWEI 蓝牙鼠标(第二代)\n\n$\\textcircled{8}$ HUAWEI 蓝牙鼠标(第二代)为可选配件，您可单独购买。\n\n![HUAWEI 蓝牙鼠标（第二代）结构示意图：标注滚轮、左右键及底部设计，说明为可选配件。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/7af7e632483946d522bbb9fb0419d1908b39d51260c867fb05f1bfa119792f4c.jpg)\n\n![华为MateBook B7-420外接鼠标按键与指示灯布局示意图，标注了左键、滚轮+中键、右键及状态指示灯位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/699403ba8da224cfcbd860724b1fdb0b0603dde6290e238af401107b9eaee752.jpg)\n\n<table><tr><td>1</td><td>左键</td><td>2</td><td>滚轮+中键</td></tr><tr><td>3</td><td>右键</td><td>4</td><td>LED指示灯\n指示灯为红色闪烁时，表示电池电量低，请注意更换电池。</td></tr><tr><td>5</td><td>传感器</td><td>6</td><td>电源开关</td></tr><tr><td>7</td><td>多设备切换按键</td><td>8</td><td>多设备指示灯</td></tr></table>"
+          ],
+          "retrieved_context_ids": [
+            "465615699130974860",
+            "465615699130974859",
+            "465615699130974858",
+            "465615699130974863",
+            "465615699130974868"
+          ],
+          "retrieved_context_preview": [
+            "# 快捷键与功能键切换\n\n在功能键模式下，运行不同的软件时，F1、F2 等键被定义不同的功能。\n\n若要将 F1、F2 等键作为功能键使用，您可以：\n\n• 按下 Fn 键，当 Fn 键指示灯亮起，表示已将 F1、F2 等键锁定为功能键模式。只需再次按 Fn键，当 Fn 键指示灯熄灭，即可返回快捷键（热键）模式。  \n• 前往华为电脑管家的设置中心，将键盘设置为功能键优先，设置后，F1、F2 等键将默认作为功能键使用。若要切换回快捷键模式，...",
+            "# 键盘\n\n$\\textcircled{8}$ 不同机型，键盘按键不同，请以实际为准。\n\n\n# 快捷键功能介绍\n\n计算机键盘的 F1、F2 等键默认为快捷键（热键）模式，可用于轻松执行常见任务。\n\n<table><tr><td>F1</td><td>降低屏幕亮度</td></tr><tr><td>F2</td><td>增强屏幕亮度</td></tr><tr><td>F3</td><td>开启或关闭键盘背光,调节键盘背光亮度\n如果此按键上...",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n#..."
+          ],
+          "retrieved_context_titles": [
+            "# 快捷键与功能键切换",
+            "# 键盘",
+            "# 用户指南",
+            "# 获取精彩功能",
+            "# 了解 HUAWEI 蓝牙鼠标(第二代)"
+          ],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "sufficient",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 19462.9,
+          "first_answer_ms": 18576.43,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 2278.1,
+            "node_query_decompose": 3634.62,
+            "node_web_search_mcp": 15.41,
+            "node_search_embedding_hyde": 21.03,
+            "node_query_kg": 23.71,
+            "node_search_bm25": 24.03,
+            "node_search_embedding": 182.83,
+            "node_rrf": 2.84,
+            "node_rerank": 192.24,
+            "node_retrieval_grader": 2515.27,
+            "node_answer_output": 9766.07,
+            "node_hallucination_check": 885.02
+          },
+          "error": "",
+          "ragas_scores": {
+            "llm_context_recall": 1.0,
+            "faithfulness": 1.0,
+            "response_relevancy": 0.950163324851038
+          }
+        },
+        {
+          "case_id": "matebook_touchpad_settings",
+          "query": "HUAWEI MateBook B7-420 怎么修改触摸板设置？",
+          "query_type": "navigation",
+          "item_names": [],
+          "reference_answer": "进入设置中的触摸板相关选项后，可以开启或关闭触摸板、设置连接鼠标时是否关闭触摸板、调整滚动方向和手指动作功能。压力触控板的按压灵敏度和振动强度可在华为电脑管家中进一步设置。",
+          "relevant_chunk_ids": [],
+          "response": "针对 HUAWEI MateBook B7-420 笔记本电脑，您可以通过以下两种方式修改触摸板设置：\n\n## 方法一：通过系统设置更改基础功能\n\n您可以根据使用习惯开启/关闭触摸板、调整滚动方向或设置手势功能。\n\n1. 点击 **开始菜单** > **设置**，打开设置界面。\n2. 在设置界面中，点击 **蓝牙和其他设备**，再点击 **触摸板**。\n3. 在此界面您可以进行以下操作：\n   - **开启或关闭触摸板**。\n   - 设置**连接鼠标时**是否自动关闭触摸板。\n   - 更改**触摸滚动方向**。\n   - 设置手指动作（如单击、双击、滑动等）在触摸板上的具体功能。\n\n## 方法二：通过华为电脑管家设置压力触控板\n\n如果您需要调节触摸板的按压灵敏度或振动强度，请使用此方法。计算机出厂默认已开启压力触控板功能。\n\n1. 点击桌面底部任务栏的华为电脑管家图标打开软件。\n2. 点击设置中心（通常为齿轮图标或菜单按钮）。\n3. 选择 **压力触控板选项**。\n4. 根据个人喜好调节：\n   - **触摸板按压灵敏度**。\n   - **振动强度**。\n\n## 附：常用触摸板手势参考\n\n为了方便您设置，以下是该机型支持的常见手势操作：\n\n| 手势操作 | 功能说明 |\n| :--- | :--- |\n| **单指点击** | 相当于单击鼠标左键 |\n| **双指点击** | 相当于单击鼠标右键 |\n| **双指上下滑动** | 滚动浏览屏幕或文档 |\n| **双指张开/闭合** | 放大或缩小图片、网页等 |\n| **三指点击** | 使用搜索功能 |\n| **三指向上滑动** | 打开多任务视图 |\n| **三指向下滑动** | 显示桌面 |\n| **三指左右滑动** | 切换应用窗口 |\n| **四指点击** | 快速打开通知中心和日历 |\n\n> **注意**：并非所有手势都可用于所有应用程序，具体体验请以实际使用情况为准。",
+          "retrieved_contexts": [
+            "# 更改触摸板设置\n\n您也可以根据自己的使用习惯更改触摸板设置，让指尖操作更得心应手。\n\n1 点击 > 打开设置界面。  \n2 在设置界面中，点击 ,再点击 ，您可以：\n\n• 开启或关闭触摸板。  \n• 连接鼠标时开启或关闭触摸板。  \n• 更改触摸滚动方向。  \n• 设置手指动作在触摸板上的功能等。\n\n\n# 设置压力触控板功能\n\n计算机出厂默认开启压力触控板功能，您可以根据个人喜好调节触摸板按压灵敏度、振动强度。\n\n点击桌面底部任务栏的 $\\lfloor \\mathsf { m l } \\rfloor$ 打开华为电脑管家，然后点击 ，选择压力触控板，可对触摸板进行设置。\n\n\n# 给计算机充电\n\n当电池电量过低时，计算机会弹出低电提示，请及时为计算机充电，以免影响到您的使用。\n\n\n# 使用电源适配器为计算机充电\n\n计算机内置（不可拆卸）可充电电池。连接电源适配器和充电线缆可对计算机充电。计算机处于关机或睡眠状态时，充电速度更快。\n\n![华为MateBook B7-420使用电源适配器充电的注意事项及操作示意图](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/9d796ee1e435f7f129689d4ee3767f65bd8edb779878081d7111659eb9a12c08.jpg)",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n# 法律声明\n\n\n# 了解计算机\n\n\n# 外观介绍\n\n0 键盘布局可能会因国家、地区存在差异，请以实物为准。\n\n![华为 MateBook B7-420 笔记本电脑外观结构示意图，标注了摄像头、麦克风、扬声器、屏幕边框、电源键、键盘、触控板及接口等主要部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/487ea23345772dac73a8dde919be383b7a656458a17aa60ae03e2631fde9101f.jpg)\n\n![华为MateBook B7-420笔记本电脑外观结构示意图，标注了环境光传感器、接口及底座部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/89419b40084d121d32f8e8a5ed51a1c3d9e117306c8d2cc4a5614d65a1c47373.jpg)\n\n<table><tr><td>1</td><td>隐藏式环境光传感器\n感知周围光线情况，自动调节屏幕显示亮度。\n请不要在环境光感应器位置上覆盖物体，以免影响正常使用。如果要使用屏幕保护膜，建议您购买为感应器留了小开口的专用屏幕保护膜。</td></tr><tr><td>2</td><td>摄像头\n可以进行拍照或视频交流以及人脸识别登录。</td></tr><tr><td>3</td><td>摄像头指示灯\n了解摄像头使用状态。摄像头开启时，指示灯白色常亮。</td></tr><tr><td>4</td><td>触摸显示屏\n轻触屏幕可操作计算机。</td></tr><tr><td>5</td><td>指纹电源键\n录入指纹后，您只需使用已录入指纹的手指按一下电源键，即可同时实现开机、解锁，无需输入密码，快捷安全。</td></tr><tr><td>6</td><td>扬声器×6\n声音从扬声器中发出。</td></tr><tr><td>7</td><td>触摸板\n·支持压力触控板功能，可更灵活自由地操控计算机。更多内容，请查看触摸板章节。\n·部分华为手机的NFC感应区域与计算机的华为分享感应区域轻触，实现华为分享功能。\n华为分享感应区域大致位于触摸板中间，外部不可见。</td></tr><tr><td>8</td><td>麦克风×4\n使用麦克风进行视频会议、语音通话或录音。</td></tr><tr><td>9</td><td>耳机接口\n连接耳机。</td></tr><tr><td>10</td><td>ThunderboltTM 4接口×2\n·外接雷电存储设备传输数据，传输速度更快。\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。</td></tr><tr><td>11</td><td>充电指示灯\n充电时，显示电池充电状态：\n·白色闪烁表示正在充电。\n·白色常亮表示电池充满电，停止充电。</td></tr><tr><td>12</td><td>USB-C接口×2\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。\n·连接手机、U盘等外接设备传输数据。</td></tr></table>",
+            "# 快捷键与功能键切换\n\n在功能键模式下，运行不同的软件时，F1、F2 等键被定义不同的功能。\n\n若要将 F1、F2 等键作为功能键使用，您可以：\n\n• 按下 Fn 键，当 Fn 键指示灯亮起，表示已将 F1、F2 等键锁定为功能键模式。只需再次按 Fn键，当 Fn 键指示灯熄灭，即可返回快捷键（热键）模式。  \n• 前往华为电脑管家的设置中心，将键盘设置为功能键优先，设置后，F1、F2 等键将默认作为功能键使用。若要切换回快捷键模式，将键盘设置为热键优先即可。\n\n\n# 触摸板\n\n键盘上的触摸板拥有类似鼠标的功能，让您更方便的操控计算机。\n\n$\\textcircled{8}$ 并非所有手势都可用于所有应用，请以实际为准。\n\n<table><tr><td colspan=\"2\">单指点击: 相当于单击鼠标左键</td></tr><tr><td colspan=\"2\">单指双击: 相当于双击鼠标左键</td></tr><tr><td colspan=\"2\">单指移动: 移动桌面上的光标</td></tr><tr><td colspan=\"2\">左键单击: 相当于单击鼠标左键</td></tr><tr><td colspan=\"2\">右键单击: 相当于单击鼠标右键</td></tr><tr><td colspan=\"2\">双指点击: 相当于单击鼠标右键</td></tr><tr><td colspan=\"2\">双指上下滑动: 滚动浏览屏幕或文档</td></tr><tr><td colspan=\"2\">双指张开或闭合: 浏览图片、网页等时, 可以放大或缩小图片、网页等</td></tr><tr><td colspan=\"2\">三指点击：使用搜索</td></tr><tr><td colspan=\"2\">三指向上滑动：多任务视图</td></tr><tr><td colspan=\"2\">三指向下滑动：显示桌面</td></tr><tr><td colspan=\"2\">三指左右滑动：切换应用</td></tr><tr><td colspan=\"2\">四指点击：快速打开通知中心和日历</td></tr></table>",
+            "# 安装电池\n\n如下图所示，沿鼠标尾部标志打开上壳，按电池仓正负极 $( + - )$ 的标志安装一节 AA 电池，合上上壳，即可安装完成。\n\n![拆开鼠标上壳、安装AA电池、合上上壳的三步操作示意图](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/b937f8608d3703b29d08acafcbc3b2c2a1a7d72a5607e39a236b639ff4ab4b67.jpg)\n\n\n# 蓝牙鼠标与计算机配对\n\n![蓝牙鼠标开关拨至ON位并长按3秒进入配对状态，与电脑建立连接。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/75b3f56b7f878254a751b6b217a25726731083503285dfe1277a5492b9f15741.jpg)\n\n1 按照图示将蓝牙鼠标底部开关拨至 $\\ngeq$ 处并保持 3 秒，指示灯闪烁后松开，鼠标进入配对状态。  \n2 在计算机中，点击 > > ，进入蓝牙和其他设备界面，点击 添加蓝牙设备，在发现的蓝牙设备列表中选择 Huawei Mouse，稍等即可完成配对。",
+            "# 了解 HUAWEI 蓝牙鼠标(第二代)\n\n$\\textcircled{8}$ HUAWEI 蓝牙鼠标(第二代)为可选配件，您可单独购买。\n\n![HUAWEI 蓝牙鼠标（第二代）结构示意图：标注滚轮、左右键及底部设计，说明为可选配件。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/7af7e632483946d522bbb9fb0419d1908b39d51260c867fb05f1bfa119792f4c.jpg)\n\n![华为MateBook B7-420外接鼠标按键与指示灯布局示意图，标注了左键、滚轮+中键、右键及状态指示灯位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/699403ba8da224cfcbd860724b1fdb0b0603dde6290e238af401107b9eaee752.jpg)\n\n<table><tr><td>1</td><td>左键</td><td>2</td><td>滚轮+中键</td></tr><tr><td>3</td><td>右键</td><td>4</td><td>LED指示灯\n指示灯为红色闪烁时，表示电池电量低，请注意更换电池。</td></tr><tr><td>5</td><td>传感器</td><td>6</td><td>电源开关</td></tr><tr><td>7</td><td>多设备切换按键</td><td>8</td><td>多设备指示灯</td></tr></table>"
+          ],
+          "retrieved_context_ids": [
+            "465615699130974861",
+            "465615699130974858",
+            "465615699130974860",
+            "465615699130974867",
+            "465615699130974868"
+          ],
+          "retrieved_context_preview": [
+            "# 更改触摸板设置\n\n您也可以根据自己的使用习惯更改触摸板设置，让指尖操作更得心应手。\n\n1 点击 > 打开设置界面。  \n2 在设置界面中，点击 ,再点击 ，您可以：\n\n• 开启或关闭触摸板。  \n• 连接鼠标时开启或关闭触摸板。  \n• 更改触摸滚动方向。  \n• 设置手指动作在触摸板上的功能等。\n\n\n# 设置压力触控板功能\n\n计算机出厂默认开启压力触控板功能，您可以根据个人喜好调节触摸板按压灵敏度、振动强度。\n\n点击桌面底部任务栏...",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n#...",
+            "# 快捷键与功能键切换\n\n在功能键模式下，运行不同的软件时，F1、F2 等键被定义不同的功能。\n\n若要将 F1、F2 等键作为功能键使用，您可以：\n\n• 按下 Fn 键，当 Fn 键指示灯亮起，表示已将 F1、F2 等键锁定为功能键模式。只需再次按 Fn键，当 Fn 键指示灯熄灭，即可返回快捷键（热键）模式。  \n• 前往华为电脑管家的设置中心，将键盘设置为功能键优先，设置后，F1、F2 等键将默认作为功能键使用。若要切换回快捷键模式，..."
+          ],
+          "retrieved_context_titles": [
+            "# 更改触摸板设置",
+            "# 用户指南",
+            "# 快捷键与功能键切换",
+            "# 安装电池",
+            "# 了解 HUAWEI 蓝牙鼠标(第二代)"
+          ],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "sufficient",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 17525.07,
+          "first_answer_ms": 16321.02,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1755.36,
+            "node_query_decompose": 1774.96,
+            "node_search_bm25": 15.48,
+            "node_search_embedding_hyde": 19.19,
+            "node_query_kg": 22.26,
+            "node_web_search_mcp": 19.47,
+            "node_search_embedding": 165.72,
+            "node_rrf": 2.22,
+            "node_rerank": 380.83,
+            "node_retrieval_grader": 2989.11,
+            "node_answer_output": 9248.11,
+            "node_hallucination_check": 1202.57
+          },
+          "error": "",
+          "ragas_scores": {
+            "llm_context_recall": 1.0,
+            "faithfulness": 0.8387096774193549,
+            "response_relevancy": 0.9021977097386863
+          }
+        },
+        {
+          "case_id": "matebook_f10_restore",
+          "query": "HUAWEI MateBook B7-420 用 F10 恢复出厂会清掉哪些数据，怎么进入？",
+          "query_type": "explain",
+          "item_names": [],
+          "reference_answer": "F10 系统恢复会删除 C 盘中的数据，包括桌面文件、下载和文档等个人数据，因此操作前需要先备份。进入方法是先连接电源，在开机过程中连续快速按 F10，进入界面后按提示执行恢复。",
+          "relevant_chunk_ids": [],
+          "response": "## HUAWEI MateBook B7-420 F10 恢复出厂说明\n\n根据用户指南，使用 F10 一键恢复出厂功能的相关说明如下：\n\n### 1. 会清除哪些数据？\n系统恢复出厂会将计算机系统恢复到初始状态，具体影响如下：\n*   **删除 C 盘所有数据**：包括桌面文件、下载文件夹、文档等个人数据。\n*   **重要提示**：在执行恢复操作前，请您务必备份 C 盘内的个人重要数据，以免丢失。\n\n### 2. 如何进入 F10 恢复界面？\n请按照以下步骤操作：\n1.  **连接电源**：确保计算机已连接电源适配器。\n2.  **开机按键**：在开机过程中，**连续快速点按 F10 键**。\n3.  **跟随提示**：进入恢复界面后，根据屏幕上的提示进行操作即可完成恢复。\n\n> **注意**：不同机型键盘布局可能存在差异，请以实物为准。若 F10 键默认被设置为其他快捷键（如开启华为电脑管家），请确保在开机启动阶段（Logo出现前或出现时）迅速且连续地按压。",
+          "retrieved_contexts": [
+            "# 获取精彩功能\n\n请点击桌面底部任务栏上的 华为电脑管家 > 玩机技巧，获取更多精彩功能。\n\n\n# F10 一键恢复出厂\n\n计算机内置的 F10 系统恢复出厂功能，能短时间内帮您将计算机系统恢复到初始状态。\n\n$\\textcircled{8}$ 系统恢复出厂会删除 C 盘中数据（也包含桌面文件、下载、文档等个人数据），请您备份 C盘内的个人数据。\n\n1 将计算机连接电源，开机过程中连续快速点按 F10 键。  \n2 进入界面后，根据界面提示进行恢复出厂。\n\n\n# 护眼模式\n\n长期阅读时，建议您开启计算机护眼模式。\n\n右键点击桌面空白处，点击 显示更多选项 > 显示管理，点击开启护眼模式开关。\n\n$\\textcircled{8}$ 开启护眼模式后，屏幕显示偏黄为正常现象。\n\n![开启护眼模式操作指引：右键桌面 → 显示更多选项 → 显示管理，点击开关；开启后屏幕偏黄属正常现象。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/e1399ea7df4178a49cc366c893fdd234238daefdbdc493aa90260af1c95c19a6.jpg)",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n# 法律声明\n\n\n# 了解计算机\n\n\n# 外观介绍\n\n0 键盘布局可能会因国家、地区存在差异，请以实物为准。\n\n![华为 MateBook B7-420 笔记本电脑外观结构示意图，标注了摄像头、麦克风、扬声器、屏幕边框、电源键、键盘、触控板及接口等主要部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/487ea23345772dac73a8dde919be383b7a656458a17aa60ae03e2631fde9101f.jpg)\n\n![华为MateBook B7-420笔记本电脑外观结构示意图，标注了环境光传感器、接口及底座部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/89419b40084d121d32f8e8a5ed51a1c3d9e117306c8d2cc4a5614d65a1c47373.jpg)\n\n<table><tr><td>1</td><td>隐藏式环境光传感器\n感知周围光线情况，自动调节屏幕显示亮度。\n请不要在环境光感应器位置上覆盖物体，以免影响正常使用。如果要使用屏幕保护膜，建议您购买为感应器留了小开口的专用屏幕保护膜。</td></tr><tr><td>2</td><td>摄像头\n可以进行拍照或视频交流以及人脸识别登录。</td></tr><tr><td>3</td><td>摄像头指示灯\n了解摄像头使用状态。摄像头开启时，指示灯白色常亮。</td></tr><tr><td>4</td><td>触摸显示屏\n轻触屏幕可操作计算机。</td></tr><tr><td>5</td><td>指纹电源键\n录入指纹后，您只需使用已录入指纹的手指按一下电源键，即可同时实现开机、解锁，无需输入密码，快捷安全。</td></tr><tr><td>6</td><td>扬声器×6\n声音从扬声器中发出。</td></tr><tr><td>7</td><td>触摸板\n·支持压力触控板功能，可更灵活自由地操控计算机。更多内容，请查看触摸板章节。\n·部分华为手机的NFC感应区域与计算机的华为分享感应区域轻触，实现华为分享功能。\n华为分享感应区域大致位于触摸板中间，外部不可见。</td></tr><tr><td>8</td><td>麦克风×4\n使用麦克风进行视频会议、语音通话或录音。</td></tr><tr><td>9</td><td>耳机接口\n连接耳机。</td></tr><tr><td>10</td><td>ThunderboltTM 4接口×2\n·外接雷电存储设备传输数据，传输速度更快。\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。</td></tr><tr><td>11</td><td>充电指示灯\n充电时，显示电池充电状态：\n·白色闪烁表示正在充电。\n·白色常亮表示电池充满电，停止充电。</td></tr><tr><td>12</td><td>USB-C接口×2\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。\n·连接手机、U盘等外接设备传输数据。</td></tr></table>",
+            "# 键盘\n\n$\\textcircled{8}$ 不同机型，键盘按键不同，请以实际为准。\n\n\n# 快捷键功能介绍\n\n计算机键盘的 F1、F2 等键默认为快捷键（热键）模式，可用于轻松执行常见任务。\n\n<table><tr><td>F1</td><td>降低屏幕亮度</td></tr><tr><td>F2</td><td>增强屏幕亮度</td></tr><tr><td>F3</td><td>开启或关闭键盘背光,调节键盘背光亮度\n如果此按键上无图标,则不支持背光。</td></tr><tr><td>F4</td><td>开启或关闭静音</td></tr><tr><td>F5</td><td>减小音量</td></tr><tr><td>F6</td><td>增大音量</td></tr><tr><td>F7</td><td>开启或关闭麦克风</td></tr><tr><td>F8</td><td>切换屏幕投影模式</td></tr><tr><td>F9</td><td>开启或关闭无线网络</td></tr><tr><td>F10</td><td>开启华为电脑管家</td></tr><tr><td></td><td>开启或关闭智慧语音</td></tr></table>",
+            "# 个人信息和数据安全\n\n在使用设备的一些功能和第三方应用时，可能会因为操作不正确或其他原因导致您的个人信息或数据泄露或丢失，建议按以下方式加强保护您的个人信息。\n\n• 请将设备放置于安全区域，防止未经授权人员使用您的设备。  \n• 设置设备屏幕锁定，并牢记您设定的密码或解锁图案。  \n• 建议不要阅读来自陌生人的信息或邮件，以免设备遭受病毒感染。  \n• 在使用设备上网时，请勿浏览存在安全隐患的网站，以免个人信息被盗。  \n• 在使用无线共享、蓝牙等业务时，请设定密码，防止未授权访问。不需要使用这些业务时，建议及时关闭。  \n• 安装设备安全软件，并定期进行安全检查。  \n• 获取第三方应用时，应保证获取方式的安全性。获取的第三方应用程序应进行病毒扫描。  \n• 请及时安装或升级华为或授权的第三方应用程序供应商发布的安全性软件或补丁。  \n• 使用非授权第三方软件升级设备的固件和系统，可能存在设备无法使用或者泄漏您个人信息等安全风险。建议您使用在线升级或者将设备送至您附近的华为客户服务中心升级。  \n• 如果您使用了需要定位信息的应用程序，这些应用程序可以传输定位信息，第三方可能会共享这些定位信息。  \n• 设备可能会将检测、诊断等信息反馈给第三方应用程序供应商，这些信息将用于帮助第三方应用供应商改善产品和服务。",
+            "# 更改触摸板设置\n\n您也可以根据自己的使用习惯更改触摸板设置，让指尖操作更得心应手。\n\n1 点击 > 打开设置界面。  \n2 在设置界面中，点击 ,再点击 ，您可以：\n\n• 开启或关闭触摸板。  \n• 连接鼠标时开启或关闭触摸板。  \n• 更改触摸滚动方向。  \n• 设置手指动作在触摸板上的功能等。\n\n\n# 设置压力触控板功能\n\n计算机出厂默认开启压力触控板功能，您可以根据个人喜好调节触摸板按压灵敏度、振动强度。\n\n点击桌面底部任务栏的 $\\lfloor \\mathsf { m l } \\rfloor$ 打开华为电脑管家，然后点击 ，选择压力触控板，可对触摸板进行设置。\n\n\n# 给计算机充电\n\n当电池电量过低时，计算机会弹出低电提示，请及时为计算机充电，以免影响到您的使用。\n\n\n# 使用电源适配器为计算机充电\n\n计算机内置（不可拆卸）可充电电池。连接电源适配器和充电线缆可对计算机充电。计算机处于关机或睡眠状态时，充电速度更快。\n\n![华为MateBook B7-420使用电源适配器充电的注意事项及操作示意图](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/9d796ee1e435f7f129689d4ee3767f65bd8edb779878081d7111659eb9a12c08.jpg)"
+          ],
+          "retrieved_context_ids": [
+            "465615699130974863",
+            "465615699130974858",
+            "465615699130974859",
+            "465615699130974875",
+            "465615699130974861"
+          ],
+          "retrieved_context_preview": [
+            "# 获取精彩功能\n\n请点击桌面底部任务栏上的 华为电脑管家 > 玩机技巧，获取更多精彩功能。\n\n\n# F10 一键恢复出厂\n\n计算机内置的 F10 系统恢复出厂功能，能短时间内帮您将计算机系统恢复到初始状态。\n\n$\\textcircled{8}$ 系统恢复出厂会删除 C 盘中数据（也包含桌面文件、下载、文档等个人数据），请您备份 C盘内的个人数据。\n\n1 将计算机连接电源，开机过程中连续快速点按 F10 键。  \n2 进入界面后，根据界...",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n#...",
+            "# 键盘\n\n$\\textcircled{8}$ 不同机型，键盘按键不同，请以实际为准。\n\n\n# 快捷键功能介绍\n\n计算机键盘的 F1、F2 等键默认为快捷键（热键）模式，可用于轻松执行常见任务。\n\n<table><tr><td>F1</td><td>降低屏幕亮度</td></tr><tr><td>F2</td><td>增强屏幕亮度</td></tr><tr><td>F3</td><td>开启或关闭键盘背光,调节键盘背光亮度\n如果此按键上..."
+          ],
+          "retrieved_context_titles": [
+            "# 获取精彩功能",
+            "# 用户指南",
+            "# 键盘",
+            "# 个人信息和数据安全",
+            "# 更改触摸板设置"
+          ],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "sufficient",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 14298.62,
+          "first_answer_ms": 13291.41,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 2174.57,
+            "node_query_decompose": 2321.78,
+            "node_search_embedding_hyde": 17.86,
+            "node_search_bm25": 21.07,
+            "node_query_kg": 22.17,
+            "node_web_search_mcp": 20.5,
+            "node_search_embedding": 212.41,
+            "node_rrf": 1.92,
+            "node_rerank": 250.73,
+            "node_retrieval_grader": 3209.06,
+            "node_answer_output": 5116.01,
+            "node_hallucination_check": 1005.93
+          },
+          "error": "",
+          "ragas_scores": {
+            "llm_context_recall": 1.0,
+            "faithfulness": 0.8888888888888888,
+            "response_relevancy": 0.905313923458361
+          }
+        },
+        {
+          "case_id": "matebook_external_display",
+          "query": "HUAWEI MateBook B7-420 连接电视、显示器或投影仪时有什么限制，投影方式怎么选？",
+          "query_type": "constraint",
+          "item_names": [],
+          "reference_answer": "连接外接显示设备时需要准备扩展坞和 HDMI 或 VGA 线缆，且 HDMI 接口与 VGA 接口不能同时使用。连接并打开外接设备后，可在热键模式下使用投影快捷键或 Win+P 打开投影界面，选择仅电脑屏幕、复制、扩展或仅第二屏幕。",
+          "relevant_chunk_ids": [],
+          "response": "## HUAWEI MateBook B7-420 连接外部显示设备指南\n\n根据用户指南，以下是关于连接电视、显示器或投影仪的限制说明及投影方式选择方法：\n\n### 1. 连接限制与注意事项\n\n*   **接口互斥限制**：**HDMI 接口和 VGA 接口不能同时使用**。如果您使用扩展坞（如 HUAWEI MateDock 2），请确保只连接其中一种视频输出线缆。\n*   **所需配件**：除了计算机和显示设备外，您需要准备 **HDMI** 或 **VGA** 连接线缆。若通过扩展坞连接，需确保扩展坞已正确接入计算机的 USB-C 接口。\n*   **端口检查**：在连接之前，请务必检查所连接设备（电视、显示器或投影仪）的端口类型，以选择合适的线缆。\n\n### 2. 连接步骤\n\n1.  **物理连接**参照图示，通过扩展坞或直接使用线缆将计算机与电视、显示器或投影仪连接。\n2.  **开启设备**接通电视、显示器或投影仪的电源并打开设备。\n3.  **设置投影模式**在计算机端进行投影设置（详见下文）。\n\n### 3. 如何选择投影方式\n\n在连接好设备后，您可以通过以下快捷键打开投影界面进行选择：\n\n*   **操作方法**：按下键盘上的 **`Win` + `P`** 键（参考内容中表述为 `$\\equiv { \\tt I } + { \\sf P }$`，即 Windows 徽标键 + P）。\n*   **可选模式**：\n    *   **仅电脑屏幕**：只在计算机显示桌面，外接设备屏幕不显示内容。\n    *   **复制**：在计算机和外接设备上都显示相同的桌面内容。\n    *   **扩展**：将计算机的桌面扩展到外接设备屏幕，您可以在两个屏幕之间移动窗口和项目。\n    *   **仅第二屏幕**：只在外接设备上显示桌面，计算机屏幕不显示内容（黑屏）。\n\n【图片】\nhttp://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/efa685c6628105dda7e48a00144056d69c63332a905c5b388bccec6612b43120.jpg",
+          "retrieved_contexts": [
+            "# 连接到电视、显示器或投影仪\n\n观看电影或会议演示时，将计算机连接到电视、显示器或投影仪等大屏显示设备，观看效果更佳。\n\n• 除了计算机、扩展坞和连接设备之外，您还需要准备 HDMI 或 VGA 连接线缆。  \n• 在连接之前您需要检查所连接设备的端口。  \n• 通过扩展坞将计算机连接到电视等设备的操作步骤类似，下文以 HUAWEI MateDock 2扩展坞为例。  \n• HDMI 接口和 VGA 接口不能同时使用。\n\n![HUAWEI MateDock 2 扩展坞连接示意图：USB-C 接入笔记本，HDMI 连接显示器/电视，HDMI 与 VGA 不能同时使用。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/efa685c6628105dda7e48a00144056d69c63332a905c5b388bccec6612b43120.jpg)\n\n1 参照图示，通过扩展坞连接计算机和电视、显示器或投影仪。  \n2 接通电视、显示器或投影仪的电源并打开。\n\n回3 热键模式下，按 键，或者点击 $\\equiv { \\tt I } + { \\sf P }$ 打开投影界面，选择投影方式。\n\n• ，只在计算机显示桌面，外接设备屏幕不显示内容。  \n• ，在计算机和外接设备上都显示桌面。  \n• ，将计算机的桌面扩展到外接设备屏幕，可以在屏幕之间移动项目。\n\n• ，只在外接设备上显示桌面，计算机屏幕不显示内容。",
+            "# 配件及扩展连线\n\n\n# 扩展坞（可选配件）\n\n通过扩展坞接口或插槽，计算机可以连接兼容多种设备和配件，如投影仪、电视、U 盘等，满足您的扩展需求。\n\n$\\textcircled{8}$ 扩展坞为可选配件，您可单独购买。\n\n了解 HUAWEI MateDock 2 扩展坞\n\n![HUAWEI MateDock 2 扩展坞连接示意图：通过 USB-C 接口连接笔记本，提供 HDMI、VGA、USB-A 等多种接口扩展。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/9403491ea8f018f9337364c04fb1558fb31e441d21e7a1ff12317b7b5b92f769.jpg)\n\n<table><tr><td>USB-C插头</td><td>连接计算机USB-C接口。</td></tr><tr><td>USB-A接口</td><td>连接USB设备，如USB鼠标/键盘、USB存储设备、USB网卡等。</td></tr><tr><td>HDMI接口</td><td>连接HDMI输入设备，如电视机。</td></tr><tr><td>VGA接口</td><td>连接VGA输入设备，如显示器。</td></tr><tr><td>USB-C接口</td><td>连接USB-C接口设备。</td></tr></table>\n\n![华为MateBook B7-420扩展坞接口示意图：含VGA、HDMI、USB-A、LAN口及USB-C插头、microSD卡槽等连接说明。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/01873fa7da915483df16374a30bc7d0daf02a3a9fed05b5548a2219307d7ef4c.jpg)\n\n<table><tr><td>USB-C插头</td><td>连接计算机USB-C接口。</td></tr><tr><td>microSD卡槽</td><td>支持4K Class10高速TF卡数据传输。</td></tr><tr><td>USB-A接口×2</td><td>连接USB设备，如USB鼠标/键盘、USB存储设备、USB网卡等。</td></tr><tr><td>USB-C充电接口</td><td>连接USB-C接口设备充电，不支持数据传输。</td></tr><tr><td>VGA接口</td><td>连接VGA输入设备，如显示器。</td></tr><tr><td>HDMI接口</td><td>连接HDMI输入设备，如电视机。</td></tr><tr><td>LAN接口</td><td>连接网线。</td></tr></table>",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n# 法律声明\n\n\n# 了解计算机\n\n\n# 外观介绍\n\n0 键盘布局可能会因国家、地区存在差异，请以实物为准。\n\n![华为 MateBook B7-420 笔记本电脑外观结构示意图，标注了摄像头、麦克风、扬声器、屏幕边框、电源键、键盘、触控板及接口等主要部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/487ea23345772dac73a8dde919be383b7a656458a17aa60ae03e2631fde9101f.jpg)\n\n![华为MateBook B7-420笔记本电脑外观结构示意图，标注了环境光传感器、接口及底座部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/89419b40084d121d32f8e8a5ed51a1c3d9e117306c8d2cc4a5614d65a1c47373.jpg)\n\n<table><tr><td>1</td><td>隐藏式环境光传感器\n感知周围光线情况，自动调节屏幕显示亮度。\n请不要在环境光感应器位置上覆盖物体，以免影响正常使用。如果要使用屏幕保护膜，建议您购买为感应器留了小开口的专用屏幕保护膜。</td></tr><tr><td>2</td><td>摄像头\n可以进行拍照或视频交流以及人脸识别登录。</td></tr><tr><td>3</td><td>摄像头指示灯\n了解摄像头使用状态。摄像头开启时，指示灯白色常亮。</td></tr><tr><td>4</td><td>触摸显示屏\n轻触屏幕可操作计算机。</td></tr><tr><td>5</td><td>指纹电源键\n录入指纹后，您只需使用已录入指纹的手指按一下电源键，即可同时实现开机、解锁，无需输入密码，快捷安全。</td></tr><tr><td>6</td><td>扬声器×6\n声音从扬声器中发出。</td></tr><tr><td>7</td><td>触摸板\n·支持压力触控板功能，可更灵活自由地操控计算机。更多内容，请查看触摸板章节。\n·部分华为手机的NFC感应区域与计算机的华为分享感应区域轻触，实现华为分享功能。\n华为分享感应区域大致位于触摸板中间，外部不可见。</td></tr><tr><td>8</td><td>麦克风×4\n使用麦克风进行视频会议、语音通话或录音。</td></tr><tr><td>9</td><td>耳机接口\n连接耳机。</td></tr><tr><td>10</td><td>ThunderboltTM 4接口×2\n·外接雷电存储设备传输数据，传输速度更快。\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。</td></tr><tr><td>11</td><td>充电指示灯\n充电时，显示电池充电状态：\n·白色闪烁表示正在充电。\n·白色常亮表示电池充满电，停止充电。</td></tr><tr><td>12</td><td>USB-C接口×2\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。\n·连接手机、U盘等外接设备传输数据。</td></tr></table>",
+            "# 责任限制\n\n本手册中的内容均“按照现状”提供，除非适用法律要求，华为对本手册中的所有内容不提供任何明示或暗示的保证，包括但不限于适销性或者适用于某一特定目的的保证。\n\n在适用法律允许的范围内，华为在任何情况下，都不对因使用本手册相关内容及本手册描述的产品而产生的任何特殊的、附带的、间接的、继发性的损害进行赔偿，也不对任何利润、数据、商誉或预期节约的损失进行赔偿。\n\n在相关法律允许的范围内，在任何情况下，华为对您因为使用本手册描述的产品而遭受的损失的最大责任（除在涉及人身伤害的情况中根据适用的法律规定的损害赔偿外）以您购买本产品所支付的价款为限。\n\n\n# 进出口管制\n\n若需将本手册描述的产品（包括但不限于产品中的软件及技术数据等）出口、再出口或者进口，您应遵守适用的进出口管制法律法规。\n\n\n# 隐私保护\n\n为了解我们如何保护您的个人信息，请访问 https://consumer.huawei.com/privacy-policy 阅读我们的隐私政策。\n\n本指南仅供参考，不构成任何形式的承诺，产品（包括但不限于颜色、大小、屏幕显示等）请以实物为准。如出现本指南与官网描述不一致的情况，请以官网说明为准，恕不另行通知。",
+            "# 法律声明\n\n版权所有 $\\circledcirc$ 2024 华为终端有限公司。保留一切权利。\n\n本手册描述的产品中，可能包含华为及其可能存在的许可人享有版权的软件。除非获得相关权利人的许可，否则，任何人不能以任何形式对前述软件进行复制、分发、修改、摘录、反编译、反汇编、解密、反向工程、出租、转让、分许可等侵犯软件版权的行为，但是适用法律禁止此类限制的除外。\n\n\n# 商标声明\n\nBluetooth?字标及其徽标均为Bluetooth SIG,Inc.的注册商标，华为技术有限公司对此标记的任何使用都受到许可证限制，华为终端有限公司为华为技术有限公司的关联公司。\n\n\n# HDmIM\n\nHIGH-DEFINITIONMULTIMEDIA INTERFACE\n\nHDMI、HDMI High-Definition Multimedia Interface等词汇、HDMI 商业外观及HDMI 标识均为 HDMI Licensing Administrator, Inc. 的商标或注册商标。\n\nMicrosoft 和 Windows 是 Microsoft 集团公司的商标。\n\nThunderbolt 文字及 Thunderbolt 标识属于英特尔在美国和/或其他国家或地区的商标。\n\n在本手册以及本手册描述的产品中，出现的其他商标、产品名称、服务名称以及公司名称，由其各自的所有人拥有。"
+          ],
+          "retrieved_context_ids": [
+            "465615699130974865",
+            "465615699130974864",
+            "465615699130974858",
+            "465615699130974878",
+            "465615699130974876"
+          ],
+          "retrieved_context_preview": [
+            "# 连接到电视、显示器或投影仪\n\n观看电影或会议演示时，将计算机连接到电视、显示器或投影仪等大屏显示设备，观看效果更佳。\n\n• 除了计算机、扩展坞和连接设备之外，您还需要准备 HDMI 或 VGA 连接线缆。  \n• 在连接之前您需要检查所连接设备的端口。  \n• 通过扩展坞将计算机连接到电视等设备的操作步骤类似，下文以 HUAWEI MateDock 2扩展坞为例。  \n• HDMI 接口和 VGA 接口不能同时使用。\n\n![HUAW...",
+            "# 配件及扩展连线\n\n\n# 扩展坞（可选配件）\n\n通过扩展坞接口或插槽，计算机可以连接兼容多种设备和配件，如投影仪、电视、U 盘等，满足您的扩展需求。\n\n$\\textcircled{8}$ 扩展坞为可选配件，您可单独购买。\n\n了解 HUAWEI MateDock 2 扩展坞\n\n![HUAWEI MateDock 2 扩展坞连接示意图：通过 USB-C 接口连接笔记本，提供 HDMI、VGA、USB-A 等多种接口扩展。](http://...",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n#..."
+          ],
+          "retrieved_context_titles": [
+            "# 连接到电视、显示器或投影仪",
+            "# 配件及扩展连线",
+            "# 用户指南",
+            "# 责任限制",
+            "# 法律声明"
+          ],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "sufficient",
+          "retry_count": 0,
+          "hallucination_retry_count": 1,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 38060.72,
+          "first_answer_ms": 21619.17,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1952.49,
+            "node_query_decompose": 3345.33,
+            "node_search_bm25": 17.08,
+            "node_search_embedding_hyde": 16.99,
+            "node_web_search_mcp": 18.74,
+            "node_query_kg": 21.84,
+            "node_search_embedding": 192.59,
+            "node_rrf": 1.9,
+            "node_rerank": 344.11,
+            "node_retrieval_grader": 3298.65,
+            "node_answer_output": 11590.72,
+            "node_hallucination_check": 1002.87
+          },
+          "error": "",
+          "ragas_scores": {
+            "llm_context_recall": 1.0,
+            "faithfulness": 1.0,
+            "response_relevancy": 0.8070197161304858
+          }
+        },
+        {
+          "case_id": "matebook_usb_device_setup",
+          "query": "HUAWEI MateBook B7-420 通过扩展坞连接 USB 设备的步骤是什么？",
+          "query_type": "navigation",
+          "item_names": [],
+          "reference_answer": "先把设备的 USB 线缆插入扩展坞 USB-A 接口；如果设备需要独立供电，再接通设备电源并启动；首次连接时，计算机会自动安装所需软件。",
+          "relevant_chunk_ids": [],
+          "response": "## HUAWEI MateBook B7-420 通过扩展坞连接 USB 设备的步骤\n\n根据用户指南，通过扩展坞（如 HUAWEI MateDock 2）连接 USB 鼠标、打印机、扫描仪、智能手机或硬盘等 USB 设备的具体操作步骤如下：\n\n1.  **物理连接**：将 USB 设备的线缆插入扩展坞的 **USB-A 接口**。\n2.  **供电与启动**：如果该 USB 设备需要独立电源，请接通设备电源并启动该设备。\n3.  **驱动安装**：首次安装该 USB 设备时，计算机会自动安装设备所需的软件驱动。\n\n### 如何确认设备已连接成功\n\n连接完成后，您可以通过以下步骤在计算机中查看已安装的 USB 设备：\n\n1.  点击桌面底部任务栏的文件管理器图标，打开**文件管理器**。\n2.  点击左侧导航栏中的 **“此电脑”**，即可查看当前连接的 USB 存储设备或其他外设。\n\n### 注意事项\n\n*   **接口类型**：请确保将设备插入扩展坞的 **USB-A 接口**（用于数据传输），而非仅支持充电的 USB-C 充电接口。\n*   **扩展坞接口说明**：\n    *   **USB-A 接口**：支持连接鼠标、键盘、U盘、网卡等数据进行传输。\n    *   **USB-C 充电接口**：仅支持为连接的设备充电，**不支持数据传输**。\n\n【图片】\nhttp://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%97%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/9403491ea8f018f9337364c04fb1558fb31e441d21e7a1ff12317b7b5b92f769.jpg\nhttp://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/01873fa7da915483df16374a30bc7d0daf02a3a9fed05b5548a2219307d7ef4c.jpg",
+          "retrieved_contexts": [
+            "# 配件及扩展连线\n\n\n# 扩展坞（可选配件）\n\n通过扩展坞接口或插槽，计算机可以连接兼容多种设备和配件，如投影仪、电视、U 盘等，满足您的扩展需求。\n\n$\\textcircled{8}$ 扩展坞为可选配件，您可单独购买。\n\n了解 HUAWEI MateDock 2 扩展坞\n\n![HUAWEI MateDock 2 扩展坞连接示意图：通过 USB-C 接口连接笔记本，提供 HDMI、VGA、USB-A 等多种接口扩展。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/9403491ea8f018f9337364c04fb1558fb31e441d21e7a1ff12317b7b5b92f769.jpg)\n\n<table><tr><td>USB-C插头</td><td>连接计算机USB-C接口。</td></tr><tr><td>USB-A接口</td><td>连接USB设备，如USB鼠标/键盘、USB存储设备、USB网卡等。</td></tr><tr><td>HDMI接口</td><td>连接HDMI输入设备，如电视机。</td></tr><tr><td>VGA接口</td><td>连接VGA输入设备，如显示器。</td></tr><tr><td>USB-C接口</td><td>连接USB-C接口设备。</td></tr></table>\n\n![华为MateBook B7-420扩展坞接口示意图：含VGA、HDMI、USB-A、LAN口及USB-C插头、microSD卡槽等连接说明。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/01873fa7da915483df16374a30bc7d0daf02a3a9fed05b5548a2219307d7ef4c.jpg)\n\n<table><tr><td>USB-C插头</td><td>连接计算机USB-C接口。</td></tr><tr><td>microSD卡槽</td><td>支持4K Class10高速TF卡数据传输。</td></tr><tr><td>USB-A接口×2</td><td>连接USB设备，如USB鼠标/键盘、USB存储设备、USB网卡等。</td></tr><tr><td>USB-C充电接口</td><td>连接USB-C接口设备充电，不支持数据传输。</td></tr><tr><td>VGA接口</td><td>连接VGA输入设备，如显示器。</td></tr><tr><td>HDMI接口</td><td>连接HDMI输入设备，如电视机。</td></tr><tr><td>LAN接口</td><td>连接网线。</td></tr></table>",
+            "# 连接 USB 鼠标、打印机或其他设备\n\n通过扩展坞 USB-A 接口，可连接 USB 鼠标、打印机、扫描仪、智能手机或硬盘等 USB 设备。\n\n\n# 连接 USB 设备\n\n1 将设备的 USB 线缆插入扩展坞 USB-A 接口。  \n2 如果设备需要连接电源线，请接通设备电源并启动 USB 设备。  \n3 首次安装 USB 设备时，计算机会自动安装设备所需的软件。\n\n\n# 查找计算机安装的 USB 设备\n\n1 点击桌面底部任务栏的 ，打开文件管理器。  \n2 点击 此电脑，可查看安装的 USB 设备。\n\n\n# 蓝牙鼠标（可选配件）\n\n华为蓝牙鼠标可通过蓝牙连接计算机。首次使用蓝牙鼠标，需要完成蓝牙鼠标与计算机的配对。\n\n\n# 了解蓝牙鼠标\n\n$\\textcircled{8}$ 蓝牙鼠标为可选配件，您可单独购买。\n\n![华为蓝牙鼠标结构示意图：1-左键、2-滚轮、3-右键、4-底部。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/0bb8f147b43a0f9be5bae5a7ab773d01e84904dff75c39eb88328646e7798b1c.jpg)\n\n![华为MateBook B7-420可选鼠标配件，图示标注电源开关（5）与蓝牙配对/充电接口（6）位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/e1c9b2d9da7145c920bcb16067edb061bf57a78fe085bfc8bdf64047edf8acfe.jpg)\n\n<table><tr><td>1</td><td>左键</td><td>2</td><td>滚轮+中键</td></tr><tr><td>3</td><td>右键</td><td>4</td><td>LED指示灯\n指示灯为红色闪烁时，表示电池电量低，请注意更换电池。</td></tr><tr><td>5</td><td>传感器</td><td>6</td><td>电源/蓝牙配对开关</td></tr></table>",
+            "# 连接到电视、显示器或投影仪\n\n观看电影或会议演示时，将计算机连接到电视、显示器或投影仪等大屏显示设备，观看效果更佳。\n\n• 除了计算机、扩展坞和连接设备之外，您还需要准备 HDMI 或 VGA 连接线缆。  \n• 在连接之前您需要检查所连接设备的端口。  \n• 通过扩展坞将计算机连接到电视等设备的操作步骤类似，下文以 HUAWEI MateDock 2扩展坞为例。  \n• HDMI 接口和 VGA 接口不能同时使用。\n\n![HUAWEI MateDock 2 扩展坞连接示意图：USB-C 接入笔记本，HDMI 连接显示器/电视，HDMI 与 VGA 不能同时使用。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/efa685c6628105dda7e48a00144056d69c63332a905c5b388bccec6612b43120.jpg)\n\n1 参照图示，通过扩展坞连接计算机和电视、显示器或投影仪。  \n2 接通电视、显示器或投影仪的电源并打开。\n\n回3 热键模式下，按 键，或者点击 $\\equiv { \\tt I } + { \\sf P }$ 打开投影界面，选择投影方式。\n\n• ，只在计算机显示桌面，外接设备屏幕不显示内容。  \n• ，在计算机和外接设备上都显示桌面。  \n• ，将计算机的桌面扩展到外接设备屏幕，可以在屏幕之间移动项目。\n\n• ，只在外接设备上显示桌面，计算机屏幕不显示内容。",
+            "# 用户指南\n\n\n# 目 录\n\n\n# 了解计算机\n\n外观介绍 1\n\n键盘 2\n\n触摸板 3\n\n给计算机充电 6\n\n\n# 启用计算机\n\n开启和关闭计算机 7\n\n获取精彩功能 7\n\n\n# F10 一键恢复出厂\n\n\n# 护眼模式\n\n\n# 配件及扩展连线\n\n扩展坞（可选配件） 10\n\n连接到电视、显示器或投影仪 11\n\n连接 USB 鼠标、打印机或其他设备 13\n\n蓝牙鼠标（可选配件） 13\n\n\n# 安全信息\n\n\n# 个人信息和数据安全\n\n\n# 法律声明\n\n\n# 了解计算机\n\n\n# 外观介绍\n\n0 键盘布局可能会因国家、地区存在差异，请以实物为准。\n\n![华为 MateBook B7-420 笔记本电脑外观结构示意图，标注了摄像头、麦克风、扬声器、屏幕边框、电源键、键盘、触控板及接口等主要部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/487ea23345772dac73a8dde919be383b7a656458a17aa60ae03e2631fde9101f.jpg)\n\n![华为MateBook B7-420笔记本电脑外观结构示意图，标注了环境光传感器、接口及底座部件位置。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/89419b40084d121d32f8e8a5ed51a1c3d9e117306c8d2cc4a5614d65a1c47373.jpg)\n\n<table><tr><td>1</td><td>隐藏式环境光传感器\n感知周围光线情况，自动调节屏幕显示亮度。\n请不要在环境光感应器位置上覆盖物体，以免影响正常使用。如果要使用屏幕保护膜，建议您购买为感应器留了小开口的专用屏幕保护膜。</td></tr><tr><td>2</td><td>摄像头\n可以进行拍照或视频交流以及人脸识别登录。</td></tr><tr><td>3</td><td>摄像头指示灯\n了解摄像头使用状态。摄像头开启时，指示灯白色常亮。</td></tr><tr><td>4</td><td>触摸显示屏\n轻触屏幕可操作计算机。</td></tr><tr><td>5</td><td>指纹电源键\n录入指纹后，您只需使用已录入指纹的手指按一下电源键，即可同时实现开机、解锁，无需输入密码，快捷安全。</td></tr><tr><td>6</td><td>扬声器×6\n声音从扬声器中发出。</td></tr><tr><td>7</td><td>触摸板\n·支持压力触控板功能，可更灵活自由地操控计算机。更多内容，请查看触摸板章节。\n·部分华为手机的NFC感应区域与计算机的华为分享感应区域轻触，实现华为分享功能。\n华为分享感应区域大致位于触摸板中间，外部不可见。</td></tr><tr><td>8</td><td>麦克风×4\n使用麦克风进行视频会议、语音通话或录音。</td></tr><tr><td>9</td><td>耳机接口\n连接耳机。</td></tr><tr><td>10</td><td>ThunderboltTM 4接口×2\n·外接雷电存储设备传输数据，传输速度更快。\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。</td></tr><tr><td>11</td><td>充电指示灯\n充电时，显示电池充电状态：\n·白色闪烁表示正在充电。\n·白色常亮表示电池充满电，停止充电。</td></tr><tr><td>12</td><td>USB-C接口×2\n·连接电源适配器给计算机充电。\n·通过扩展坞，连接显示器、投影仪等视频显示设备。\n·连接手机、U盘等外接设备传输数据。</td></tr></table>",
+            "# 安装电池\n\n![HUAWEI 蓝牙鼠标（第二代）电池安装步骤：掀开上壳 → 插入 AA 电池 → 合上上壳。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/72980c9fccf7d9b5302a3d5af37bd14b867887cd3011f0108dbb475ec64331f8.jpg)\n\n沿鼠标尾部标志打开上壳，在电池仓中安装一节 AA 电池， 合上上壳，即可完成安装。\n\nHUAWEI 蓝牙鼠标(第二代)与计算机配对\n\n![HUAWEI 蓝牙鼠标（第二代）配对示意图：拨动电源开关开机，长按多设备切换键3秒进入配对模式，与笔记本蓝牙连接。](http://127.0.0.1:19100/knowledge-base-files/upload-images/HUAWEIMateBookB7-420%E7%94%A8%E6%88%B7%E6%8C%87%E5%8D%97-%28MRGFZ%2CWindows11_02%2Czh-cn%29/8e3581d41c3dbe32cf6983b7cb5fcdaac8cc33d0b36233440b2721c450d3d4c6.jpg)\n\n首次使用鼠标，需要与蓝牙设备进行配对连接，最多支持连接 3 台蓝牙设备。\n\n1 向下拨动鼠标底部的电源开关，使鼠标开机。  \n2 长按多设备切换按键 3 秒，多设备指示灯快闪，鼠标进入配对状态。（首次配对无需长按多设备切换按键，开机后多设备指示灯快闪，鼠标自动进入配对状态。）  \n3 在蓝牙设备上发起蓝牙配对，选择 HUAWEI Mouse CD23，根据界面提示完成配对。  \n4 短按多设备切换按键，对应的多设备指示灯亮起，然后长按多设备切换按键 3 秒，按照以上配对方法依次可配对连接 3 台蓝牙设备。  \n$\\textcircled{8}$ 鼠标仅支持 Microsoft Windows 10，Windows 8.1，macOS 10.10, iOS 13.1，HarmonyOS 2，Android 5.0 及以上系统，Linux 系统(部分 Android 和 macOS/iOS 机型可能存在兼容性问题)。"
+          ],
+          "retrieved_context_ids": [
+            "465615699130974864",
+            "465615699130974866",
+            "465615699130974865",
+            "465615699130974858",
+            "465615699130974869"
+          ],
+          "retrieved_context_preview": [
+            "# 配件及扩展连线\n\n\n# 扩展坞（可选配件）\n\n通过扩展坞接口或插槽，计算机可以连接兼容多种设备和配件，如投影仪、电视、U 盘等，满足您的扩展需求。\n\n$\\textcircled{8}$ 扩展坞为可选配件，您可单独购买。\n\n了解 HUAWEI MateDock 2 扩展坞\n\n![HUAWEI MateDock 2 扩展坞连接示意图：通过 USB-C 接口连接笔记本，提供 HDMI、VGA、USB-A 等多种接口扩展。](http://...",
+            "# 连接 USB 鼠标、打印机或其他设备\n\n通过扩展坞 USB-A 接口，可连接 USB 鼠标、打印机、扫描仪、智能手机或硬盘等 USB 设备。\n\n\n# 连接 USB 设备\n\n1 将设备的 USB 线缆插入扩展坞 USB-A 接口。  \n2 如果设备需要连接电源线，请接通设备电源并启动 USB 设备。  \n3 首次安装 USB 设备时，计算机会自动安装设备所需的软件。\n\n\n# 查找计算机安装的 USB 设备\n\n1 点击桌面底部任务栏的...",
+            "# 连接到电视、显示器或投影仪\n\n观看电影或会议演示时，将计算机连接到电视、显示器或投影仪等大屏显示设备，观看效果更佳。\n\n• 除了计算机、扩展坞和连接设备之外，您还需要准备 HDMI 或 VGA 连接线缆。  \n• 在连接之前您需要检查所连接设备的端口。  \n• 通过扩展坞将计算机连接到电视等设备的操作步骤类似，下文以 HUAWEI MateDock 2扩展坞为例。  \n• HDMI 接口和 VGA 接口不能同时使用。\n\n![HUAW..."
+          ],
+          "retrieved_context_titles": [
+            "# 配件及扩展连线",
+            "# 连接 USB 鼠标、打印机或其他设备",
+            "# 连接到电视、显示器或投影仪",
+            "# 用户指南",
+            "# 安装电池"
+          ],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "sufficient",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 20593.83,
+          "first_answer_ms": 19482.4,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 2141.09,
+            "node_query_decompose": 2139.57,
+            "node_query_kg": 16.37,
+            "node_search_embedding_hyde": 20.05,
+            "node_web_search_mcp": 20.06,
+            "node_search_bm25": 23.85,
+            "node_search_embedding": 193.2,
+            "node_rrf": 2.03,
+            "node_rerank": 423.99,
+            "node_retrieval_grader": 2786.49,
+            "node_answer_output": 11790.49,
+            "node_hallucination_check": 1110.13
+          },
+          "error": "",
+          "ragas_scores": {
+            "llm_context_recall": 1.0,
+            "faithfulness": 1.0,
+            "response_relevancy": 0.8611970125716436
+          }
+        },
+        {
+          "case_id": "tablet_gesture_nav",
+          "query": "华为平板 C7 开启手势导航后，怎么返回桌面和进入最近任务？",
+          "query_type": "navigation",
+          "item_names": [],
+          "reference_answer": "在手势导航下，从屏幕底部边缘上滑可以返回桌面；从屏幕底部边缘向上滑并停顿，可以进入最近任务。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 1516.63,
+          "first_answer_ms": 1514.36,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1508.96,
+            "node_answer_output": 4.56,
+            "node_hallucination_check": 1.86
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_nav_comparison",
+          "query": "华为平板 C7 的手势导航和屏幕内三键导航，在返回桌面和进入多任务上有什么区别？",
+          "query_type": "comparison",
+          "item_names": [],
+          "reference_answer": "手势导航通过从屏幕底部上滑返回桌面、从底部上滑并停顿进入最近任务；屏幕内三键导航则通过点击主屏幕键返回桌面，点击多任务键进入多任务管理界面。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 1754.87,
+          "first_answer_ms": 1752.27,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1747.42,
+            "node_answer_output": 4.1,
+            "node_hallucination_check": 2.19
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_clone_android",
+          "query": "华为平板 C7 怎么把旧安卓设备的数据迁移到新平板？",
+          "query_type": "navigation",
+          "item_names": [],
+          "reference_answer": "在新平板打开平板克隆并选择“这是新设备 > 华为或其他安卓”，再在旧设备安装并打开平板克隆，选择“这是旧设备”，通过扫码或手动连接建立连接，最后在旧设备上选择数据并开始迁移。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 2109.96,
+          "first_answer_ms": 2107.5,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 2102.12,
+            "node_answer_output": 4.56,
+            "node_hallucination_check": 2.0
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_auto_lock",
+          "query": "华为平板 C7 怎么设置自动锁屏时间？",
+          "query_type": "general",
+          "item_names": [],
+          "reference_answer": "进入设置 > 显示和亮度 > 休眠，然后选择需要的屏幕自动休眠时长即可。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 1515.97,
+          "first_answer_ms": 1513.04,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1507.75,
+            "node_answer_output": 4.55,
+            "node_hallucination_check": 2.51
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_service_card_pin",
+          "query": "华为平板 C7 怎么把服务卡片固定到桌面？",
+          "query_type": "navigation",
+          "item_names": [],
+          "reference_answer": "先上滑应用图标展开服务卡片，然后可以长按卡片并拖到屏幕空位，或点击添加按钮把卡片加入当前屏幕。若当前屏幕没有空位，系统会尝试放到下一屏或自动新建一屏。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 2211.11,
+          "first_answer_ms": 2208.69,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 2203.67,
+            "node_answer_output": 4.29,
+            "node_hallucination_check": 2.01
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_big_folder",
+          "query": "华为平板 C7 怎么创建大文件夹并重命名？",
+          "query_type": "navigation",
+          "item_names": [],
+          "reference_answer": "先长按一个应用图标并拖到另一个图标上，生成新文件夹；再长按文件夹并选择显示为大文件夹；之后打开大文件夹，点击文件夹名称或长按后选择重命名即可修改名称。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 1640.74,
+          "first_answer_ms": 1638.28,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1632.78,
+            "node_answer_output": 4.73,
+            "node_hallucination_check": 2.0
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_pure_mode",
+          "query": "华为平板 C7 开启纯净模式后，对安装第三方应用有什么影响？怎么开启？",
+          "query_type": "constraint",
+          "item_names": [],
+          "reference_answer": "可通过设置 > 系统和更新 > 纯净模式开启，也可以从控制中心编辑快捷开关后开启。开启后，已在应用市场上架的应用可按提示前往应用市场安装或继续安装；未上架应用默认不建议安装，若用户仍信任可继续安装并输入密码，但若检测到不可控风险则会被禁止安装。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 3231.3,
+          "first_answer_ms": 3227.91,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 3222.29,
+            "node_answer_output": 4.83,
+            "node_hallucination_check": 2.96
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_factory_reset",
+          "query": "华为平板 C7 恢复出厂设置会删除哪些内容？",
+          "query_type": "explain",
+          "item_names": [],
+          "reference_answer": "恢复出厂设置会删除内部存储中的帐户、系统和应用数据与设置、已安装应用、音乐、图片、内部文件、安全芯片信息，以及与帐号关联并存储在本设备上的系统、应用和个人数据，因此执行前需要先备份。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 1538.16,
+          "first_answer_ms": 1535.31,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1530.09,
+            "node_answer_output": 4.44,
+            "node_hallucination_check": 2.42
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.0
+          }
+        },
+        {
+          "case_id": "tablet_erecovery",
+          "query": "华为平板 C7 无法开机或系统不稳定时，怎么用 eRecovery 恢复系统？",
+          "query_type": "navigation",
+          "item_names": [],
+          "reference_answer": "平板关机后同时长按音量上键和电源键，或重启后立即长按音量上键，进入 Recovery 模式；然后选择“升级模式 > eRecovery模式 > 下载最新版本并恢复 > 下载并恢复”，连接稳定 WLAN 下载恢复包，下载完成后系统会自动升级并重启。",
+          "relevant_chunk_ids": [],
+          "response": "您是想问以下哪个主题：华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)、HUAWEIMateBookB7-420？请明确一下以便精准检索。",
+          "retrieved_contexts": [],
+          "retrieved_context_ids": [],
+          "retrieved_context_preview": [],
+          "retrieved_context_titles": [],
+          "retrieval_plan": {
+            "graph_first": false,
+            "run_kg": false,
+            "run_embedding": true,
+            "run_bm25": false,
+            "run_hyde": false,
+            "run_web": false,
+            "graph_limit": 6,
+            "kg_weight_multiplier": 0.0,
+            "embedding_weight_multiplier": 1.0,
+            "bm25_weight_multiplier": 0.0,
+            "hyde_weight_multiplier": 0.0
+          },
+          "runtime_query_type": "general",
+          "graph_preferred": false,
+          "retrieval_grade": "",
+          "retry_count": 0,
+          "hallucination_retry_count": 0,
+          "hallucination_check_passed": true,
+          "need_rag": true,
+          "latency_ms": 1961.8,
+          "first_answer_ms": 1959.22,
+          "stage_durations_ms": {
+            "node_item_name_confirm": 1953.18,
+            "node_answer_output": 5.27,
+            "node_hallucination_check": 2.16
+          },
+          "error": "",
+          "ragas_scores": {
+            "response_relevancy": 0.5728784784696441
+          }
+        }
+      ]
+    }
+  },
+  "final_variant": "baseline_rag",
+  "final_system_metrics": {
+    "variant": "baseline_rag",
+    "description": "最原始基线：仅 embedding 检索 + rerank + answer",
+    "technique": "Baseline RAG",
+    "case_count": 18,
+    "ragas_metrics": {
+      "llm_context_recall": 1.0,
+      "faithfulness": 0.9455,
+      "response_relevancy": 0.2777
+    },
+    "ragas_coverage": {
+      "llm_context_recall": 5,
+      "faithfulness": 5,
+      "factual_correctness": 18,
+      "response_relevancy": 18,
+      "id_based_context_precision": 0,
+      "id_based_context_recall": 0
+    },
+    "ragas_errors": {
+      "factual_correctness": "未在 RAGAS 输出中找到指标列"
+    },
+    "retrieval_metrics": {
+      "empty_retrieval_rate": 0.7222,
+      "hit@1": 0.0,
+      "recall@1": 0.0,
+      "mrr@1": 0.0,
+      "hit@3": 0.0,
+      "recall@3": 0.0,
+      "mrr@3": 0.0,
+      "hit@5": 0.0,
+      "recall@5": 0.0,
+      "mrr@5": 0.0
+    },
+    "pipeline_metrics": {
+      "empty_answer_rate": 0.0,
+      "crag_retry_rate": 0.2222,
+      "hallucination_retry_rate": 0.0556,
+      "graph_preferred_rate": 0.0,
+      "need_rag_rate": 1.0,
+      "error_rate": 0.0
+    },
+    "performance_metrics": {
+      "avg_total_duration_ms": 10131.7883,
+      "p50_total_duration_ms": 10104.66,
+      "p95_total_duration_ms": 38060.72,
+      "avg_first_answer_ms": 8982.2022,
+      "p50_first_answer_ms": 10101.1,
+      "p95_first_answer_ms": 21619.17,
+      "stages": [
+        {
+          "stage": "node_answer_output",
+          "avg_duration_ms": 3175.7733,
+          "p95_duration_ms": 11790.49,
+          "count": 18
+        },
+        {
+          "stage": "node_hallucination_check",
+          "avg_duration_ms": 290.9178,
+          "p95_duration_ms": 1202.57,
+          "count": 18
+        },
+        {
+          "stage": "node_item_name_confirm",
+          "avg_duration_ms": 2037.1794,
+          "p95_duration_ms": 3222.29,
+          "count": 18
+        },
+        {
+          "stage": "node_query_decompose",
+          "avg_duration_ms": 3006.0456,
+          "p95_duration_ms": 7989.91,
+          "count": 9
+        },
+        {
+          "stage": "node_query_kg",
+          "avg_duration_ms": 20.3778,
+          "p95_duration_ms": 25.76,
+          "count": 9
+        },
+        {
+          "stage": "node_rerank",
+          "avg_duration_ms": 179.99,
+          "p95_duration_ms": 423.99,
+          "count": 9
+        },
+        {
+          "stage": "node_retrieval_grader",
+          "avg_duration_ms": 1646.7467,
+          "p95_duration_ms": 3298.65,
+          "count": 9
+        },
+        {
+          "stage": "node_rrf",
+          "avg_duration_ms": 2.1244,
+          "p95_duration_ms": 2.84,
+          "count": 9
+        },
+        {
+          "stage": "node_search_bm25",
+          "avg_duration_ms": 21.01,
+          "p95_duration_ms": 24.03,
+          "count": 9
+        },
+        {
+          "stage": "node_search_embedding",
+          "avg_duration_ms": 186.1067,
+          "p95_duration_ms": 212.41,
+          "count": 9
+        },
+        {
+          "stage": "node_search_embedding_hyde",
+          "avg_duration_ms": 18.4678,
+          "p95_duration_ms": 22.06,
+          "count": 9
+        },
+        {
+          "stage": "node_web_search_mcp",
+          "avg_duration_ms": 19.7922,
+          "p95_duration_ms": 21.98,
+          "count": 9
+        }
+      ]
+    },
+    "headline_metrics": {
+      "faithfulness": 0.9455,
+      "response_relevancy": 0.2777,
+      "llm_context_recall": 1.0,
+      "hit@1": 0.0,
+      "hit@3": 0.0,
+      "recall@3": 0.0,
+      "mrr@3": 0.0,
+      "avg_total_duration_ms": 10131.7883,
+      "p95_total_duration_ms": 38060.72
+    }
+  },
+  "comparisons": {}
+}

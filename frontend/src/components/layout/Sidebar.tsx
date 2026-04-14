@@ -118,7 +118,7 @@ export function Sidebar({
           />
           <NavButton
             icon={<BarChart3 className="w-4 h-4" />}
-            label="性能分析"
+            label="性能与评测"
             isOpen={isOpen}
             active={isActive('/performance')}
             onClick={() => navigate('/performance')}

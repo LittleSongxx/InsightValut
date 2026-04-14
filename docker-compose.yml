@@ -225,6 +225,9 @@ services:
     volumes:
       - ./.cache:/app/.cache
       - ./logs:/app/logs
+      - ./output:/app/output
+      - ./docs:/app/docs:ro
+      - ./reports:/app/reports
     depends_on:
       - mongodb
       - milvus

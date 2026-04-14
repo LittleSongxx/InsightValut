@@ -25,6 +25,18 @@ from app.utils.perf_tracker import (
     get_performance_time_series,
     get_stage_breakdown,
 )
+from app.utils.eval_report_utils import (
+    list_evaluation_reports,
+    get_evaluation_report,
+    get_latest_evaluation_report,
+)
+from app.utils.eval_job_utils import (
+    create_evaluation_job,
+    get_evaluation_config,
+    get_evaluation_job,
+    list_evaluation_jobs,
+    run_evaluation_job,
+)
 from app.clients.mongo_history_utils import (
     get_recent_messages,
     clear_history,
@@ -55,6 +67,14 @@ class QueryRequest(BaseModel):
     query: str = Field(..., description="查询内容")  # ...必须填写
     session_id: str = Field(None, description="会话ID")
     is_stream: bool = Field(False, description="是否流式返回")
+
+
+class EvaluationRunRequest(BaseModel):
+    """统一评测触发请求"""
+
+    dataset_path: str = Field(..., description="评测数据集路径")
+    variants: list[str] = Field(default_factory=list, description="评测变体列表")
+    output_path: str | None = Field(None, description="可选输出报告路径")
 
 
 # 证明服务器启动即可
@@ -248,6 +268,88 @@ async def performance_stages(start_date: str = None, end_date: str = None):
         return get_stage_breakdown(start_date, end_date)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"performance stages error: {e}")
+
+
+# ─── 量化评测 API ─────────────────────────────────────────────
+
+
+@app.get("/evaluation/reports")
+async def evaluation_reports():
+    """获取统一评测报告列表"""
+    try:
+        return list_evaluation_reports()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"evaluation reports error: {e}")
+
+
+@app.get("/evaluation/reports/latest")
+async def latest_evaluation_report():
+    """获取最新的统一评测报告"""
+    try:
+        return {"report": get_latest_evaluation_report()}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"latest evaluation report error: {e}"
+        )
+
+
+@app.get("/evaluation/reports/{report_id}")
+async def evaluation_report(report_id: str):
+    """获取指定统一评测报告"""
+    try:
+        report = get_evaluation_report(report_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"evaluation report error: {e}")
+    if report is None:
+        raise HTTPException(status_code=404, detail="evaluation report not found")
+    return report
+
+
+@app.get("/evaluation/config")
+async def evaluation_config():
+    """获取评测运行配置"""
+    try:
+        return get_evaluation_config()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"evaluation config error: {e}")
+
+
+@app.get("/evaluation/jobs")
+async def evaluation_jobs(limit: int = 10):
+    """获取最近的评测任务列表"""
+    try:
+        return list_evaluation_jobs(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"evaluation jobs error: {e}")
+
+
+@app.get("/evaluation/jobs/{job_id}")
+async def evaluation_job(job_id: str):
+    """获取指定评测任务状态"""
+    try:
+        job = get_evaluation_job(job_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"evaluation job error: {e}")
+    if job is None:
+        raise HTTPException(status_code=404, detail="evaluation job not found")
+    return job
+
+
+@app.post("/evaluation/jobs")
+async def create_and_run_evaluation_job(
+    background_tasks: BackgroundTasks, request: EvaluationRunRequest
+):
+    """创建并后台执行统一评测"""
+    try:
+        job = create_evaluation_job(
+            dataset_path=request.dataset_path,
+            variants=request.variants,
+            output_path=request.output_path,
+        )
+        background_tasks.add_task(run_evaluation_job, job["job_id"])
+        return job
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"create evaluation job error: {e}")
 
 
 if __name__ == "__main__":
