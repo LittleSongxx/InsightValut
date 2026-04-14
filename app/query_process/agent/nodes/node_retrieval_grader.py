@@ -132,9 +132,7 @@ def node_retrieval_grader(state):
         result["retrieval_grade"] = "retry"
         # 更新 rewritten_query 为建议的查询词，供 node_item_name_confirm 使用
         result["rewritten_query"] = new_query
-        # 重置 retry_count：retry 回退到 node_item_name_confirm 后，
-        # 需要重新经历 step_3~step_7，retry_count 应从 0 开始计数
-        result["retry_count"] = 0
+        result["retry_count"] = retry_count + 1
         # 清空旧检索结果，为新一轮检索做准备
         result["embedding_chunks"] = []
         result["hyde_embedding_chunks"] = []

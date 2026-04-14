@@ -38,6 +38,9 @@ class QueryGraphState(TypedDict):
     query_route_reason: str  # 问题类型识别原因
     retrieval_plan: dict  # 按题型生成的检索执行计划
     kg_query_summary: dict  # 图谱查询摘要（命中模板、结果数等）
+    evaluation_mode: bool
+    evaluation_overrides: dict
+    message_id: str
 
     # CRAG（Corrective RAG）检索质量判断
     retry_count: int  # 当前检索重试次数

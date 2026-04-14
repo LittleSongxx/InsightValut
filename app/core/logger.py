@@ -10,6 +10,7 @@
 6. 开箱即用：项目所有模块直接导入logger即可使用
 7. 位置终极精准：穿透loguru内部+工具类自身，完美显示业务模块实际调用位置
 """
+
 import sys
 import inspect
 from pathlib import Path
@@ -42,6 +43,7 @@ LOG_FORMAT = (
     "<level>{message}</level>"
 )
 
+
 # -------------------------- 第五步：初始化日志配置（核心方法） --------------------------
 def init_logger():
     """
@@ -62,47 +64,68 @@ def init_logger():
             level=LOG_CONSOLE_LEVEL,
             format=LOG_FORMAT,
             colorize=True,
-            enqueue=True
+            enqueue=True,
         )
 
     # 3. 配置文件输出（若.env开启）
     if LOG_FILE_ENABLE:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
-        logger.add(
-            sink=LOG_FILE_PATH,
-            level=LOG_FILE_LEVEL,
-            format=LOG_FORMAT,
-            rotation="00:00",
-            retention=LOG_FILE_RETENTION,
-            encoding="utf-8",
-            enqueue=True,
-            backtrace=True,
-            diagnose=True
-        )
+        try:
+            logger.add(
+                sink=LOG_FILE_PATH,
+                level=LOG_FILE_LEVEL,
+                format=LOG_FORMAT,
+                rotation="00:00",
+                retention=LOG_FILE_RETENTION,
+                encoding="utf-8",
+                enqueue=True,
+                backtrace=True,
+                diagnose=True,
+            )
+        except OSError:
+            fallback_log_path = (
+                LOG_DIR / f"app_{os.getpid()}_{{time:YYYYMMDD_HHmmss}}.log"
+            )
+            logger.add(
+                sink=fallback_log_path,
+                level=LOG_FILE_LEVEL,
+                format=LOG_FORMAT,
+                rotation="00:00",
+                retention=LOG_FILE_RETENTION,
+                encoding="utf-8",
+                enqueue=True,
+                backtrace=True,
+                diagnose=True,
+            )
 
     return logger
 
+
 # -------------------------- 第六步：初始化并终极修正全局logger --------------------------
 base_logger = init_logger()
+
 
 def fix_log_position(record):
     """遍历调用栈，跳过loguru内部帧+工具类自身帧，提取业务代码实际调用位置"""
     for frame in inspect.stack():
         # 终极过滤：排除loguru内部 + 排除工具类logger.py自身，直接定位业务模块
-        if ("_logger.py" in frame.filename or frame.function == "_log") or "logger.py" in frame.filename:
+        if (
+            "_logger.py" in frame.filename or frame.function == "_log"
+        ) or "logger.py" in frame.filename:
             continue
         # 更新日志字段为业务代码实际位置
         record.update(
             name=frame.filename.split("/")[-1].split("\\")[-1],
             function=frame.function,
-            line=frame.lineno
+            line=frame.lineno,
         )
         break
+
 
 # 应用终极修复，导出全局可用的logger
 logger = base_logger.patch(fix_log_position)
 
 # -------------------------- 测试代码（验证修复效果） --------------------------
-if __name__ == '__main__':
+if __name__ == "__main__":
     logger.info("【测试】logger.py内部调用（仅测试，业务模块调用会显示正确文件名）")
     print(f"日志文件输出路径：{LOG_FILE_PATH}")

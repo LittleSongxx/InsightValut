@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 from pathlib import Path
 
 from pymilvus.model.hybrid import BGEM3EmbeddingFunction
@@ -38,7 +39,9 @@ def get_bge_m3_ef():
                 logger.info(f"检测到本地模型目录，使用本地路径：{resolved}")
             else:
                 model_name = embedding_config.bge_m3 or "BAAI/bge-m3"
-                logger.warning(f"本地模型目录不存在（{resolved}），回退到 HuggingFace repo ID：{model_name}")
+                logger.warning(
+                    f"本地模型目录不存在（{resolved}），回退到 HuggingFace repo ID：{model_name}"
+                )
         else:
             model_name = embedding_config.bge_m3 or "BAAI/bge-m3"
 
@@ -67,6 +70,24 @@ def get_bge_m3_ef():
         except Exception as e:
             logger.error(f"BGE-M3模型初始化失败：{str(e)}", exc_info=True)
             raise
+
+
+def warmup_embeddings(sample_text: str = "InsightVault embedding warmup"):
+    """
+    预热 BGE-M3：强制完成模型初始化，并执行一次最小编码，避免首个真实请求承担冷启动开销。
+    """
+    text = (sample_text or "").strip() or "InsightVault embedding warmup"
+    start_time = time.perf_counter()
+    logger.info(f"开始执行BGE-M3预热，样本文本长度: {len(text)}")
+    generate_embeddings([text])
+    elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    logger.success(f"BGE-M3预热完成，耗时: {elapsed_ms} ms")
+    return {
+        "ok": True,
+        "elapsed_ms": elapsed_ms,
+        "device": embedding_config.bge_device or "cpu",
+        "model_hint": embedding_config.bge_m3_path or embedding_config.bge_m3 or "",
+    }
 
 
 def generate_embeddings(texts):

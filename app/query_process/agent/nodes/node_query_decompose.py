@@ -15,6 +15,7 @@ from app.query_process.agent.retrieval_utils import (
 from app.core.load_prompt import load_prompt
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.graph_query_utils import get_bm25_enabled
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
@@ -72,7 +73,7 @@ def step_1_detect_compound(question: str, item_names: List[str]) -> Dict:
 
 
 def step_2_search_sub_queries(
-    sub_queries: List[str], item_names: List[str]
+    sub_queries: List[str], item_names: List[str], bm25_enabled: bool
 ) -> List[Dict]:
     """
     阶段2：对每个子查询独立执行 Milvus 混合检索，合并所有结果
@@ -113,28 +114,30 @@ def step_2_search_sub_queries(
                     f"Step 2: 子查询 [{i + 1}] Embedding 检索到 {len(embedding_entities)} 条结果"
                 )
 
-            bm25_results = run_bm25_search(
-                query_text=sub_q,
-                item_names=item_names,
-                top_k=cfg.bm25_top_k,
-                candidate_limit=cfg.bm25_candidate_limit,
-                output_fields=[
-                    "chunk_id",
-                    "content",
-                    "title",
-                    "parent_title",
-                    "part",
-                    "file_title",
-                    "item_name",
-                    "image_urls",
-                ],
-            )
-            bm25_entities = _as_entity_list(bm25_results)
-            if bm25_entities:
-                all_source_weights.append((bm25_entities, cfg.rrf_weight_bm25))
-                logger.info(
-                    f"Step 2: 子查询 [{i + 1}] BM25 检索到 {len(bm25_entities)} 条结果"
+            bm25_entities = []
+            if bm25_enabled:
+                bm25_results = run_bm25_search(
+                    query_text=sub_q,
+                    item_names=item_names,
+                    top_k=cfg.bm25_top_k,
+                    candidate_limit=cfg.bm25_candidate_limit,
+                    output_fields=[
+                        "chunk_id",
+                        "content",
+                        "title",
+                        "parent_title",
+                        "part",
+                        "file_title",
+                        "item_name",
+                        "image_urls",
+                    ],
                 )
+                bm25_entities = _as_entity_list(bm25_results)
+                if bm25_entities:
+                    all_source_weights.append((bm25_entities, cfg.rrf_weight_bm25))
+                    logger.info(
+                        f"Step 2: 子查询 [{i + 1}] BM25 检索到 {len(bm25_entities)} 条结果"
+                    )
 
             if not embedding_entities and not bm25_entities:
                 logger.warning(f"Step 2: 子查询 [{i + 1}] 无检索结果")
@@ -183,6 +186,8 @@ def node_query_decompose(state):
     is_compound = detect_result.get("is_compound", False)
     sub_queries = detect_result.get("sub_queries", [])
 
+    bm25_enabled = get_bm25_enabled(state)
+
     result = {
         "is_compound_query": is_compound,
         "sub_queries": sub_queries,
@@ -191,7 +196,7 @@ def node_query_decompose(state):
     # 阶段2：复合问题 → 执行子查询检索
     if is_compound and sub_queries:
         logger.info(f"检测为复合问题，分解为 {len(sub_queries)} 个子查询")
-        rrf_chunks = step_2_search_sub_queries(sub_queries, item_names)
+        rrf_chunks = step_2_search_sub_queries(sub_queries, item_names, bm25_enabled)
         result["rrf_chunks"] = rrf_chunks
     else:
         logger.info("检测为简单问题，跳过分解，交由正常检索流程处理")

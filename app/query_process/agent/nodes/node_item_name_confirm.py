@@ -23,7 +23,10 @@ from app.clients.milvus_utils import (
 from dotenv import load_dotenv, find_dotenv
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
-from app.query_process.agent.graph_query_utils import build_query_route
+from app.query_process.agent.graph_query_utils import (
+    apply_route_overrides,
+    build_query_route,
+)
 
 load_dotenv(find_dotenv())
 
@@ -338,7 +341,7 @@ def step_6_check_confirmation(
                 if mid:
                     ids_to_update.append(str(mid))
 
-        if ids_to_update:
+        if ids_to_update and not state.get("evaluation_mode"):
             logger.info(f"Step 6: 更新 {len(ids_to_update)} 条历史消息的关联商品名")
             update_message_item_names(ids_to_update, confirmed)
 
@@ -376,6 +379,8 @@ def step_7_write_history(
     写入最终历史记录
     """
     logger.info("Step 7: 写入会话历史")
+    if state.get("evaluation_mode"):
+        return state
 
     # 如果有助手回答（分支 B/C），写入助手消息
     if state.get("answer"):
@@ -414,13 +419,22 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     # 检测是否为 CRAG retry 回退场景（retrieval_grade == "retry" 表示从 node_retrieval_grader 回退）
     is_retry_from_crag = state.get("retrieval_grade") == "retry"
     # 若从 CRAG retry 回退，不重新保存消息（避免重复），仅更新 rewritten_query
-    crag_retry_message_id = state.get("pending_message_id")
+    crag_retry_message_id = state.get("pending_message_id") or state.get("message_id")
+    current_query = (
+        (state.get("rewritten_query") or "").strip()
+        if is_retry_from_crag
+        else original_query
+    ) or original_query
 
     # 标记任务开始
     add_running_task(session_id, "node_item_name_confirm", is_stream)
 
     # 1. 获取历史记录
-    history = get_recent_messages(session_id, limit=10)
+    history = (
+        []
+        if state.get("evaluation_mode")
+        else get_recent_messages(session_id, limit=10)
+    )
     logger.info(f"Node: 获取到 {len(history)} 条历史消息")
 
     # 2. 保存用户当前消息 (初始保存，后续 step 7 会更新)
@@ -428,19 +442,30 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     if is_retry_from_crag and crag_retry_message_id:
         message_id = crag_retry_message_id
         logger.debug(f"Node: CRAG retry 场景，跳过消息重新保存，使用原ID: {message_id}")
+    elif state.get("evaluation_mode"):
+        message_id = state.get("message_id") or f"eval-{session_id}"
+        state["message_id"] = message_id
     else:
         message_id = save_chat_message(
             session_id, "user", original_query, "", state.get("item_names", [])
         )
         logger.debug(f"Node: 用户消息已初始保存, ID: {message_id}")
+        state["message_id"] = message_id
 
     # 3. 提取信息
-    extract_res = step_3_extract_info(original_query, history)
+    extract_res = step_3_extract_info(current_query, history)
     item_names = extract_res.get("item_names", [])
-    rewritten_query = extract_res.get("rewritten_query", original_query)
+    rewritten_query = extract_res.get("rewritten_query", current_query)
     use_rag = bool(
         extract_res.get("use_rag", _fallback_need_rag(rewritten_query, item_names))
     )
+    if "force_need_rag" in state.get("evaluation_overrides", {}):
+        use_rag = bool(state["evaluation_overrides"].get("force_need_rag"))
+    forced_item_names = state.get("evaluation_overrides", {}).get("force_item_names")
+    if isinstance(forced_item_names, list):
+        item_names = [
+            str(name).strip() for name in forced_item_names if str(name).strip()
+        ]
 
     # 更新 State 中的 rewrite_query
     state["rewritten_query"] = rewritten_query
@@ -451,7 +476,9 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     if not use_rag:
         logger.info("Node: 判定为通用对话，跳过 RAG 检索流程")
         state["item_names"] = []
-        route_info = build_query_route(rewritten_query, state.get("item_names", []))
+        route_info = apply_route_overrides(
+            build_query_route(rewritten_query, state.get("item_names", [])), state
+        )
         state["query_type"] = route_info.get("query_type", "general")
         state["graph_preferred"] = False
         state["query_focus_terms"] = route_info.get("focus_terms", [])
@@ -472,7 +499,11 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     align_result = {}
 
     # 4. & 5. 如果有提取到商品名，进行搜索和对齐
-    if len(item_names) > 0:
+    if len(item_names) > 0 and isinstance(forced_item_names, list):
+        state["item_names"] = item_names
+        if "answer" in state:
+            del state["answer"]
+    elif len(item_names) > 0:
         query_results = step_4_vectorize_and_query(item_names)
         align_result = step_5_align_item_names(query_results)
         # 6. 检查确认状态
@@ -485,7 +516,9 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
         if "answer" in state:
             del state["answer"]
 
-    route_info = build_query_route(rewritten_query, state.get("item_names", []))
+    route_info = apply_route_overrides(
+        build_query_route(rewritten_query, state.get("item_names", [])), state
+    )
     state["query_type"] = route_info.get("query_type", "general")
     state["graph_preferred"] = bool(route_info.get("graph_preferred", False))
     state["query_focus_terms"] = route_info.get("focus_terms", [])

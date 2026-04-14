@@ -228,6 +228,8 @@ def step_4_write_history(state: QueryGraphState, image_urls=None) -> QueryGraphS
     session_id = state.get("session_id", "default")
     answer = (state.get("answer") or "").strip()
     item_names = state.get("item_names") or []
+    if state.get("evaluation_mode"):
+        return state
 
     try:
         if answer:

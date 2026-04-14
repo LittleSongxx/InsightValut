@@ -31,6 +31,7 @@ class QueryThresholdConfig:
     hybrid_sparse_weight: float
     item_name_dense_weight: float
     item_name_sparse_weight: float
+    bm25_enabled: bool
     bm25_top_k: int
     bm25_candidate_limit: int
     bm25_k1: float
@@ -99,6 +100,17 @@ def _int(v, default):
         return default
 
 
+def _bool(v, default):
+    if v is None:
+        return default
+    normalized = str(v).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 query_threshold_config = QueryThresholdConfig(
     # 商品名确认阈值
     item_name_high_threshold=_float(os.getenv("ITEM_NAME_HIGH_THRESHOLD"), 0.85),
@@ -112,6 +124,7 @@ query_threshold_config = QueryThresholdConfig(
     hybrid_sparse_weight=_float(os.getenv("HYBRID_SPARSE_WEIGHT"), 0.2),
     item_name_dense_weight=_float(os.getenv("ITEM_NAME_DENSE_WEIGHT"), 0.8),
     item_name_sparse_weight=_float(os.getenv("ITEM_NAME_SPARSE_WEIGHT"), 0.2),
+    bm25_enabled=_bool(os.getenv("BM25_ENABLED"), False),
     bm25_top_k=_int(os.getenv("BM25_TOP_K"), 8),
     bm25_candidate_limit=_int(os.getenv("BM25_CANDIDATE_LIMIT"), 1000),
     bm25_k1=_float(os.getenv("BM25_K1"), 1.5),

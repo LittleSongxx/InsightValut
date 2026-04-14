@@ -17,7 +17,7 @@ cd "$PROJECT_ROOT"
 echo "stopping insightvault services..."
 
 if [[ -f "$FRONTEND_PID_FILE" ]]; then
-  local pid
+  pid=""
   pid="$(cat "$FRONTEND_PID_FILE" 2>/dev/null || true)"
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null || true

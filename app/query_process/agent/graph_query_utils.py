@@ -1,5 +1,6 @@
 import re
 from typing import Any, Dict, List, Sequence
+from app.conf.query_threshold_config import query_threshold_config
 
 GRAPH_PREFERRED_QUERY_TYPES = {
     "navigation",
@@ -134,7 +135,9 @@ def _keyword_score(query: str, keywords: Sequence[str]) -> int:
     return sum(1 for keyword in keywords if keyword and keyword.lower() in lowered)
 
 
-def extract_focus_terms(query: str, item_names: Sequence[str] | None = None) -> List[str]:
+def extract_focus_terms(
+    query: str, item_names: Sequence[str] | None = None
+) -> List[str]:
     text = _clean_text(query)
     for item_name in item_names or []:
         cleaned = _clean_text(str(item_name))
@@ -154,7 +157,9 @@ def extract_focus_terms(query: str, item_names: Sequence[str] | None = None) -> 
     return candidates[:8]
 
 
-def classify_query_type(query: str, item_names: Sequence[str] | None = None) -> Dict[str, Any]:
+def classify_query_type(
+    query: str, item_names: Sequence[str] | None = None
+) -> Dict[str, Any]:
     normalized_query = _clean_text(query)
     if not normalized_query:
         return {
@@ -180,9 +185,12 @@ def classify_query_type(query: str, item_names: Sequence[str] | None = None) -> 
             best_score = current_score
 
     if query_type == "comparison":
-        item_name_count = len([name for name in item_names or [] if _clean_text(str(name))])
+        item_name_count = len(
+            [name for name in item_names or [] if _clean_text(str(name))]
+        )
         if item_name_count < 2 and not any(
-            keyword in normalized_query for keyword in ("区别", "差异", "比较", "对比", "兼容", "适配")
+            keyword in normalized_query
+            for keyword in ("区别", "差异", "比较", "对比", "兼容", "适配")
         ):
             query_type = "general"
             best_score = 0
@@ -190,8 +198,14 @@ def classify_query_type(query: str, item_names: Sequence[str] | None = None) -> 
     graph_preferred = query_type in GRAPH_PREFERRED_QUERY_TYPES
     focus_terms = extract_focus_terms(normalized_query, item_names)
 
-    if query_type == "general" and any(term in normalized_query for term in ("故障", "原因", "步骤", "区别", "证据")):
-        query_type = "relation" if "故障" in normalized_query or "原因" in normalized_query else "navigation"
+    if query_type == "general" and any(
+        term in normalized_query for term in ("故障", "原因", "步骤", "区别", "证据")
+    ):
+        query_type = (
+            "relation"
+            if "故障" in normalized_query or "原因" in normalized_query
+            else "navigation"
+        )
         graph_preferred = True
 
     reason = f"keyword_score={best_score}" if best_score > 0 else "fallback_general"
@@ -203,12 +217,19 @@ def classify_query_type(query: str, item_names: Sequence[str] | None = None) -> 
     }
 
 
-def build_retrieval_plan(query_type: str, graph_preferred: bool) -> Dict[str, Any]:
+def build_retrieval_plan(
+    query_type: str, graph_preferred: bool, bm25_enabled: bool | None = None
+) -> Dict[str, Any]:
+    resolved_bm25_enabled = (
+        query_threshold_config.bm25_enabled
+        if bm25_enabled is None
+        else bool(bm25_enabled)
+    )
     plan: Dict[str, Any] = {
         "graph_first": graph_preferred,
         "run_kg": True,
         "run_embedding": True,
-        "run_bm25": True,
+        "run_bm25": resolved_bm25_enabled,
         "run_hyde": not graph_preferred,
         "run_web": not graph_preferred,
         "graph_limit": 6,
@@ -234,45 +255,57 @@ def build_retrieval_plan(query_type: str, graph_preferred: bool) -> Dict[str, An
     )
 
     if query_type == "navigation":
-        plan.update({
-            "graph_limit": 10,
-            "kg_weight_multiplier": 2.2,
-            "embedding_weight_multiplier": 0.8,
-            "bm25_weight_multiplier": 0.8,
-        })
+        plan.update(
+            {
+                "graph_limit": 10,
+                "kg_weight_multiplier": 2.2,
+                "embedding_weight_multiplier": 0.8,
+                "bm25_weight_multiplier": 0.8,
+            }
+        )
     elif query_type == "comparison":
-        plan.update({
-            "graph_limit": 12,
-            "kg_weight_multiplier": 2.0,
-            "embedding_weight_multiplier": 0.85,
-            "bm25_weight_multiplier": 1.0,
-        })
+        plan.update(
+            {
+                "graph_limit": 12,
+                "kg_weight_multiplier": 2.0,
+                "embedding_weight_multiplier": 0.85,
+                "bm25_weight_multiplier": 1.0,
+            }
+        )
     elif query_type == "relation":
-        plan.update({
-            "graph_limit": 10,
-            "kg_weight_multiplier": 2.1,
-            "embedding_weight_multiplier": 0.8,
-            "bm25_weight_multiplier": 0.9,
-        })
+        plan.update(
+            {
+                "graph_limit": 10,
+                "kg_weight_multiplier": 2.1,
+                "embedding_weight_multiplier": 0.8,
+                "bm25_weight_multiplier": 0.9,
+            }
+        )
     elif query_type == "constraint":
-        plan.update({
-            "graph_limit": 12,
-            "kg_weight_multiplier": 2.0,
-            "embedding_weight_multiplier": 0.85,
-            "bm25_weight_multiplier": 1.0,
-        })
+        plan.update(
+            {
+                "graph_limit": 12,
+                "kg_weight_multiplier": 2.0,
+                "embedding_weight_multiplier": 0.85,
+                "bm25_weight_multiplier": 1.0,
+            }
+        )
     elif query_type == "explain":
-        plan.update({
-            "graph_limit": 12,
-            "kg_weight_multiplier": 2.3,
-            "embedding_weight_multiplier": 0.8,
-            "bm25_weight_multiplier": 0.8,
-        })
+        plan.update(
+            {
+                "graph_limit": 12,
+                "kg_weight_multiplier": 2.3,
+                "embedding_weight_multiplier": 0.8,
+                "bm25_weight_multiplier": 0.8,
+            }
+        )
 
     return plan
 
 
-def build_query_route(query: str, item_names: Sequence[str] | None = None) -> Dict[str, Any]:
+def build_query_route(
+    query: str, item_names: Sequence[str] | None = None
+) -> Dict[str, Any]:
     route = classify_query_type(query, item_names=item_names)
     route["retrieval_plan"] = build_retrieval_plan(
         route["query_type"], route["graph_preferred"]
@@ -280,7 +313,69 @@ def build_query_route(query: str, item_names: Sequence[str] | None = None) -> Di
     return route
 
 
+def _get_evaluation_overrides(state: Dict[str, Any] | None) -> Dict[str, Any]:
+    if not isinstance(state, dict):
+        return {}
+    overrides = state.get("evaluation_overrides")
+    if isinstance(overrides, dict):
+        return overrides
+    return {}
+
+
+def get_bm25_enabled(state: Dict[str, Any] | None = None) -> bool:
+    overrides = _get_evaluation_overrides(state)
+    if "bm25_enabled" in overrides:
+        return bool(overrides.get("bm25_enabled"))
+    return bool(query_threshold_config.bm25_enabled)
+
+
+def apply_route_overrides(
+    route: Dict[str, Any], state: Dict[str, Any] | None = None
+) -> Dict[str, Any]:
+    overrides = _get_evaluation_overrides(state)
+    if not overrides:
+        return route
+
+    query_type = (
+        str(
+            overrides.get("force_query_type") or route.get("query_type") or "general"
+        ).strip()
+        or "general"
+    )
+    if "force_graph_preferred" in overrides:
+        graph_preferred = bool(overrides.get("force_graph_preferred"))
+    else:
+        graph_preferred = bool(route.get("graph_preferred", False))
+
+    updated_route = dict(route)
+    updated_route["query_type"] = query_type
+    updated_route["graph_preferred"] = graph_preferred
+    if "force_focus_terms" in overrides and isinstance(
+        overrides.get("force_focus_terms"), list
+    ):
+        updated_route["focus_terms"] = overrides.get("force_focus_terms") or []
+    updated_route["reason"] = str(
+        overrides.get("route_reason") or updated_route.get("reason") or "evaluation"
+    )
+    updated_route["retrieval_plan"] = build_retrieval_plan(
+        query_type,
+        graph_preferred,
+        bm25_enabled=get_bm25_enabled(state),
+    )
+
+    retrieval_plan_overrides = overrides.get("retrieval_plan_overrides") or {}
+    if isinstance(retrieval_plan_overrides, dict):
+        updated_plan = dict(updated_route.get("retrieval_plan") or {})
+        updated_plan.update(retrieval_plan_overrides)
+        updated_route["retrieval_plan"] = updated_plan
+
+    return updated_route
+
+
 def should_run_retriever(state: Dict[str, Any], source: str) -> bool:
+    if source == "bm25" and not get_bm25_enabled(state):
+        return False
+
     plan = state.get("retrieval_plan") or {}
     key_map = {
         "kg": "run_kg",

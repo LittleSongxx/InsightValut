@@ -30,6 +30,7 @@ from app.clients.mongo_history_utils import (
     clear_history,
     get_all_sessions,
 )
+from app.lm.embedding_utils import warmup_embeddings
 from app.query_process.agent.main_graph import query_app
 
 # 后续导入启动图对象
@@ -63,6 +64,20 @@ async def health():
     检查服务是否正常
     """
     return {"ok": True}
+
+
+@app.post("/warmup/embeddings")
+async def warmup_embedding_model():
+    """
+    主动预热 embedding 模型，避免首个真实查询承担冷启动成本。
+    """
+    try:
+        result = warmup_embeddings("query service warmup")
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"embedding warmup failed: {e}"
+        ) from e
 
 
 # 定义查询接口

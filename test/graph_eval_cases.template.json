@@ -5,6 +5,7 @@
       "query_type": "navigation",
       "query": "HAK 180 烫金机设置温度这一步的上一步和下一步分别是什么？",
       "item_names": ["HAK 180 烫金机"],
+      "reference_answer": "参考答案：填写该问题的标准答案，用于答案级 RAGAS 指标评测。",
       "relevant_chunk_ids": ["replace_with_real_chunk_id_1"]
     },
     {
@@ -12,6 +13,7 @@
       "query_type": "comparison",
       "query": "HAK 180 烫金机和 HAK 200 烫金机的温度参数有什么区别？",
       "item_names": ["HAK 180 烫金机", "HAK 200 烫金机"],
+      "reference_answer": "参考答案：填写该问题的标准答案，用于答案级 RAGAS 指标评测。",
       "relevant_chunk_ids": [
         "replace_with_real_chunk_id_2",
         "replace_with_real_chunk_id_3"
@@ -22,6 +24,7 @@
       "query_type": "relation",
       "query": "HAK 180 烫金机无法加热通常与哪些原因或部件有关？",
       "item_names": ["HAK 180 烫金机"],
+      "reference_answer": "参考答案：填写该问题的标准答案，用于答案级 RAGAS 指标评测。",
       "relevant_chunk_ids": ["replace_with_real_chunk_id_4"]
     },
     {
@@ -29,6 +32,7 @@
       "query_type": "constraint",
       "query": "哪些产品同时满足 220V 供电和 110℃ 默认温度设置？",
       "item_names": [],
+      "reference_answer": "参考答案：填写该问题的标准答案，用于答案级 RAGAS 指标评测。",
       "relevant_chunk_ids": ["replace_with_real_chunk_id_5"]
     },
     {
@@ -36,6 +40,7 @@
       "query_type": "explain",
       "query": "为什么说 HAK 180 的温度设置步骤和操作面板有关？请给出关系证据。",
       "item_names": ["HAK 180 烫金机"],
+      "reference_answer": "参考答案：填写该问题的标准答案，用于答案级 RAGAS 指标评测。",
       "relevant_chunk_ids": ["replace_with_real_chunk_id_6"]
     },
     {
@@ -43,6 +48,7 @@
       "query_type": "general",
       "query": "HAK 180 烫金机怎么操作？",
       "item_names": ["HAK 180 烫金机"],
+      "reference_answer": "参考答案：填写该问题的标准答案，用于答案级 RAGAS 指标评测。",
       "relevant_chunk_ids": ["replace_with_real_chunk_id_7"]
     }
   ]

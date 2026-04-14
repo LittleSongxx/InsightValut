@@ -38,6 +38,7 @@ from app.clients.mongo_import_utils import (
     list_import_tasks,
     delete_import_task,
 )
+from app.lm.embedding_utils import warmup_embeddings
 
 # 初始化FastAPI应用实例
 # 标题和描述会在Swagger文档(http://ip:port/docs)中展示
@@ -60,6 +61,20 @@ app.add_middleware(
 async def health():
     """检查服务是否正常"""
     return {"ok": True}
+
+
+@app.post("/warmup/embeddings")
+async def warmup_embedding_model():
+    """
+    主动预热 embedding 模型，避免首次导入承担冷启动成本。
+    """
+    try:
+        result = warmup_embeddings("import service warmup")
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"embedding warmup failed: {e}"
+        ) from e
 
 
 class DeleteImportTasksRequest(BaseModel):

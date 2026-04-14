@@ -34,6 +34,7 @@ RUN pip install --no-cache-dir \
     torch torchvision \
     transformers "transformers>=4.57.6" \
     "flagembedding>=1.3.5" grandalf \
+    "ragas>=0.4.3" \
     "openai-agents>=0.4.2" \
     starlette
 

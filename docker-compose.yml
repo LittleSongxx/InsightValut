@@ -7,8 +7,11 @@ x-common-backend-env: &common-backend-env # 项目路径（写死在镜像里，
   # ---------- MinerU ----------
   MINERU_MODEL_SOURCE: modelscope
   MODELSCOPE_OFFLINE: "0"
-  MODELSCOPE_CACHE: ./.cache/modelscope
-  HF_HOME: ./.cache/huggingface
+  XDG_CACHE_HOME: /app/.cache
+  MODELSCOPE_CACHE: /app/.cache/modelscope
+  HF_HOME: /app/.cache/huggingface
+  HF_HUB_CACHE: /app/.cache/huggingface/hub
+  TRANSFORMERS_CACHE: /app/.cache/huggingface/transformers
   MD_ROOT_DIR: ./temp-files/
   # 不填则跳过 PDF 解析（MD/TXT 导入不受影响）
   MINERU_API_TOKEN: ${MINERU_API_TOKEN:-}
@@ -22,7 +25,7 @@ x-common-backend-env: &common-backend-env # 项目路径（写死在镜像里，
   LLM_DEFAULT_TEMPERATURE: "0.1"
 
   # ---------- Embedding ----------
-  BGE_M3_PATH: ./.cache/models/bge-m3
+  BGE_M3_PATH: /app/.cache/models/bge-m3
   BGE_M3: BAAI/bge-m3
   BGE_DEVICE: cpu
   BGE_FP16: "0"
@@ -187,7 +190,7 @@ services:
     ports:
       - "${IMPORT_PORT:-8000}:8000"
     volumes:
-      - ./.cache/models:/app/.cache/models
+      - ./.cache:/app/.cache
       - ./logs:/app/logs
       - ./output:/app/output
     depends_on:
@@ -220,7 +223,7 @@ services:
     ports:
       - "${QUERY_PORT:-8001}:8001"
     volumes:
-      - ./.cache/models:/app/.cache/models
+      - ./.cache:/app/.cache
       - ./logs:/app/logs
     depends_on:
       - mongodb

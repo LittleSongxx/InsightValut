@@ -130,14 +130,17 @@ def perf_mark_first_answer(session_id: str):
         session.mark_first_answer()
 
 
-def perf_finish(session_id: str):
+def perf_finish(session_id: str, persist: bool = True):
     """结束追踪并写入 MongoDB"""
     session = _active_sessions.pop(session_id, None)
     if session is None:
-        return
+        return None
+
+    doc = session.to_document()
+    if not persist:
+        return doc
 
     try:
-        doc = session.to_document()
         collection = _get_perf_collection()
         collection.insert_one(doc)
         logger.info(
@@ -146,6 +149,7 @@ def perf_finish(session_id: str):
         )
     except Exception as e:
         logger.error(f"Failed to save performance record for {session_id}: {e}")
+    return doc
 
 
 def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
