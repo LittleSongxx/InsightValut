@@ -45,6 +45,7 @@ def node_search_embedding(state):
         item_names=item_names,
         output_fields=[
             "chunk_id",
+            "stable_chunk_id",
             "content",
             "title",
             "parent_title",

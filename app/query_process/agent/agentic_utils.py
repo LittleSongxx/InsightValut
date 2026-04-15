@@ -471,4 +471,5 @@ def build_agentic_response_metadata(
         "clarification_reason": coverage.get("clarification_reason") or state.get("clarification_reason") or "",
         "image_urls": list(image_urls or []),
         "agentic_features": get_agentic_features(state),
+        "cache_summary": state.get("cache_summary") or {},
     }

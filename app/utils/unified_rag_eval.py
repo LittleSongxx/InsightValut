@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from app.clients.milvus_schema import extract_chunk_id, normalize_entity_for_business_id
+
 try:
     from langchain_core.embeddings import Embeddings
 except ImportError:
@@ -26,6 +28,11 @@ from app.query_process.agent.retrieval_utils import build_item_name_filter_expr
 from app.utils.bm25_utils import rank_documents_bm25, tokenize_text
 from app.utils.path_util import PROJECT_ROOT
 from app.utils.perf_tracker import perf_finish, perf_start
+from app.utils.query_cache_utils import (
+    get_current_request_cache_summary,
+    query_cache_request_context,
+    reset_query_cache,
+)
 from app.utils.retrieval_eval import load_cases, mrr_at_k, normalize_ids, recall_at_k
 from app.utils.task_utils import clear_task
 
@@ -62,6 +69,7 @@ else:
 DEFAULT_K_VALUES = [1, 3, 5]
 GROUND_TRUTH_OUTPUT_FIELDS = [
     "chunk_id",
+    "stable_chunk_id",
     "item_name",
     "title",
     "parent_title",
@@ -80,6 +88,7 @@ DEFAULT_VARIANTS = [
     "agentic_context_expansion",
     "agentic_rescue_system",
     "agentic_enhanced_system",
+    "agentic_enhanced_system_cached",
 ]
 
 ProgressCallback = Optional[Callable[[Dict[str, Any]], None]]
@@ -273,6 +282,20 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
             "agentic_features": dict(DEFAULT_AGENTIC_FEATURES),
         },
     },
+    "agentic_enhanced_system_cached": {
+        "description": "完整 Agentic 增强系统 + 多级缓存（预热一轮后统计热缓存收益）",
+        "technique": "Agentic Enhanced RAG + Cache",
+        "compare_to": "agentic_enhanced_system",
+        "use_case_query_type": True,
+        "warmup_rounds": 1,
+        "reset_cache_before_run": True,
+        "evaluation_overrides": {
+            "force_need_rag": True,
+            "route_reason": "eval_agentic_enhanced_system_cached",
+            "agentic_features": dict(DEFAULT_AGENTIC_FEATURES),
+            "cache_enabled": True,
+        },
+    },
 }
 
 
@@ -289,6 +312,7 @@ def get_variant_catalog() -> List[Dict[str, Any]]:
             }
         )
     return catalog
+
 
 RAGAS_METRICS = [
     {
@@ -436,16 +460,20 @@ def _fetch_ground_truth_candidates(case: Dict[str, Any]) -> List[Dict[str, Any]]
         output_fields=list(GROUND_TRUTH_OUTPUT_FIELDS),
         limit=GROUND_TRUTH_SEARCH_LIMIT,
     )
+    docs = [normalize_entity_for_business_id(doc) for doc in docs]
     if docs or item_filter:
         return docs
 
-    return query_chunks_by_filter(
-        client=client,
-        collection_name=collection_name,
-        filter_expr="",
-        output_fields=list(GROUND_TRUTH_OUTPUT_FIELDS),
-        limit=GROUND_TRUTH_SEARCH_LIMIT,
-    )
+    return [
+        normalize_entity_for_business_id(doc)
+        for doc in query_chunks_by_filter(
+            client=client,
+            collection_name=collection_name,
+            filter_expr="",
+            output_fields=list(GROUND_TRUTH_OUTPUT_FIELDS),
+            limit=GROUND_TRUTH_SEARCH_LIMIT,
+        )
+    ]
 
 
 def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
@@ -469,10 +497,16 @@ def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
 
     candidates = _fetch_ground_truth_candidates(case)
     result["candidate_count"] = len(candidates)
-    candidate_ids = {str(doc.get("chunk_id")) for doc in candidates if doc.get("chunk_id") is not None}
+    candidate_ids = {
+        str(extract_chunk_id(doc))
+        for doc in candidates
+        if extract_chunk_id(doc) is not None
+    }
 
     if declared_ids:
-        matched_ids = [chunk_id for chunk_id in declared_ids if chunk_id in candidate_ids]
+        matched_ids = [
+            chunk_id for chunk_id in declared_ids if chunk_id in candidate_ids
+        ]
         if matched_ids:
             result["resolved_ids"] = matched_ids
             result["source"] = "declared_ids"
@@ -508,7 +542,7 @@ def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
             continue
         doc_text = _ground_truth_doc_text(doc)
         overlap = _token_overlap_ratio(reference_answer or _query(case), doc_text)
-        chunk_id = doc.get("chunk_id")
+        chunk_id = extract_chunk_id(doc)
         if chunk_id is None:
             continue
         if overlap >= 0.2 or (score >= top_score * 0.92 and overlap >= 0.08):
@@ -537,6 +571,213 @@ def _prepare_cases(cases: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         )
         prepared_cases.append(prepared_case)
     return prepared_cases
+
+
+def _ground_truth_records_from_cases(
+    cases: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    return [
+        (
+            item.get("_evaluation_ground_truth")
+            or item.get("retrieval_ground_truth")
+            or {}
+        )
+        for item in cases
+        if (
+            (
+                item.get("_evaluation_ground_truth")
+                or item.get("retrieval_ground_truth")
+                or {}
+            ).get("eligible")
+        )
+    ]
+
+
+def _build_ground_truth_alignment(
+    ground_truth_records: Sequence[Dict[str, Any]],
+    resolved_cases: int,
+) -> tuple[Dict[str, Any], List[str]]:
+    source_breakdown = Counter(
+        str(record.get("source") or "unresolved") for record in ground_truth_records
+    )
+    unresolved_reasons = Counter(
+        str(record.get("reason") or "unknown")
+        for record in ground_truth_records
+        if not (record.get("resolved_ids") or [])
+    )
+    stale_declared_cases = sum(
+        1 for record in ground_truth_records if record.get("declared_ids_stale")
+    )
+    warnings: List[str] = []
+    if ground_truth_records and resolved_cases < len(ground_truth_records):
+        warnings.append(
+            f"检索金标仅对齐了 {resolved_cases}/{len(ground_truth_records)} 个带金标样本；未对齐样本已从 Recall/MRR 统计中剔除。"
+        )
+    if unresolved_reasons.get("item_name_not_in_corpus"):
+        warnings.append(
+            f"{unresolved_reasons['item_name_not_in_corpus']} 个样本的 item_names 在当前知识库中不存在，说明评测集与当前入库内容未完全对齐。"
+        )
+    if stale_declared_cases:
+        warnings.append(
+            f"{stale_declared_cases} 个样本的 declared chunk_id 已失效，系统已按 reference_answer 自动重映射当前 chunk_id。"
+        )
+
+    summary = {
+        "eligible_cases": len(ground_truth_records),
+        "resolved_cases": resolved_cases,
+        "unresolved_cases": max(len(ground_truth_records) - resolved_cases, 0),
+        "source_breakdown": dict(sorted(source_breakdown.items())),
+        "unresolved_reasons": dict(sorted(unresolved_reasons.items())),
+        "stale_declared_cases": stale_declared_cases,
+    }
+    return summary, warnings
+
+
+def _load_dataset_payload(
+    dataset_path: str,
+) -> tuple[Path, str, Any, List[Dict[str, Any]]]:
+    resolved_path = Path(dataset_path).expanduser().resolve()
+    if not resolved_path.exists() or not resolved_path.is_file():
+        raise FileNotFoundError(f"评测数据集不存在: {resolved_path}")
+
+    if resolved_path.suffix.lower() == ".jsonl":
+        cases: List[Dict[str, Any]] = []
+        with resolved_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if line:
+                    cases.append(json.loads(line))
+        return resolved_path, "jsonl", cases, cases
+
+    payload = json.loads(resolved_path.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        return resolved_path, "json", payload, payload
+    if isinstance(payload, dict) and isinstance(payload.get("cases"), list):
+        return resolved_path, "json", payload, payload["cases"]
+    raise ValueError("dataset 必须是 JSON 数组、带 cases 字段的 JSON 对象或 JSONL")
+
+
+def _write_dataset_payload(
+    output_path: Path,
+    dataset_format: str,
+    payload: Any,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if dataset_format == "jsonl":
+        text = "\n".join(
+            json.dumps(item, ensure_ascii=False) for item in (payload or [])
+        )
+        if text:
+            text += "\n"
+        output_path.write_text(text, encoding="utf-8")
+        return
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def sync_evaluation_dataset(
+    dataset_path: str,
+    output_path: str | None = None,
+    create_backup: bool = True,
+) -> Dict[str, Any]:
+    resolved_dataset_path, dataset_format, payload, cases = _load_dataset_payload(
+        dataset_path
+    )
+    original_text = resolved_dataset_path.read_text(encoding="utf-8")
+    prepared_before = _prepare_cases(cases)
+    before_records = _ground_truth_records_from_cases(prepared_before)
+    before_resolved_cases = sum(
+        1 for record in before_records if record.get("resolved_ids")
+    )
+    before_summary, before_warnings = _build_ground_truth_alignment(
+        before_records, before_resolved_cases
+    )
+
+    updated_cases = 0
+    already_aligned_cases = 0
+    unresolved_case_ids: List[str] = []
+    for raw_case, prepared_case in zip(cases, prepared_before):
+        record = prepared_case.get("_evaluation_ground_truth") or {}
+        if not record.get("eligible"):
+            continue
+        resolved_ids = normalize_ids(record.get("resolved_ids") or [])
+        case_id = str(
+            raw_case.get("case_id")
+            or raw_case.get("id")
+            or prepared_case.get("case_id")
+            or prepared_case.get("id")
+            or f"case_{len(unresolved_case_ids) + 1}"
+        )
+        if not resolved_ids:
+            unresolved_case_ids.append(case_id)
+            continue
+
+        declared_ids = _relevant_ids(raw_case)
+        if declared_ids == resolved_ids and not record.get("declared_ids_stale"):
+            already_aligned_cases += 1
+        else:
+            updated_cases += 1
+
+        raw_case["relevant_chunk_ids"] = list(resolved_ids)
+        raw_case["resolved_relevant_chunk_ids"] = list(resolved_ids)
+        if "reference_context_ids" in raw_case:
+            raw_case["reference_context_ids"] = list(resolved_ids)
+        if "relevant_ids" in raw_case:
+            raw_case["relevant_ids"] = list(resolved_ids)
+        if "chunk_ids" in raw_case:
+            raw_case["chunk_ids"] = list(resolved_ids)
+
+    resolved_output_path = (
+        Path(output_path).expanduser().resolve()
+        if output_path
+        else resolved_dataset_path
+    )
+    backup_path = None
+    should_write = resolved_output_path != resolved_dataset_path or updated_cases > 0
+    if should_write and create_backup and resolved_output_path == resolved_dataset_path:
+        backup_path = resolved_dataset_path.with_name(
+            f"{resolved_dataset_path.stem}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}{resolved_dataset_path.suffix}"
+        )
+        backup_path.write_text(original_text, encoding="utf-8")
+    if should_write:
+        _write_dataset_payload(resolved_output_path, dataset_format, payload)
+
+    _, _, _, reloaded_cases = _load_dataset_payload(str(resolved_output_path))
+    prepared_after = _prepare_cases(reloaded_cases)
+    after_records = _ground_truth_records_from_cases(prepared_after)
+    after_resolved_cases = sum(
+        1 for record in after_records if record.get("resolved_ids")
+    )
+    after_summary, after_warnings = _build_ground_truth_alignment(
+        after_records, after_resolved_cases
+    )
+
+    message = (
+        f"已同步 {updated_cases} 个样本的检索金标到当前 chunk_id。"
+        if updated_cases
+        else "当前评测集的检索金标已与现有知识库对齐，无需更新。"
+    )
+    if unresolved_case_ids:
+        message += f" 仍有 {len(unresolved_case_ids)} 个样本未能自动对齐。"
+
+    return {
+        "dataset_path": str(resolved_dataset_path),
+        "output_path": str(resolved_output_path),
+        "backup_path": str(backup_path) if backup_path else "",
+        "case_count": len(cases),
+        "updated_cases": updated_cases,
+        "already_aligned_cases": already_aligned_cases,
+        "unresolved_cases": len(unresolved_case_ids),
+        "unresolved_case_ids": unresolved_case_ids,
+        "stale_declared_cases_before": before_summary.get("stale_declared_cases", 0),
+        "ground_truth_summary": after_summary,
+        "warnings": after_warnings,
+        "before_ground_truth_summary": before_summary,
+        "before_warnings": before_warnings,
+        "message": message,
+    }
 
 
 def _num(value: Any) -> Optional[float]:
@@ -587,6 +828,7 @@ def _resolve_variants(names: Sequence[str]) -> List[str]:
 def _build_overrides(variant_name: str, case: Dict[str, Any]) -> Dict[str, Any]:
     config = VARIANTS[variant_name]
     overrides = copy.deepcopy(config.get("evaluation_overrides") or {})
+    overrides.setdefault("cache_enabled", False)
     if config.get("use_case_query_type"):
         query_type = _query_type(case)
         overrides["force_query_type"] = query_type
@@ -611,7 +853,7 @@ def _extract_contexts(docs: Sequence[Dict[str, Any]]) -> List[str]:
 def _extract_context_ids(docs: Sequence[Dict[str, Any]]) -> List[str]:
     chunk_ids: List[str] = []
     for doc in docs or []:
-        chunk_id = doc.get("chunk_id") or doc.get("doc_id") or doc.get("id")
+        chunk_id = extract_chunk_id(doc) or doc.get("doc_id")
         if chunk_id is None:
             continue
         value = str(chunk_id).strip()
@@ -661,14 +903,21 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
     }
     final_state: Dict[str, Any] = {}
     error = ""
-    perf_start(session_id, query)
-    try:
-        result = query_app.invoke(initial_state)
-        if isinstance(result, dict):
-            final_state = result
-    except Exception as exc:
-        error = str(exc)
-    perf_doc = perf_finish(session_id, persist=False) or {}
+    cache_summary: Dict[str, Any] = {}
+    with query_cache_request_context(initial_state):
+        perf_start(session_id, query)
+        try:
+            result = query_app.invoke(initial_state)
+            if isinstance(result, dict):
+                final_state = result
+        except Exception as exc:
+            error = str(exc)
+        cache_summary = get_current_request_cache_summary()
+        if isinstance(final_state, dict):
+            final_state["cache_summary"] = (
+                final_state.get("cache_summary") or cache_summary
+            )
+        perf_doc = perf_finish(session_id, persist=False) or {}
     clear_task(session_id)
     reranked_docs = final_state.get("reranked_docs") or []
     retrieved_contexts = _extract_contexts(reranked_docs)
@@ -698,14 +947,12 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         "sub_query_routes": final_state.get("sub_query_routes") or [],
         "sub_query_results": final_state.get("sub_query_results") or [],
         "context_expansion_summary": final_state.get("context_expansion_summary") or {},
-        "evidence_coverage_summary": final_state.get("evidence_coverage_summary")
-        or {},
+        "evidence_coverage_summary": final_state.get("evidence_coverage_summary") or {},
         "rescue_plan": final_state.get("rescue_plan") or {},
         "answer_plan": final_state.get("answer_plan") or {},
         "clarification_reason": str(final_state.get("clarification_reason") or ""),
         "agentic_features": (
-            initial_state.get("evaluation_overrides", {}).get("agentic_features")
-            or {}
+            initial_state.get("evaluation_overrides", {}).get("agentic_features") or {}
         ),
         "retrieval_grade": str(final_state.get("retrieval_grade") or ""),
         "retry_count": int(final_state.get("retry_count") or 0),
@@ -716,6 +963,7 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
             final_state.get("hallucination_check_passed", True)
         ),
         "need_rag": bool(final_state.get("need_rag", True)),
+        "cache_summary": final_state.get("cache_summary") or cache_summary,
         "latency_ms": _num(perf_doc.get("total_duration_ms")),
         "first_answer_ms": _num(perf_doc.get("first_answer_ms")),
         "stage_durations_ms": _stage_map(perf_doc),
@@ -740,7 +988,8 @@ def _metric_column(frame, aliases: Sequence[str]) -> Optional[str]:
         if alias in columns:
             return alias
     normalized_columns = {
-        column: "".join(ch for ch in column.lower() if ch.isalnum()) for column in columns
+        column: "".join(ch for ch in column.lower() if ch.isalnum())
+        for column in columns
     }
     for alias in aliases:
         alias_norm = "".join(ch for ch in alias.lower() if ch.isalnum())
@@ -816,9 +1065,7 @@ def _summarize_retrieval(
         )
         or 0.0,
     }
-    eligible_cases = [
-        item for item in case_results if _resolved_relevant_ids(item)
-    ]
+    eligible_cases = [item for item in case_results if _resolved_relevant_ids(item)]
     coverage: Dict[str, int] = {}
     for k in DEFAULT_K_VALUES:
         summary[f"hit@{k}"] = _avg(
@@ -855,50 +1102,66 @@ def _summarize_retrieval(
         coverage[f"recall@{k}"] = len(eligible_cases)
         coverage[f"mrr@{k}"] = len(eligible_cases)
 
-    ground_truth_records = [
-        (item.get("retrieval_ground_truth") or {})
-        for item in case_results
-        if (item.get("retrieval_ground_truth") or {}).get("eligible")
-    ]
-    source_breakdown = Counter(
-        str(record.get("source") or "unresolved") for record in ground_truth_records
+    ground_truth_records = _ground_truth_records_from_cases(case_results)
+    ground_truth_summary, warnings = _build_ground_truth_alignment(
+        ground_truth_records, len(eligible_cases)
     )
-    unresolved_reasons = Counter(
-        str(record.get("reason") or "unknown")
-        for record in ground_truth_records
-        if not (record.get("resolved_ids") or [])
-    )
-    stale_declared_cases = sum(
-        1 for record in ground_truth_records if record.get("declared_ids_stale")
-    )
-    warnings: List[str] = []
-    if ground_truth_records and len(eligible_cases) < len(ground_truth_records):
-        warnings.append(
-            f"检索金标仅对齐了 {len(eligible_cases)}/{len(ground_truth_records)} 个带金标样本；未对齐样本已从 Recall/MRR 统计中剔除。"
-        )
-    if unresolved_reasons.get("item_name_not_in_corpus"):
-        warnings.append(
-            f"{unresolved_reasons['item_name_not_in_corpus']} 个样本的 item_names 在当前知识库中不存在，说明评测集与当前入库内容未完全对齐。"
-        )
-    if stale_declared_cases:
-        warnings.append(
-            f"{stale_declared_cases} 个样本的 declared chunk_id 已失效，系统已按 reference_answer 自动重映射当前 chunk_id。"
-        )
-
-    ground_truth_summary = {
-        "eligible_cases": len(ground_truth_records),
-        "resolved_cases": len(eligible_cases),
-        "unresolved_cases": max(len(ground_truth_records) - len(eligible_cases), 0),
-        "source_breakdown": dict(sorted(source_breakdown.items())),
-        "unresolved_reasons": dict(sorted(unresolved_reasons.items())),
-        "stale_declared_cases": stale_declared_cases,
-    }
     return summary, coverage, ground_truth_summary, warnings
 
 
 def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     evidence_scores = [
         (item.get("evidence_coverage_summary") or {}).get("coverage_score")
+        for item in case_results
+    ]
+    cache_overall = [
+        (item.get("cache_summary") or {}).get("overall") or {} for item in case_results
+    ]
+    answer_cache_hits = [
+        (
+            1.0
+            if int(
+                (
+                    (
+                        (item.get("cache_summary") or {})
+                        .get("namespaces_breakdown", {})
+                        .get("answer", {})
+                    ).get("hits")
+                    or 0
+                )
+            )
+            > 0
+            else 0.0
+        )
+        for item in case_results
+    ]
+    retrieval_cache_hits = [
+        (
+            1.0
+            if any(
+                int(
+                    (
+                        (
+                            (item.get("cache_summary") or {})
+                            .get("namespaces_breakdown", {})
+                            .get(namespace, {})
+                        ).get("hits")
+                        or 0
+                    )
+                )
+                > 0
+                for namespace in (
+                    "retrieval_embedding",
+                    "retrieval_bm25",
+                    "retrieval_kg",
+                    "hyde_doc",
+                    "web_search",
+                    "rerank",
+                    "embedding",
+                )
+            )
+            else 0.0
+        )
         for item in case_results
     ]
     return {
@@ -930,39 +1193,40 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         or 0.0,
         "clarification_rate": _avg(
             [
-                1.0
-                if str(item.get("clarification_reason") or "").strip()
-                else 0.0
+                1.0 if str(item.get("clarification_reason") or "").strip() else 0.0
                 for item in case_results
             ]
         )
         or 0.0,
         "rescue_retry_rate": _avg(
             [
-                1.0
-                if (item.get("rescue_plan") or {}).get("action") == "retry"
-                else 0.0
+                1.0 if (item.get("rescue_plan") or {}).get("action") == "retry" else 0.0
                 for item in case_results
             ]
         )
         or 0.0,
         "context_expansion_rate": _avg(
             [
-                1.0
-                if int(
-                    ((item.get("context_expansion_summary") or {}).get("expanded_docs") or 0)
+                (
+                    1.0
+                    if int(
+                        (
+                            (item.get("context_expansion_summary") or {}).get(
+                                "expanded_docs"
+                            )
+                            or 0
+                        )
+                    )
+                    > 0
+                    else 0.0
                 )
-                > 0
-                else 0.0
                 for item in case_results
             ]
         )
         or 0.0,
         "structured_answer_rate": _avg(
             [
-                1.0
-                if (item.get("answer_plan") or {}).get("structured_output")
-                else 0.0
+                1.0 if (item.get("answer_plan") or {}).get("structured_output") else 0.0
                 for item in case_results
             ]
         )
@@ -977,15 +1241,42 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "avg_evidence_coverage_score": _avg(evidence_scores) or 0.0,
         "low_evidence_coverage_rate": _avg(
             [
-                1.0
-                if (_num((item.get("evidence_coverage_summary") or {}).get("coverage_score")) or 0.0)
-                < 0.55
-                else 0.0
+                (
+                    1.0
+                    if (
+                        _num(
+                            (item.get("evidence_coverage_summary") or {}).get(
+                                "coverage_score"
+                            )
+                        )
+                        or 0.0
+                    )
+                    < 0.55
+                    else 0.0
+                )
                 for item in case_results
             ]
         )
         or 0.0,
         "error_rate": _avg([1.0 if item.get("error") else 0.0 for item in case_results])
+        or 0.0,
+        "cache_hit_rate": _avg([bucket.get("hit_rate") for bucket in cache_overall])
+        or 0.0,
+        "l0_cache_hit_rate": _avg(
+            [bucket.get("l0_hit_rate") for bucket in cache_overall]
+        )
+        or 0.0,
+        "l1_cache_hit_rate": _avg(
+            [bucket.get("l1_hit_rate") for bucket in cache_overall]
+        )
+        or 0.0,
+        "l2_cache_hit_rate": _avg(
+            [bucket.get("l2_hit_rate") for bucket in cache_overall]
+        )
+        or 0.0,
+        "answer_cache_rate": _avg(answer_cache_hits) or 0.0,
+        "retrieval_cache_rate": _avg(retrieval_cache_hits) or 0.0,
+        "avg_cache_writes": _avg([bucket.get("writes") for bucket in cache_overall])
         or 0.0,
     }
 
@@ -1036,6 +1327,7 @@ def _build_headline_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
     ragas_metrics = summary.get("ragas_metrics") or {}
     retrieval_metrics = summary.get("retrieval_metrics") or {}
     performance_metrics = summary.get("performance_metrics") or {}
+    pipeline_metrics = summary.get("pipeline_metrics") or {}
     result: Dict[str, Any] = {}
     for key in (
         "factual_correctness",
@@ -1055,8 +1347,12 @@ def _build_headline_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
         "rescue_retry_rate",
         "context_expansion_rate",
         "structured_answer_rate",
+        "cache_hit_rate",
+        "l1_cache_hit_rate",
+        "l2_cache_hit_rate",
+        "retrieval_cache_rate",
+        "answer_cache_rate",
     ):
-        pipeline_metrics = summary.get("pipeline_metrics") or {}
         if key in pipeline_metrics:
             result[key] = pipeline_metrics.get(key)
     for key in ("avg_total_duration_ms", "p95_total_duration_ms"):
@@ -1223,6 +1519,10 @@ def evaluate_variants(
 
     total_variants = len(resolved_variants)
     for index, variant_name in enumerate(resolved_variants, start=1):
+        variant_config = VARIANTS.get(variant_name, {})
+        if variant_config.get("reset_cache_before_run"):
+            reset_query_cache(reason=f"evaluation:{variant_name}:start")
+        warmup_rounds = max(0, int(variant_config.get("warmup_rounds") or 0))
         if progress_callback is not None:
             progress_callback(
                 {
@@ -1232,6 +1532,19 @@ def evaluate_variants(
                     "total_variants": total_variants,
                 }
             )
+        if warmup_rounds:
+            for warmup_index in range(1, warmup_rounds + 1):
+                if progress_callback is not None:
+                    progress_callback(
+                        {
+                            "stage": "variant_warmup",
+                            "variant_name": variant_name,
+                            "warmup_round": warmup_index,
+                            "warmup_rounds": warmup_rounds,
+                        }
+                    )
+                for case in cases:
+                    _run_single_case(case, variant_name)
         case_results = [_run_single_case(case, variant_name) for case in cases]
         ragas_bundle = _run_ragas(case_results)
         _merge_ragas_scores(case_results, ragas_bundle.get("per_case_scores") or [])
@@ -1262,13 +1575,15 @@ def evaluate_variants(
                 }
             )
 
-    final_variant = (
-        "agentic_enhanced_system"
-        if "agentic_enhanced_system" in variants_payload
-        else "final_system"
-        if "final_system" in variants_payload
-        else resolved_variants[-1]
-    )
+    final_variant = resolved_variants[-1]
+    for preferred_variant in (
+        "agentic_enhanced_system_cached",
+        "agentic_enhanced_system",
+        "final_system",
+    ):
+        if preferred_variant in variants_payload:
+            final_variant = preferred_variant
+            break
     report = {
         "generated_at": datetime.now().isoformat(),
         "dataset_path": str(Path(dataset_path).resolve()),
@@ -1303,9 +1618,7 @@ def evaluate_variants_to_file(
         variant_names,
         progress_callback=progress_callback,
     )
-    resolved_output_path = (
-        Path(output_path) if output_path else _default_output_path()
-    )
+    resolved_output_path = Path(output_path) if output_path else _default_output_path()
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_output_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

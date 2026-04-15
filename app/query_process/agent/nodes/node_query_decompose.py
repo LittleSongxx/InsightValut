@@ -39,6 +39,7 @@ cfg = query_threshold_config
 MAX_SUB_QUERIES = cfg.max_sub_queries
 OUTPUT_FIELDS = [
     "chunk_id",
+    "stable_chunk_id",
     "content",
     "title",
     "parent_title",

@@ -1,5 +1,7 @@
 import type {
+  ChunkIdMigrationResult,
   EvaluationConfig,
+  EvaluationDatasetSyncResult,
   EvaluationJob,
   EvaluationReportDetail,
   EvaluationReportListItem,
@@ -7,6 +9,8 @@ import type {
   ImportTask,
   PerformanceSummary,
   PerformanceTimePoint,
+  QueryCacheResetResult,
+  QueryCacheStats,
   StageBreakdown,
 } from '../types';
 
@@ -171,6 +175,31 @@ export async function getStageBreakdown(
   return res.json();
 }
 
+export async function getQueryCacheStats(): Promise<QueryCacheStats> {
+  const res = await fetch(`${QUERY_BASE}/cache/stats`);
+  if (!res.ok) throw new Error(`Query cache stats failed: ${res.status}`);
+  return res.json();
+}
+
+export async function resetQueryCache(reason = 'manual'): Promise<QueryCacheResetResult> {
+  const res = await fetch(`${QUERY_BASE}/cache/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    let message = `Reset query cache failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
 // ─── Evaluation Service ──────────────────────────────────────
 export async function getEvaluationReports(): Promise<{
   reports: EvaluationReportListItem[];
@@ -228,6 +257,53 @@ export async function createEvaluationJob(payload: {
   });
   if (!res.ok) {
     let message = `Create evaluation job failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export async function syncEvaluationDatasetChunkIds(payload: {
+  dataset_path: string;
+  output_path?: string;
+  create_backup?: boolean;
+}): Promise<EvaluationDatasetSyncResult> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/dataset/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let message = `Sync evaluation dataset failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export async function migrateKnowledgeBaseChunkIds(payload?: {
+  item_names?: string[];
+  collection_name?: string;
+  dry_run?: boolean;
+  sync_graph?: boolean;
+}): Promise<ChunkIdMigrationResult> {
+  const res = await fetch(`${QUERY_BASE}/knowledge-base/chunk-ids/migrate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) {
+    let message = `Migrate chunk ids failed: ${res.status}`;
     try {
       const data = await res.json();
       if (data?.detail) message = data.detail;

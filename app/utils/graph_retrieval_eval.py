@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
+from app.clients.milvus_schema import extract_chunk_id
 from app.clients.neo4j_graph_utils import query_graph_context
 from app.conf.query_threshold_config import query_threshold_config
 from app.query_process.agent.graph_query_utils import (
@@ -61,7 +62,7 @@ def _resolve_route(case: Dict[str, Any]) -> Dict[str, Any]:
 def _extract_ids(results: Sequence[Any]) -> List[str]:
     ids: List[str] = []
     for entity in _as_entity_list(results):
-        chunk_id = entity.get("chunk_id") or entity.get("id")
+        chunk_id = extract_chunk_id(entity)
         if chunk_id is None:
             continue
         ids.append(str(chunk_id))
@@ -90,7 +91,7 @@ def _fuse_results(source_weights: Sequence[Tuple[List[Dict[str, Any]], float]], 
     )
     ids: List[str] = []
     for doc, _ in fused:
-        chunk_id = doc.get("chunk_id") or doc.get("id")
+        chunk_id = extract_chunk_id(doc)
         if chunk_id is not None:
             ids.append(str(chunk_id))
     return ids

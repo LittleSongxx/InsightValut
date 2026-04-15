@@ -12,6 +12,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 # 项目内部工具/状态/日志导入（保持原有路径）
 from app.utils.task_utils import add_running_task, add_done_task
 from app.utils.markdown_image_utils import extract_markdown_image_urls
+from app.utils.chunk_id_utils import ensure_chunk_ids
 from app.import_process.agent.state import ImportGraphState
 from app.core.logger import logger  # 项目统一日志工具，核心替换print
 
@@ -331,6 +332,7 @@ def step_4_refine_chunks(
             sec["parent_title"] = sec.get("title") or ""
         if "image_urls" not in sec:
             sec["image_urls"] = _extract_image_urls(sec.get("content") or "")
+    ensure_chunk_ids(final_sections)
     logger.debug(f"步骤4-3：父标题兜底完成，所有Chunk均包含parent_title字段")
 
     return final_sections

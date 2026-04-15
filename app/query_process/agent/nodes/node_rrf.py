@@ -9,6 +9,7 @@ from app.clients.milvus_schema import (
     extract_chunk_id,
     extract_chunk_content,
     extract_image_urls,
+    normalize_entity_for_business_id,
 )
 
 
@@ -98,7 +99,7 @@ def _as_entity_list(state_list) -> List[Dict[str, Any]]:
 
         # 最终校验：必须是非空字典
         if final_ent and isinstance(final_ent, dict):
-            out.append(final_ent)
+            out.append(normalize_entity_for_business_id(final_ent))
 
     return out
 
@@ -130,7 +131,7 @@ def reciprocal_rank_fusion(
             # Milvus 设计上把主键字段在 API 层面统一叫 id，不管你在 schema 里定义的字段名是 pk、id 还是其他
             # 这是为了保持 API 兼容性：无论用户怎么命名主键，SDK 都用 id 来指代 “这条数据的唯一标识”
             # 你在向量数据库 UI 里看到的 pk 是表结构定义名，而代码里拿到的 id 是API 返回的统一主键别名
-            chunk_id = item.get("chunk_id") or item.get("id")
+            chunk_id = extract_chunk_id(item)
 
             if not chunk_id:
                 # 如果找不到 ID，记录警告并跳过，避免程序崩溃

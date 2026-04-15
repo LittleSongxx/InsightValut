@@ -78,6 +78,19 @@ services:
       - ./.docker-data/mongodb:/data/db
 
   # ──────────────────────────────────────────
+  # Redis（查询缓存）
+  # ──────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: insightvault-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./.docker-data/redis:/data
+
+  # ──────────────────────────────────────────
   # etcd（Milvus 元数据存储）
   # ──────────────────────────────────────────
   etcd:
@@ -194,6 +207,7 @@ services:
       NEO4J_DATABASE: neo4j
       NEO4J_USERNAME: neo4j
       NEO4J_PASSWORD: insightvault123
+      QUERY_CACHE_REDIS_URL: redis://redis:6379/0
       MILVUS_FORCE_RECREATE_COLLECTION: "0"
     ports:
       - "${IMPORT_PORT:-18000}:8000"
@@ -205,6 +219,7 @@ services:
       - ./prompts:/app/prompts:ro
     depends_on:
       - mongodb
+      - redis
       - milvus
       - minio
       - minio-init
@@ -235,6 +250,7 @@ services:
       NEO4J_USERNAME: neo4j
       NEO4J_PASSWORD: insightvault123
       MCP_DASHSCOPE_BASE_URL: https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/sse
+      QUERY_CACHE_REDIS_URL: redis://redis:6379/0
     ports:
       - "${QUERY_PORT:-8001}:8001"
     volumes:
@@ -247,6 +263,7 @@ services:
       - ./reports:/app/reports
     depends_on:
       - mongodb
+      - redis
       - milvus
       - neo4j
 

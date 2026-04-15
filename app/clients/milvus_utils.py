@@ -3,7 +3,14 @@ import threading
 from pymilvus import MilvusClient, AnnSearchRequest, WeightedRanker
 from app.conf.milvus_config import milvus_config
 from app.core.logger import logger
-from app.clients.milvus_schema import CHUNKS_OUTPUT_FIELDS
+from app.clients.milvus_schema import (
+    CHUNKS_OUTPUT_FIELDS,
+    FIELD_STABLE_CHUNK_ID,
+    extract_chunk_id,
+    extract_storage_chunk_id,
+    normalize_entity_for_business_id,
+)
+from app.utils.escape_milvus_string_utils import escape_milvus_string
 
 # 全局Milvus客户端实例，实现单例复用
 _milvus_client = None
@@ -55,6 +62,53 @@ def _coerce_int64_ids(ids):
     return ok, bad
 
 
+def _ensure_output_fields(output_fields):
+    fields = list(output_fields or [])
+    if FIELD_STABLE_CHUNK_ID not in fields:
+        fields.insert(1 if fields else 0, FIELD_STABLE_CHUNK_ID)
+    return fields
+
+
+def _normalize_rows(rows):
+    return [
+        normalize_entity_for_business_id(dict(row))
+        for row in (rows or [])
+        if isinstance(row, dict)
+    ]
+
+
+def _supports_stable_field_error(exc: Exception) -> bool:
+    return FIELD_STABLE_CHUNK_ID in str(exc)
+
+
+def _without_stable_field(output_fields):
+    return [field for field in (output_fields or []) if field != FIELD_STABLE_CHUNK_ID]
+
+
+def _coerce_string_ids(ids):
+    normalized = []
+    for value in ids or []:
+        text = str(value or "").strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
+def _ensure_output_fields(output_fields):
+    fields = list(output_fields or [])
+    if FIELD_STABLE_CHUNK_ID not in fields:
+        fields.append(FIELD_STABLE_CHUNK_ID)
+    return fields
+
+
+def _normalize_entities(entities):
+    return [
+        normalize_entity_for_business_id(dict(entity))
+        for entity in (entities or [])
+        if isinstance(entity, dict)
+    ]
+
+
 def fetch_chunks_by_chunk_ids(
     client,
     collection_name: str,
@@ -81,22 +135,29 @@ def fetch_chunks_by_chunk_ids(
         return []
     # 默认返回字段：核心切片标识与内容字段
     if output_fields is None:
-        output_fields = ["chunk_id", "content", "title", "parent_title", "item_name"]
+        output_fields = [
+            "chunk_id",
+            "stable_chunk_id",
+            "content",
+            "title",
+            "parent_title",
+            "item_name",
+        ]
+    output_fields = _ensure_output_fields(output_fields)
 
-    # 转换ID为INT64类型，分离有效/无效ID
-    ok_ids, bad_ids = _coerce_int64_ids(chunk_ids)
-    if bad_ids:
-        # 记录无效ID，跳过查询
-        logger.warning(f"存在无法转换为INT64的chunk_id，将跳过查询：{bad_ids}")
+    normalized_input_ids = [str(value).strip() for value in (chunk_ids or []) if str(value).strip()]
+    numeric_ids, invalid_numeric_ids = _coerce_int64_ids(normalized_input_ids)
+    stable_ids = [value for value in normalized_input_ids if value not in {str(x) for x in numeric_ids}]
+    if invalid_numeric_ids:
+        logger.warning(f"存在无法转换为INT64的chunk_id，将改用 stable_chunk_id 查询：{invalid_numeric_ids}")
 
-    # 无有效ID直接返回空
-    if not ok_ids:
+    if not numeric_ids and not stable_ids:
         return []
 
     results = []
-    # 分批查询：按batch_size切分有效ID，循环查询
-    for i in range(0, len(ok_ids), batch_size):
-        batch = ok_ids[i : i + batch_size]
+    # 分批查询内部主键
+    for i in range(0, len(numeric_ids), batch_size):
+        batch = numeric_ids[i : i + batch_size]
 
         # 方式1：优先使用主键get方法查询（性能最优）
         if hasattr(client, "get"):
@@ -107,9 +168,24 @@ def fetch_chunks_by_chunk_ids(
                     output_fields=output_fields,
                 )
                 if got:
-                    results.extend(got)
+                    results.extend(_normalize_rows(got))
                 continue
             except Exception as e:
+                if _supports_stable_field_error(e) and FIELD_STABLE_CHUNK_ID in output_fields:
+                    fallback_fields = _without_stable_field(output_fields)
+                    try:
+                        got = client.get(
+                            collection_name=collection_name,
+                            ids=batch,
+                            output_fields=fallback_fields,
+                        )
+                        if got:
+                            results.extend(_normalize_rows(got))
+                        continue
+                    except Exception as retry_exc:
+                        logger.warning(
+                            f"Milvus get方法移除stable_chunk_id后仍失败，将回退至query方法：{str(retry_exc)}"
+                        )
                 logger.warning(f"Milvus get方法查询失败，将回退至query方法：{str(e)}")
 
         # 方式2：get方法失败，回退使用filter过滤查询
@@ -121,13 +197,82 @@ def fetch_chunks_by_chunk_ids(
                 output_fields=output_fields,
             )
             if q:
-                results.extend(q)
+                results.extend(_normalize_rows(q))
         except Exception as e:
+            if _supports_stable_field_error(e) and FIELD_STABLE_CHUNK_ID in output_fields:
+                try:
+                    q = client.query(
+                        collection_name=collection_name,
+                        filter=expr,
+                        output_fields=_without_stable_field(output_fields),
+                    )
+                    if q:
+                        results.extend(_normalize_rows(q))
+                    continue
+                except Exception as retry_exc:
+                    logger.error(
+                        f"Milvus query方法移除stable_chunk_id后仍失败：{str(retry_exc)}",
+                        exc_info=True,
+                    )
             logger.error(
                 f"Milvus query方法批量查询chunk_id失败：{str(e)}", exc_info=True
             )
 
-    return results
+    # 分批查询稳定业务ID
+    for i in range(0, len(stable_ids), batch_size):
+        batch = stable_ids[i : i + batch_size]
+        quoted = ", ".join(f'"{escape_milvus_string(value)}"' for value in batch)
+        expr = f"stable_chunk_id in [{quoted}]"
+        try:
+            q = client.query(
+                collection_name=collection_name,
+                filter=expr,
+                output_fields=output_fields,
+            )
+            if q:
+                results.extend(_normalize_rows(q))
+        except Exception as e:
+            if _supports_stable_field_error(e) and FIELD_STABLE_CHUNK_ID in output_fields:
+                try:
+                    q = client.query(
+                        collection_name=collection_name,
+                        filter=expr,
+                        output_fields=_without_stable_field(output_fields),
+                    )
+                    if q:
+                        results.extend(_normalize_rows(q))
+                    continue
+                except Exception as retry_exc:
+                    logger.error(
+                        f"Milvus query方法移除stable_chunk_id后仍失败：{str(retry_exc)}",
+                        exc_info=True,
+                    )
+            logger.error(
+                f"Milvus query方法批量查询stable_chunk_id失败：{str(e)}",
+                exc_info=True,
+            )
+
+    if not results:
+        return []
+
+    order = {value: index for index, value in enumerate(normalized_input_ids)}
+    deduped = {}
+    for row in results:
+        business_id = str(extract_chunk_id(row) or "").strip()
+        storage_id = str(extract_storage_chunk_id(row) or "").strip()
+        key = business_id or storage_id
+        if key and key not in deduped:
+            deduped[key] = row
+
+    sorted_rows = sorted(
+        deduped.values(),
+        key=lambda row: min(
+            order.get(str(extract_chunk_id(row) or "").strip(), len(order)),
+            order.get(str(extract_storage_chunk_id(row) or "").strip(), len(order)),
+        ),
+    )
+
+    return sorted_rows
 
 
 def query_chunks_by_filter(
@@ -145,6 +290,7 @@ def query_chunks_by_filter(
         return []
     if output_fields is None:
         output_fields = list(CHUNKS_OUTPUT_FIELDS)
+    output_fields = _ensure_output_fields(output_fields)
 
     iterator = None
     results = []
@@ -162,13 +308,40 @@ def query_chunks_by_filter(
                 if not batch:
                     break
                 results.extend(batch)
-            return results
+            return _normalize_rows(results)
 
         kwargs = {"filter": filter_expr or "", "output_fields": output_fields}
         if limit is not None and limit >= 0:
             kwargs["limit"] = limit
-        return client.query(collection_name=collection_name, **kwargs)
+        return _normalize_rows(client.query(collection_name=collection_name, **kwargs))
     except Exception as e:
+        if _supports_stable_field_error(e) and FIELD_STABLE_CHUNK_ID in output_fields:
+            fallback_fields = _without_stable_field(output_fields)
+            try:
+                if hasattr(client, "query_iterator"):
+                    iterator = client.query_iterator(
+                        collection_name=collection_name,
+                        batch_size=batch_size,
+                        limit=limit,
+                        filter=filter_expr or "",
+                        output_fields=fallback_fields,
+                    )
+                    while True:
+                        batch = iterator.next()
+                        if not batch:
+                            break
+                        results.extend(batch)
+                    return _normalize_rows(results)
+
+                kwargs = {"filter": filter_expr or "", "output_fields": fallback_fields}
+                if limit is not None and limit >= 0:
+                    kwargs["limit"] = limit
+                return _normalize_rows(client.query(collection_name=collection_name, **kwargs))
+            except Exception as retry_exc:
+                logger.error(
+                    f"Milvus 按过滤条件查询移除stable_chunk_id后仍失败，集合[{collection_name}]：{str(retry_exc)}",
+                    exc_info=True,
+                )
         logger.error(
             f"Milvus 按过滤条件查询失败，集合[{collection_name}]：{str(e)}",
             exc_info=True,
@@ -265,6 +438,7 @@ def hybrid_search(
         # 默认返回字段：文档标识字段
         if output_fields is None:
             output_fields = ["item_name"]
+        output_fields = _ensure_output_fields(output_fields)
 
         # 执行混合搜索：融合稠密+稀疏向量结果，按权重重新排序
         res = client.hybrid_search(
@@ -276,11 +450,61 @@ def hybrid_search(
             search_params=search_params,
         )
 
+        normalized = []
+        for result_set in res or []:
+            normalized_set = []
+            for hit in result_set or []:
+                if not isinstance(hit, dict):
+                    normalized_set.append(hit)
+                    continue
+                hit_copy = dict(hit)
+                entity = hit_copy.get("entity")
+                if isinstance(entity, dict):
+                    normalized_entity = normalize_entity_for_business_id(entity)
+                    hit_copy["entity"] = normalized_entity
+                    hit_copy["id"] = normalized_entity.get("chunk_id") or hit_copy.get("id")
+                normalized_set.append(hit_copy)
+            normalized.append(normalized_set)
+
         logger.info(
-            f"Milvus混合搜索完成，集合[{collection_name}]共检索到{len(res[0])}条结果"
+            f"Milvus混合搜索完成，集合[{collection_name}]共检索到{len(normalized[0]) if normalized else 0}条结果"
         )
-        return res
+        return normalized
     except Exception as e:
+        if _supports_stable_field_error(e) and FIELD_STABLE_CHUNK_ID in output_fields:
+            try:
+                res = client.hybrid_search(
+                    collection_name=collection_name,
+                    reqs=reqs,
+                    ranker=rerank,
+                    limit=limit,
+                    output_fields=_without_stable_field(output_fields),
+                    search_params=search_params,
+                )
+                normalized = []
+                for result_set in res or []:
+                    normalized_set = []
+                    for hit in result_set or []:
+                        if not isinstance(hit, dict):
+                            normalized_set.append(hit)
+                            continue
+                        hit_copy = dict(hit)
+                        entity = hit_copy.get("entity")
+                        if isinstance(entity, dict):
+                            normalized_entity = normalize_entity_for_business_id(entity)
+                            hit_copy["entity"] = normalized_entity
+                            hit_copy["id"] = normalized_entity.get("chunk_id") or hit_copy.get("id")
+                        normalized_set.append(hit_copy)
+                    normalized.append(normalized_set)
+                logger.warning(
+                    "Milvus混合搜索检测到旧集合缺少 stable_chunk_id 字段，已自动回退到兼容模式"
+                )
+                return normalized
+            except Exception as retry_exc:
+                logger.error(
+                    f"Milvus混合搜索移除stable_chunk_id后仍失败，集合[{collection_name}]：{str(retry_exc)}",
+                    exc_info=True,
+                )
         logger.error(
             f"Milvus混合搜索执行失败，集合[{collection_name}]：{str(e)}", exc_info=True
         )

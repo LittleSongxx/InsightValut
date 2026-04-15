@@ -12,6 +12,7 @@ from app.utils.task_utils import add_running_task, add_done_task
 from app.core.logger import logger
 from app.conf.milvus_config import milvus_config
 from app.utils.escape_milvus_string_utils import escape_milvus_string
+from app.utils.chunk_id_utils import ensure_chunk_id
 
 # 从配置文件读取切片集合名称，与配置解耦，便于环境切换
 CHUNKS_COLLECTION_NAME = milvus_config.chunks_collection
@@ -24,7 +25,7 @@ CHUNKS_COLLECTION_NAME = milvus_config.chunks_collection
 #   1. 幂等性：插入前删除同item_name旧数据，避免重复存储
 #   2. 自动建表：集合不存在时自动创建Schema和向量索引，无需手动初始化
 #   3. 数据校验：前置校验切片有效性、向量字段完整性，避免脏数据入库
-#   4. 主键回填：将Milvus自增的chunk_id回填到切片，供下游业务使用
+#   4. 稳定ID保留：业务侧保留稳定chunk_id，仅记录Milvus内部主键
 # 依赖上游：BGE-M3向量化节点（提供dense_vector/sparse_vector字段）
 # ==========================================
 def node_import_milvus(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -34,12 +35,12 @@ def node_import_milvus(state: Dict[str, Any]) -> Dict[str, Any]:
         1. 输入校验：验证切片有效性、向量字段完整性，提取向量维度
         2. 环境准备：连接Milvus，集合不存在则自动创建Schema+索引
         3. 幂等清理：删除同item_name旧数据，避免重复存储
-        4. 批量插入：预处理数据后批量入库，回填Milvus自增chunk_id
-        5. 状态更新：将回填了chunk_id的切片更新回全局状态，供下游使用
+        4. 批量插入：预处理数据后批量入库，保留稳定业务chunk_id
+        5. 状态更新：将保留稳定chunk_id的切片更新回全局状态，供下游使用
     参数：
         state: Dict[str, Any] - 流程全局状态对象，包含chunks、task_id等数据
     返回：
-        Dict[str, Any] - 更新后的状态对象，chunks字段回填chunk_id
+        Dict[str, Any] - 更新后的状态对象，chunks字段保留稳定chunk_id
     异常处理：
         任一步骤失败抛出ValueError，终止节点执行，保证数据不脏写
     """
@@ -57,9 +58,9 @@ def node_import_milvus(state: Dict[str, Any]) -> Dict[str, Any]:
         client = step_2_prepare_collection(vector_dimension)
         # 步骤3：幂等性处理 - 清理同item_name旧数据
         step_3_clean_old_data(client, chunks_json_data)
-        # 步骤4：批量插入数据+主键chunk_id回填
+        # 步骤4：批量插入数据+记录Milvus内部主键
         updated_chunks = step_4_insert_data(client, chunks_json_data)
-        # 步骤5：更新全局状态，将回填后的切片回传下游
+        # 步骤5：更新全局状态，将带稳定ID的切片回传下游
         state["chunks"] = updated_chunks
 
         logger.info("--- Milvus切片数据入库流程完成 ---")
@@ -120,7 +121,7 @@ def create_collection(client, collection_name: str, vector_dimension: int):
     """
     辅助函数：Milvus集合+索引自动创建
     核心逻辑：
-        1. 定义集合Schema：包含业务字段+双向量字段，自增主键chunk_id
+        1. 定义集合Schema：包含业务字段+稳定chunk_id字段，自增主键仅用于底层存储
         2. 构建向量索引：稠密向量用AUTOINDEX（Milvus自动选最优索引），稀疏向量用专用索引
     参数：
         client - MilvusClient实例（已连接）
@@ -133,6 +134,9 @@ def create_collection(client, collection_name: str, vector_dimension: int):
     # 2. 新增字段：业务字段+主键+双向量字段，字段类型/长度适配业务场景
     schema.add_field(
         field_name="chunk_id", datatype=DataType.INT64, is_primary=True, auto_id=True
+    )
+    schema.add_field(
+        field_name="stable_chunk_id", datatype=DataType.VARCHAR, max_length=128
     )
     schema.add_field(
         field_name="content", datatype=DataType.VARCHAR, max_length=65535
@@ -341,21 +345,25 @@ def step_4_insert_data(
     client, chunks_json_data: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """
-    步骤4：批量插入切片数据到Milvus+主键回填
+    步骤4：批量插入切片数据到Milvus+内部主键记录
     核心逻辑：
-        1. 移除手动chunk_id：因auto_id=True，Milvus自动生成主键，避免冲突
-        2. 批量插入数据：提升入库效率，减少Milvus连接次数
-        3. 回填chunk_id：将Milvus生成的自增主键回填到切片，供下游业务使用
+        1. 生成/保留稳定业务chunk_id，并写入stable_chunk_id字段
+        2. 移除Milvus内部主键字段chunk_id：因auto_id=True，Milvus自动生成主键
+        3. 将Milvus生成的内部主键记录到storage_chunk_id，业务侧chunk_id保持稳定
     参数：
         client - MilvusClient实例
         chunks_json_data: List[Dict[str, Any]] - 待入库的切片列表
     返回：
-        List[Dict[str, Any]] - 回填了chunk_id的切片列表
+        List[Dict[str, Any]] - 保留稳定chunk_id并记录storage_chunk_id的切片列表
     """
-    # 1. 预处理数据：移除手动chunk_id，避免与Milvus自增主键冲突
+    # 1. 预处理数据：保留稳定业务ID，移除Milvus内部主键避免冲突
     data_to_insert = []
     for item in chunks_json_data:
         item_copy = item.copy()
+        stable_chunk_id = ensure_chunk_id(item_copy)
+        item["chunk_id"] = stable_chunk_id
+        item["stable_chunk_id"] = stable_chunk_id
+        item_copy["stable_chunk_id"] = stable_chunk_id
         if isinstance(item_copy, dict) and "chunk_id" in item_copy:
             item_copy.pop("chunk_id", None)
         data_to_insert.append(item_copy)
@@ -370,15 +378,15 @@ def step_4_insert_data(
         f"Milvus数据插入完成：成功插入{insert_count}条数据，插入结果：{insert_result}"
     )
 
-    # 3. 主键回填：将Milvus生成的chunk_id回填到原始切片
+    # 3. 记录Milvus内部主键，但不覆盖稳定业务chunk_id
     inserted_ids = insert_result.get("ids", [])
     if inserted_ids and len(inserted_ids) == len(chunks_json_data):
         logger.info(
-            f"Milvus主键回填：开始将{len(inserted_ids)}个自增chunk_id回填到切片"
+            f"Milvus内部主键记录：开始为{len(inserted_ids)}个切片记录storage_chunk_id"
         )
         for idx, item in enumerate(chunks_json_data):
-            item["chunk_id"] = str(inserted_ids[idx])
-        logger.info("Milvus主键回填完成：所有切片已绑定chunk_id")
+            item["storage_chunk_id"] = str(inserted_ids[idx])
+        logger.info("Milvus内部主键记录完成：所有切片已绑定storage_chunk_id")
     else:
         logger.warning(
             f"Milvus主键回填失败：生成ID数量({len(inserted_ids)})与切片数量({len(chunks_json_data)})不一致"

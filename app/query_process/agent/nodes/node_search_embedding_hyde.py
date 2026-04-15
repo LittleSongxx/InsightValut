@@ -7,6 +7,7 @@ from app.core.load_prompt import load_prompt
 from app.conf.query_threshold_config import query_threshold_config
 from app.query_process.agent.graph_query_utils import should_run_retriever
 from app.query_process.agent.retrieval_utils import run_embedding_hybrid_search
+from app.utils.query_cache_utils import normalize_cache_sequence, query_cache_get, query_cache_set
 
 
 def step_1_create_hyde_doc(rewritten_query: str) -> str:
@@ -20,6 +21,11 @@ def step_1_create_hyde_doc(rewritten_query: str) -> str:
         raise ValueError("rewritten_query 不能为空")
 
     logger.info(f"Step 1: 开始生成假设性文档 (HyDE), Query: {rewritten_query}")
+    cache_descriptor = {"rewritten_query": rewritten_query}
+    cached = query_cache_get("hyde_doc", cache_descriptor)
+    if isinstance(cached, str) and cached.strip():
+        logger.info("Step 1: HyDE 假设文档缓存命中")
+        return cached
 
     try:
         llm = get_llm_client()
@@ -31,7 +37,7 @@ def step_1_create_hyde_doc(rewritten_query: str) -> str:
 
         logger.info(f"Step 1: 假设文档生成完成, 长度: {len(hyde_doc)} 字符")
         logger.debug(f"Step 1: 文档预览: {hyde_doc[:50]}...")
-
+        query_cache_set("hyde_doc", cache_descriptor, hyde_doc)
         return hyde_doc
 
     except Exception:
@@ -67,7 +73,13 @@ def step_2_search_by_query_and_hyde(
     :return: RRF 融合后的检索结果列表
     """
     if output_fields is None:
-        output_fields = ["chunk_id", "content", "item_name", "image_urls"]
+        output_fields = [
+            "chunk_id",
+            "stable_chunk_id",
+            "content",
+            "item_name",
+            "image_urls",
+        ]
 
     if not rewritten_query:
         raise ValueError("rewritten_query 不能为空")

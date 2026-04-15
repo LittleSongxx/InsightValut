@@ -3,12 +3,14 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
+from app.clients.milvus_schema import extract_chunk_id
 from app.conf.query_threshold_config import query_threshold_config
 from app.query_process.agent.nodes.node_rrf import _as_entity_list, reciprocal_rank_fusion
 from app.query_process.agent.retrieval_utils import run_bm25_search, run_embedding_hybrid_search
 
 OUTPUT_FIELDS = [
     "chunk_id",
+    "stable_chunk_id",
     "content",
     "title",
     "parent_title",
@@ -54,7 +56,7 @@ def normalize_ids(values: Sequence[Any]) -> List[str]:
 def extract_chunk_ids(results: Sequence[Any]) -> List[str]:
     ids: List[str] = []
     for entity in _as_entity_list(results):
-        chunk_id = entity.get("chunk_id") or entity.get("id")
+        chunk_id = extract_chunk_id(entity)
         if chunk_id is None:
             continue
         ids.append(str(chunk_id))
@@ -104,7 +106,7 @@ def run_mode(case: Dict[str, Any], mode: str, top_k: int) -> List[str]:
             k=cfg.rrf_k,
             max_results=top_k,
         )
-        return [str((doc.get("chunk_id") or doc.get("id"))) for doc, _ in fused if doc.get("chunk_id") or doc.get("id")]
+        return [str(extract_chunk_id(doc)) for doc, _ in fused if extract_chunk_id(doc)]
 
     raise ValueError(f"不支持的评测模式: {mode}")
 

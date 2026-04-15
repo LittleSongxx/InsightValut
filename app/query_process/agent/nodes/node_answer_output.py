@@ -7,10 +7,17 @@ from app.utils.markdown_image_utils import extract_markdown_image_urls
 from app.query_process.agent.state import QueryGraphState
 from app.core.logger import logger
 from app.core.load_prompt import load_prompt
+from app.conf.lm_config import lm_config
 from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.clients.mongo_history_utils import save_chat_message
 from app.conf.query_threshold_config import query_threshold_config
 from app.query_process.agent.agentic_utils import build_agentic_response_metadata
+from app.utils.query_cache_utils import (
+    get_current_request_cache_summary,
+    normalize_cache_sequence,
+    query_cache_get,
+    query_cache_set,
+)
 
 _IMAGE_BLOCK_MARKER = "【图片】"
 cfg = query_threshold_config
@@ -283,6 +290,20 @@ def step_4_write_history(
     return state
 
 
+def _answer_cache_descriptor(state: QueryGraphState, prompt: str) -> Dict[str, Any]:
+    reranked_docs = state.get("reranked_docs") or []
+    return {
+        "model": lm_config.llm_model or "default",
+        "question": state.get("rewritten_query") or state.get("original_query") or "",
+        "prompt": prompt,
+        "item_names": normalize_cache_sequence(state.get("item_names") or []),
+        "doc_ids": [
+            doc.get("chunk_id") or doc.get("doc_id") or doc.get("url") or ""
+            for doc in reranked_docs[:10]
+        ],
+    }
+
+
 def node_answer_output(state: QueryGraphState) -> QueryGraphState:
     """
     1 判断state 中的answer是否已经存在，如果存在直接输出answer中的答案，注意判断是否需要流式输出需要则流式输出
@@ -309,10 +330,19 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
     if not answer_exists:
         prompt = step_2_construct_prompt(state)
         state["prompt"] = prompt
-        step_3_generate_response(state, prompt)
+        answer_cache_descriptor = _answer_cache_descriptor(state, prompt)
+        cached_answer = query_cache_get("answer", answer_cache_descriptor)
+        if isinstance(cached_answer, str) and cached_answer.strip():
+            logger.info("答案缓存命中，跳过 LLM 生成")
+            state["answer"] = cached_answer
+        else:
+            step_3_generate_response(state, prompt)
+            if state.get("answer"):
+                query_cache_set("answer", answer_cache_descriptor, state.get("answer"))
 
     # 提取图片URL（用于历史记录和前端展示）
     image_urls = _extract_images_from_docs(state.get("reranked_docs") or [])
+    state["cache_summary"] = get_current_request_cache_summary()
     if state.get("answer") and not state.get("is_stream"):
         set_task_result(state["session_id"], "answer", state.get("answer"))
     response_metadata = build_agentic_response_metadata(state, image_urls=image_urls)

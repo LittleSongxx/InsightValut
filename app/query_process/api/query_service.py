@@ -37,10 +37,18 @@ from app.utils.eval_job_utils import (
     list_evaluation_jobs,
     run_evaluation_job,
 )
+from app.utils.chunk_id_migration import migrate_collection_chunk_ids
+from app.utils.unified_rag_eval import sync_evaluation_dataset
 from app.clients.mongo_history_utils import (
     get_recent_messages,
     clear_history,
     get_all_sessions,
+)
+from app.utils.query_cache_utils import (
+    get_current_request_cache_summary,
+    get_query_cache_stats,
+    query_cache_request_context,
+    reset_query_cache,
 )
 from app.lm.embedding_utils import warmup_embeddings
 from app.query_process.agent.main_graph import query_app
@@ -75,6 +83,31 @@ class EvaluationRunRequest(BaseModel):
     dataset_path: str = Field(..., description="评测数据集路径")
     variants: list[str] = Field(default_factory=list, description="评测变体列表")
     output_path: str | None = Field(None, description="可选输出报告路径")
+
+
+class EvaluationDatasetSyncRequest(BaseModel):
+    """评测集 chunk_id 对齐请求"""
+
+    dataset_path: str = Field(..., description="评测数据集路径")
+    output_path: str | None = Field(
+        None, description="可选输出路径，留空则原地更新数据集"
+    )
+    create_backup: bool = Field(True, description="原地更新时是否生成备份")
+
+
+class ChunkIdMigrationRequest(BaseModel):
+    """知识库稳定 chunk_id 迁移请求"""
+
+    item_names: list[str] = Field(default_factory=list, description="可选 item_name 范围")
+    collection_name: str | None = Field(None, description="可选集合名称")
+    dry_run: bool = Field(False, description="仅预演，不实际写回")
+    sync_graph: bool = Field(True, description="迁移后是否同步刷新 Neo4j 图谱")
+
+
+class CacheResetRequest(BaseModel):
+    """查询缓存重置请求"""
+
+    reason: str = Field("manual", description="重置原因")
 
 
 # 证明服务器启动即可
@@ -114,7 +147,10 @@ def run_query_graph(session_id: str, user_query: str, is_stream: bool = True):
     }
     try:
         # 后期运行
-        query_app.invoke(default_state)
+        with query_cache_request_context(default_state):
+            result = query_app.invoke(default_state)
+            if isinstance(result, dict):
+                result["cache_summary"] = result.get("cache_summary") or get_current_request_cache_summary()
         # 整体任务就更新完了！ 接下来就是数据的更新了！
         update_task_status(session_id, TASK_STATUS_COMPLETED, is_stream)
     except Exception as e:
@@ -353,6 +389,63 @@ async def create_and_run_evaluation_job(
         return job
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"create evaluation job error: {e}")
+
+
+@app.post("/evaluation/dataset/sync")
+async def sync_evaluation_dataset_api(request: EvaluationDatasetSyncRequest):
+    """将评测集中的历史 chunk_id 对齐到当前知识库"""
+    try:
+        return sync_evaluation_dataset(
+            dataset_path=request.dataset_path,
+            output_path=request.output_path,
+            create_backup=request.create_backup,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"sync evaluation dataset error: {e}"
+        )
+
+
+@app.post("/knowledge-base/chunk-ids/migrate")
+async def migrate_chunk_ids_api(request: ChunkIdMigrationRequest):
+    """将知识库现有 chunk 对齐到稳定 chunk_id"""
+    try:
+        result = migrate_collection_chunk_ids(
+            item_names=request.item_names,
+            collection_name=request.collection_name,
+            dry_run=request.dry_run,
+            sync_graph=request.sync_graph,
+        )
+        if not request.dry_run:
+            cache_reset = reset_query_cache(reason="knowledge_base_chunk_id_migration")
+            result["cache_reset"] = cache_reset
+            message = str(result.get("message") or "").strip()
+            result["message"] = (
+                f"{message} 查询缓存已失效。".strip()
+                if message
+                else "知识库迁移完成，查询缓存已失效。"
+            )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"migrate chunk ids error: {e}")
+
+
+@app.get("/cache/stats")
+async def query_cache_stats_api():
+    """获取查询缓存全局统计"""
+    try:
+        return get_query_cache_stats()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query cache stats error: {e}")
+
+
+@app.post("/cache/reset")
+async def reset_query_cache_api(request: CacheResetRequest):
+    """手动失效查询缓存"""
+    try:
+        return reset_query_cache(reason=request.reason)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query cache reset error: {e}")
 
 
 if __name__ == "__main__":

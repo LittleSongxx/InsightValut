@@ -4,6 +4,9 @@ from app.conf.query_threshold_config import query_threshold_config
 from app.clients.milvus_schema import get_entity_field, extract_chunk_id
 from app.core.logger import logger
 import sys
+import hashlib
+
+from app.utils.query_cache_utils import query_cache_get, query_cache_set
 
 
 def step_1_merge_docs(state):
@@ -112,6 +115,22 @@ def step_2_rerank_docs(state, doc_items):
         return []
 
     logger.info(f"Step 2: 开始重排序 (Rerank), 待排序文档数: {len(doc_items)}")
+    descriptor_docs = []
+    for item in doc_items:
+        descriptor_docs.append(
+            {
+                "chunk_id": item.get("chunk_id"),
+                "doc_id": item.get("doc_id"),
+                "source": item.get("source"),
+                "title": item.get("title"),
+                "text_hash": hashlib.sha256(str(item.get("text") or "").encode("utf-8")).hexdigest(),
+            }
+        )
+    cache_descriptor = {"question": question, "docs": descriptor_docs}
+    cached = query_cache_get("rerank", cache_descriptor)
+    if isinstance(cached, list):
+        logger.info(f"Step 2: 重排序缓存命中，直接返回 {len(cached)} 条结果")
+        return cached
 
     texts = [x["text"] for x in doc_items]
     try:
@@ -144,6 +163,7 @@ def step_2_rerank_docs(state, doc_items):
                 }
             )
         scored_docs.sort(key=lambda x: x["score"], reverse=True)
+        query_cache_set("rerank", cache_descriptor, scored_docs)
         return scored_docs
     except Exception:
         logger.exception("Step 2: 重排序过程发生异常")

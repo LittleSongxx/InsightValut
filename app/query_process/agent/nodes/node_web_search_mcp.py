@@ -5,6 +5,7 @@ from app.utils.task_utils import add_done_task, add_running_task
 from app.conf.bailian_mcp_config import mcp_config
 from app.core.logger import logger
 from app.query_process.agent.graph_query_utils import should_run_retriever
+from app.utils.query_cache_utils import query_cache_get, query_cache_set
 
 try:
     from agents.mcp import MCPServerSse
@@ -111,8 +112,18 @@ def node_web_search_mcp(state):
     # 3. 执行搜索
     if query:
         try:
+            cache_descriptor = {
+                "query": query,
+                "base_url": mcp_config.mcp_base_url,
+                "count": 5,
+            }
+            cached = query_cache_get("web_search", cache_descriptor)
+            if isinstance(cached, list):
+                logger.info(f"WebSearch 缓存命中，直接返回 {len(cached)} 条结果")
+                docs = cached
+            else:
             # 同步-异步桥接：通过asyncio.run()执行异步的mcp_call函数
-            logger.info(f"启动异步 MCP 调用，Query: {query}")
+                logger.info(f"启动异步 MCP 调用，Query: {query}")
 
             # ======================================================================
             # MCP 返回结果格式解析说明
@@ -135,38 +146,40 @@ def node_web_search_mcp(state):
             # }
             # """
             # ======================================================================
-            result = asyncio.run(mcp_call(query))
+                result = asyncio.run(mcp_call(query))
 
             # 4. 解析结果
-            if result and not result.isError and result.content:
+                if result and not result.isError and result.content:
                 # 解析MCP原始结果：提取文本内容并转为JSON对象
                 # result.content 通常是一个列表，第一项包含文本结果
-                raw_text = result.content[0].text
-                try:
-                    data = json.loads(raw_text)
-                    pages = data.get("pages") or []
+                    raw_text = result.content[0].text
+                    try:
+                        data = json.loads(raw_text)
+                        pages = data.get("pages") or []
 
-                    logger.info(f"MCP 返回原始页面数量: {len(pages)}")
+                        logger.info(f"MCP 返回原始页面数量: {len(pages)}")
 
-                    # 遍历结果，统一封装为结构化格式
-                    for item in pages:
-                        snippet = (item.get("snippet") or "").strip()
-                        url = (item.get("url") or "").strip()
-                        title = (item.get("title") or "").strip()
+                        # 遍历结果，统一封装为结构化格式
+                        for item in pages:
+                            snippet = (item.get("snippet") or "").strip()
+                            url = (item.get("url") or "").strip()
+                            title = (item.get("title") or "").strip()
 
-                        # 过滤无核心摘要的结果
-                        if not snippet:
-                            continue
+                            # 过滤无核心摘要的结果
+                            if not snippet:
+                                continue
 
-                        docs.append({"title": title, "url": url, "snippet": snippet})
+                            docs.append({"title": title, "url": url, "snippet": snippet})
 
-                except json.JSONDecodeError:
-                    logger.error(f"MCP 返回结果解析 JSON 失败: {raw_text[:100]}...")
-            else:
-                if result and result.isError:
-                    logger.error(f"MCP 返回错误: {result}")
+                    except json.JSONDecodeError:
+                        logger.error(f"MCP 返回结果解析 JSON 失败: {raw_text[:100]}...")
                 else:
-                    logger.warning("MCP 返回结果为空或无效")
+                    if result and result.isError:
+                        logger.error(f"MCP 返回错误: {result}")
+                    else:
+                        logger.warning("MCP 返回结果为空或无效")
+                if docs:
+                    query_cache_set("web_search", cache_descriptor, docs)
 
             logger.info(f"结构化搜索结果数量: {len(docs)}")
 

@@ -4,8 +4,10 @@ import time
 from pathlib import Path
 
 from pymilvus.model.hybrid import BGEM3EmbeddingFunction
+from app.conf.cache_config import query_cache_config
 from app.core.logger import logger
 from app.conf.embedding_config import embedding_config
+from app.utils.query_cache_utils import query_cache_get, query_cache_set
 
 # 模型单例对象，避免重复初始化
 _bge_m3_ef = None
@@ -104,41 +106,75 @@ def generate_embeddings(texts):
 
     logger.info(f"开始为{len(texts)}条文本生成混合向量嵌入")
     try:
-        # 加载BGE-M3模型单例
-        model = get_bge_m3_ef()
-        # 模型编码生成向量，返回dense（稠密向量）+sparse（CSR格式稀疏向量）
-        embeddings = model.encode_documents(texts)
-        logger.debug(f"模型编码完成，开始解析稀疏向量格式，共{len(texts)}条")
-
-        # 初始化稀疏向量处理结果，解析为字典格式（适配序列化/存储）
-        processed_sparse = []
-        for i in range(len(texts)):
-            # 提取第i个文本的稀疏向量索引：np.int64 → Python int（满足字典key可哈希要求）
-            sparse_indices = (
-                embeddings["sparse"]
-                .indices[
-                    embeddings["sparse"].indptr[i] : embeddings["sparse"].indptr[i + 1]
-                ]
-                .tolist()
+        cached_dense = [None] * len(texts)
+        cached_sparse = [None] * len(texts)
+        miss_indices = []
+        miss_texts = []
+        for index, text in enumerate(texts):
+            normalized_text = str(text or "")
+            if not normalized_text.strip():
+                miss_indices.append(index)
+                miss_texts.append(normalized_text)
+                continue
+            cached = query_cache_get(
+                "embedding",
+                {
+                    "model_hint": embedding_config.bge_m3_path
+                    or embedding_config.bge_m3
+                    or "BAAI/bge-m3",
+                    "text": normalized_text,
+                },
             )
-            # 提取第i个文本的稀疏向量权重：np.float32 → Python float（适配JSON序列化/接口返回）
-            sparse_data = (
-                embeddings["sparse"]
-                .data[
-                    embeddings["sparse"].indptr[i] : embeddings["sparse"].indptr[i + 1]
-                ]
-                .tolist()
-            )
-            # 构造{特征索引: 归一化权重}的稀疏向量字典
-            sparse_dict = {k: v for k, v in zip(sparse_indices, sparse_data)}
-            processed_sparse.append(sparse_dict)
+            if isinstance(cached, dict):
+                cached_dense[index] = cached.get("dense")
+                cached_sparse[index] = cached.get("sparse")
+            else:
+                miss_indices.append(index)
+                miss_texts.append(normalized_text)
 
-        # 构造最终返回结果，稠密向量转列表（解决numpy数组不可序列化问题）
+        if miss_texts:
+            # 加载BGE-M3模型单例
+            model = get_bge_m3_ef()
+            embeddings = model.encode_documents(miss_texts)
+            logger.debug(f"模型编码完成，开始解析稀疏向量格式，共{len(miss_texts)}条")
+
+            processed_sparse = []
+            for i in range(len(miss_texts)):
+                sparse_indices = (
+                    embeddings["sparse"]
+                    .indices[
+                        embeddings["sparse"].indptr[i] : embeddings["sparse"].indptr[i + 1]
+                    ]
+                    .tolist()
+                )
+                sparse_data = (
+                    embeddings["sparse"]
+                    .data[
+                        embeddings["sparse"].indptr[i] : embeddings["sparse"].indptr[i + 1]
+                    ]
+                    .tolist()
+                )
+                processed_sparse.append({k: v for k, v in zip(sparse_indices, sparse_data)})
+
+            for offset, original_index in enumerate(miss_indices):
+                dense_value = embeddings["dense"][offset].tolist()
+                sparse_value = processed_sparse[offset]
+                cached_dense[original_index] = dense_value
+                cached_sparse[original_index] = sparse_value
+                query_cache_set(
+                    "embedding",
+                    {
+                        "model_hint": embedding_config.bge_m3_path
+                        or embedding_config.bge_m3
+                        or "BAAI/bge-m3",
+                        "text": miss_texts[offset],
+                    },
+                    {"dense": dense_value, "sparse": sparse_value},
+                )
+
         result = {
-            "dense": [
-                emb.tolist() for emb in embeddings["dense"]
-            ],  # 嵌套列表，与输入文本一一对应
-            "sparse": processed_sparse,  # 字典列表，模型已做L2归一化
+            "dense": [dense if dense is not None else [] for dense in cached_dense],
+            "sparse": [sparse if sparse is not None else {} for sparse in cached_sparse],
         }
         logger.success(f"{len(texts)}条文本向量生成完成，格式已适配工业级使用")
         return result

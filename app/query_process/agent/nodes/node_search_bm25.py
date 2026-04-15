@@ -8,6 +8,7 @@ from app.utils.task_utils import add_done_task, add_running_task
 
 OUTPUT_FIELDS = [
     "chunk_id",
+    "stable_chunk_id",
     "content",
     "title",
     "parent_title",

@@ -9,11 +9,14 @@ Milvus Schema 统一字段定义
 
 from pymilvus import DataType
 
+from app.utils.chunk_id_utils import business_chunk_id, normalize_entity_chunk_fields, storage_chunk_id
+
 
 # ==================== CHUNKS_COLLECTION 字段定义 ====================
 
 # CHUNKS_COLLECTION 字段名称常量
 FIELD_CHUNK_ID = "chunk_id"
+FIELD_STABLE_CHUNK_ID = "stable_chunk_id"
 FIELD_CONTENT = "content"
 FIELD_TITLE = "title"
 FIELD_PARENT_TITLE = "parent_title"
@@ -30,6 +33,7 @@ CHUNKS_VECTOR_FIELDS = [FIELD_DENSE_VECTOR, FIELD_SPARSE_VECTOR]
 # CHUNKS_COLLECTION 查询时返回的字段（不含向量，节省带宽）
 CHUNKS_OUTPUT_FIELDS = [
     FIELD_CHUNK_ID,
+    FIELD_STABLE_CHUNK_ID,
     FIELD_CONTENT,
     FIELD_TITLE,
     FIELD_PARENT_TITLE,
@@ -43,6 +47,7 @@ CHUNKS_OUTPUT_FIELDS = [
 
 ITEM_NAME_OUTPUT_FIELDS = [
     FIELD_CHUNK_ID,
+    FIELD_STABLE_CHUNK_ID,
     FIELD_CONTENT,
     FIELD_TITLE,
     FIELD_PARENT_TITLE,
@@ -102,7 +107,7 @@ def entity_to_doc(entity: dict, source: str = "local") -> dict:
     :return: 标准化文档字典
     """
     doc = {
-        "chunk_id": get_entity_field(entity, FIELD_CHUNK_ID) or get_entity_field(entity, "id"),
+        "chunk_id": extract_chunk_id(entity),
         "content": get_entity_field(entity, FIELD_CONTENT),
         "title": get_entity_field(entity, FIELD_TITLE),
         "parent_title": get_entity_field(entity, FIELD_PARENT_TITLE),
@@ -111,6 +116,9 @@ def entity_to_doc(entity: dict, source: str = "local") -> dict:
         "source": source,
         "score": entity.get("score") if isinstance(entity, dict) else None,
     }
+    raw_storage_chunk_id = extract_storage_chunk_id(entity)
+    if raw_storage_chunk_id and raw_storage_chunk_id != doc["chunk_id"]:
+        doc["storage_chunk_id"] = raw_storage_chunk_id
     return doc
 
 
@@ -131,7 +139,28 @@ def extract_chunk_id(entity: dict):
     :param entity: Milvus entity 字典
     :return: chunk_id 或 None
     """
-    return get_entity_field(entity, FIELD_CHUNK_ID) or get_entity_field(entity, "id")
+    return business_chunk_id(entity or {})
+
+
+def extract_storage_chunk_id(entity: dict):
+    """
+    从 entity 中提取底层存储主键。
+
+    :param entity: Milvus entity 字典
+    :return: 底层 chunk_id / id 或 None
+    """
+    value = storage_chunk_id(entity or {})
+    return value or None
+
+
+def normalize_entity_for_business_id(entity: dict) -> dict:
+    """
+    将检索实体中的业务 chunk_id 归一化到统一字段。
+
+    :param entity: Milvus / 检索返回的实体字典
+    :return: 归一化后的实体字典
+    """
+    return normalize_entity_chunk_fields(entity or {})
 
 
 def extract_image_urls(entity: dict) -> list:

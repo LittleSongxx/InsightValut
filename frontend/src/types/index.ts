@@ -33,6 +33,18 @@ export interface AgenticAnswerPlan {
   must_cover?: string[];
 }
 
+export interface QueryCacheNamespaceSummary {
+  [key: string]: number | null | undefined;
+}
+
+export interface QueryCacheRequestSummary {
+  enabled: boolean;
+  namespaces: string[];
+  overall: QueryCacheNamespaceSummary;
+  namespaces_breakdown: Record<string, QueryCacheNamespaceSummary>;
+  hit_namespaces?: string[];
+}
+
 export interface AgenticMetadata {
   query_type?: string;
   graph_preferred?: boolean;
@@ -47,6 +59,7 @@ export interface AgenticMetadata {
   clarification_reason?: string;
   image_urls?: string[];
   agentic_features?: Record<string, boolean>;
+  cache_summary?: QueryCacheRequestSummary;
 }
 
 export interface Message {
@@ -130,6 +143,25 @@ export interface PerformanceTimePoint {
   run_count: number;
   avg_total_duration_ms: number;
   p95_total_duration_ms: number;
+}
+
+export interface QueryCacheStats {
+  enabled: boolean;
+  redis_enabled: boolean;
+  epoch: number;
+  l1_size: number;
+  default_namespaces: string[];
+  overall: QueryCacheNamespaceSummary;
+  namespaces: Record<string, QueryCacheNamespaceSummary>;
+  redis_url: string;
+  redis_import_error: string;
+}
+
+export interface QueryCacheResetResult {
+  ok: boolean;
+  reason: string;
+  epoch: number;
+  message: string;
 }
 
 export interface EvaluationMetricDelta {
@@ -233,6 +265,46 @@ export interface EvaluationConfig {
   template_dataset_path: string;
   default_variants: string[];
   variant_catalog: EvaluationVariantOption[];
+}
+
+export interface EvaluationDatasetSyncResult {
+  dataset_path: string;
+  output_path: string;
+  backup_path: string;
+  case_count: number;
+  updated_cases: number;
+  already_aligned_cases: number;
+  unresolved_cases: number;
+  unresolved_case_ids: string[];
+  stale_declared_cases_before: number;
+  ground_truth_summary: EvaluationRetrievalGroundTruthSummary;
+  warnings: string[];
+  before_ground_truth_summary: EvaluationRetrievalGroundTruthSummary;
+  before_warnings: string[];
+  message: string;
+}
+
+export interface ChunkIdMigrationDetail {
+  item_name: string;
+  status: string;
+  chunks: number;
+  legacy_rows: number;
+  already_stable_rows: number;
+  graph_synced: boolean;
+}
+
+export interface ChunkIdMigrationResult {
+  collection_name: string;
+  item_names: string[];
+  dry_run: boolean;
+  sync_graph: boolean;
+  items_scanned: number;
+  chunks_scanned: number;
+  chunks_migrated: number;
+  graph_synced_items: number;
+  status_breakdown: Record<string, number>;
+  details: ChunkIdMigrationDetail[];
+  message: string;
 }
 
 export interface EvaluationJob {

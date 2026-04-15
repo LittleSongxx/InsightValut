@@ -1,7 +1,11 @@
 import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from app.clients.milvus_schema import CHUNKS_OUTPUT_FIELDS
+from app.clients.milvus_schema import (
+    CHUNKS_OUTPUT_FIELDS,
+    extract_chunk_id,
+    normalize_entity_for_business_id,
+)
 from app.clients.milvus_utils import (
     create_hybrid_search_requests,
     get_milvus_client,
@@ -13,6 +17,7 @@ from app.core.logger import logger
 from app.lm.embedding_utils import generate_embeddings
 from app.utils.bm25_utils import rank_documents_bm25
 from app.utils.escape_milvus_string_utils import escape_milvus_string
+from app.utils.query_cache_utils import normalize_cache_sequence, query_cache_get, query_cache_set
 
 
 def build_item_name_filter_expr(item_names: Optional[Sequence[str]]) -> str:
@@ -46,6 +51,20 @@ def run_embedding_hybrid_search(
         logger.error("检索失败：未配置集合名称")
         return []
 
+    cache_descriptor = {
+        "collection": target_collection,
+        "query_text": query_text,
+        "item_names": normalize_cache_sequence(item_names),
+        "req_limit": req_limit if req_limit is not None else query_threshold_config.embedding_req_limit,
+        "top_k": top_k if top_k is not None else query_threshold_config.embedding_top_k,
+        "output_fields": normalize_cache_sequence(output_fields or list(CHUNKS_OUTPUT_FIELDS)),
+        "ranker_weights": list(ranker_weights or (query_threshold_config.hybrid_dense_weight, query_threshold_config.hybrid_sparse_weight)),
+        "norm_score": bool(norm_score),
+    }
+    cached = query_cache_get("retrieval_embedding", cache_descriptor)
+    if isinstance(cached, list):
+        return cached
+
     client = get_milvus_client()
     if not client:
         logger.error("检索失败：Milvus 客户端不可用")
@@ -74,7 +93,9 @@ def run_embedding_hybrid_search(
         limit=top_k if top_k is not None else cfg.embedding_top_k,
         output_fields=output_fields or list(CHUNKS_OUTPUT_FIELDS),
     )
-    return res[0] if res else []
+    hits = res[0] if res else []
+    query_cache_set("retrieval_embedding", cache_descriptor, hits)
+    return hits
 
 
 def _bm25_document_text(doc: Dict[str, Any]) -> str:
@@ -107,6 +128,20 @@ def run_bm25_search(
         logger.error("BM25 检索失败：未配置集合名称")
         return []
 
+    cache_descriptor = {
+        "collection": target_collection,
+        "query_text": query_text,
+        "item_names": normalize_cache_sequence(item_names),
+        "top_k": top_k if top_k is not None else query_threshold_config.bm25_top_k,
+        "candidate_limit": candidate_limit
+        if candidate_limit is not None
+        else query_threshold_config.bm25_candidate_limit,
+        "output_fields": normalize_cache_sequence(output_fields or list(CHUNKS_OUTPUT_FIELDS)),
+    }
+    cached = query_cache_get("retrieval_bm25", cache_descriptor)
+    if isinstance(cached, list):
+        return cached
+
     client = get_milvus_client()
     if not client:
         logger.error("BM25 检索失败：Milvus 客户端不可用")
@@ -133,8 +168,8 @@ def run_bm25_search(
     )
     results: List[Dict[str, Any]] = []
     for doc, score in ranked_docs:
-        entity = dict(doc)
-        chunk_id = entity.get("chunk_id") or entity.get("id")
+        entity = normalize_entity_for_business_id(dict(doc))
+        chunk_id = extract_chunk_id(entity)
         results.append(
             {
                 "entity": entity,
@@ -142,4 +177,5 @@ def run_bm25_search(
                 "id": chunk_id,
             }
         )
+    query_cache_set("retrieval_bm25", cache_descriptor, results)
     return results

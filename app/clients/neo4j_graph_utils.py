@@ -7,6 +7,7 @@ from app.clients.neo4j_utils import ensure_indexes, get_neo4j_driver, query_chun
 from app.core.logger import logger
 from app.import_process.agent.graph_extract_utils import build_graph_payload
 from app.query_process.agent.graph_query_utils import extract_focus_terms
+from app.utils.query_cache_utils import normalize_cache_sequence, query_cache_get, query_cache_set
 
 _ALLOWED_ENTITY_LABELS = {
     "Step",
@@ -135,6 +136,7 @@ def import_chunks_to_graph(item_name: str, chunks: List[Dict[str, Any]]) -> int:
         chunk_row = {
             "node_key": f"{product_key}::chunk::{chunk_id}",
             "chunk_id": chunk_id,
+            "storage_chunk_id": _clean_text(chunk.get("storage_chunk_id") or ""),
             "content": _clean_text(chunk.get("content") or "")[:4000],
             "title": _clean_text(chunk.get("title") or ""),
             "parent_title": _clean_text(chunk.get("parent_title") or ""),
@@ -191,6 +193,10 @@ def import_chunks_to_graph(item_name: str, chunks: List[Dict[str, Any]]) -> int:
             name=item_name,
         )
         session.run(
+            "MATCH (p:Product {name: $name}) DETACH DELETE p",
+            name=item_name,
+        )
+        session.run(
             "MERGE (p:KGNode:Product {node_key: $node_key}) "
             "SET p.name = $name, p.product_name = $name",
             node_key=product_key,
@@ -236,6 +242,7 @@ def import_chunks_to_graph(item_name: str, chunks: List[Dict[str, Any]]) -> int:
                 MATCH (s:Section {node_key: row.section_key})
                 MERGE (c:KGNode:Chunk {chunk_id: row.chunk_id})
                 SET c.node_key = row.node_key,
+                    c.storage_chunk_id = row.storage_chunk_id,
                     c.content = row.content,
                     c.title = row.title,
                     c.parent_title = row.parent_title,
@@ -691,6 +698,17 @@ def query_graph_context(
     if not question and not item_names:
         return {"kg_chunks": [], "summary": {"query_type": query_type, "result_count": 0}}
 
+    cache_descriptor = {
+        "question": _clean_text(question),
+        "item_names": normalize_cache_sequence(item_names),
+        "query_type": query_type,
+        "focus_terms": normalize_cache_sequence(focus_terms),
+        "limit": int(limit or 8),
+    }
+    cached = query_cache_get("retrieval_kg", cache_descriptor)
+    if isinstance(cached, dict):
+        return cached
+
     ensure_graph_indexes()
     driver = get_neo4j_driver()
     terms = _normalize_terms(question, focus_terms)
@@ -735,7 +753,9 @@ def query_graph_context(
         "result_count": len(deduped),
         "used_fallback": fallback_used,
     }
-    return {"kg_chunks": deduped[:safe_limit], "summary": summary}
+    result = {"kg_chunks": deduped[:safe_limit], "summary": summary}
+    query_cache_set("retrieval_kg", cache_descriptor, result)
+    return result
 
 
 def expand_chunk_context(
@@ -759,7 +779,7 @@ def expand_chunk_context(
         records = session.run(
             """
             MATCH (c:Chunk)
-            WHERE c.chunk_id IN $chunk_ids
+            WHERE c.chunk_id IN $chunk_ids OR c.storage_chunk_id IN $chunk_ids
             OPTIONAL MATCH (prev:Chunk)-[:NEXT]->(c)
             OPTIONAL MATCH (c)-[:NEXT]->(next:Chunk)
             OPTIONAL MATCH (s:Section)-[:HAS_CHUNK]->(c)

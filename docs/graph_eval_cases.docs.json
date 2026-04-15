@@ -1,10 +1,10 @@
 {
   "dataset_name": "graph_eval_cases.docs.json",
   "generated_at": "2026-04-15T06:40:00+08:00",
-  "description": "基于当前 InsightVault 默认知识库中已导入的《HUAWEI MateBook B7-420 用户指南》重建的统一评测集。所有 case 均与当前 Milvus 中的 HUAWEIMateBookB7-420 chunks 对齐。",
+  "description": "基于当前 InsightVault 默认知识库中已导入的《HUAWEI MateBook B7-420 用户指南》重建的统一评测集。所有 case 均与当前默认知识库中的稳定 chunk_id 对齐。",
   "notes": [
     "本评测集用于控制变量对比 Baseline RAG、HyDE、BM25、Graph First 与 Agentic 增强方案。",
-    "relevant_chunk_ids 已对齐当前默认知识库；若后续重新导入导致 chunk_id 漂移，统一评测器会基于 reference_answer 自动重映射当前 chunk。"
+    "relevant_chunk_ids 已切换为稳定 chunk_id；后续重新导入默认知识库时，评测金标无需再跟随 Milvus 自增主键漂移。"
   ],
   "sources": [
     "docs/HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn).pdf"
@@ -16,7 +16,7 @@
       "query": "MateBook B7-420 的快捷键模式和功能键模式有什么区别，怎么切换？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "快捷键模式下 F1、F2 等按键默认执行亮度、背光等热键功能；功能键模式下它们作为普通功能键使用。可以按 Fn 键切换，也可以在华为电脑管家中设置为功能键优先。",
-      "relevant_chunk_ids": ["465601361524049409"]
+      "relevant_chunk_ids": ["stc_v1_877cff45508fdf4619d40683", "stc_v1_655e74ef8a219fe66e845cdc", "stc_v1_e0e99c593e1bce3925014df5"]
     },
     {
       "case_id": "matebook_touchpad_settings",
@@ -24,7 +24,7 @@
       "query": "如何更改 MateBook B7-420 的触摸板设置？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "打开设置界面后进入触摸板相关页面，可以开启或关闭触摸板、设置连接鼠标时的触摸板状态、调整滚动方向，以及设置手指动作功能。",
-      "relevant_chunk_ids": ["465601361524049410"]
+      "relevant_chunk_ids": ["stc_v1_e0e99c593e1bce3925014df5", "stc_v1_877cff45508fdf4619d40683", "stc_v1_dd4805b1aec6cc42d7bb4c1f"]
     },
     {
       "case_id": "matebook_battery_status",
@@ -32,7 +32,7 @@
       "query": "在 MateBook B7-420 上怎么看电池剩余时间和充满时间？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "点击桌面右下角的电池图标即可查看电池状态。连接电源时可以查看充满时间；未连接电源时可以查看剩余电量和剩余使用时间。",
-      "relevant_chunk_ids": ["465601361524049411"]
+      "relevant_chunk_ids": ["stc_v1_8c8d0759924a7cefd768cbcf", "stc_v1_e0e99c593e1bce3925014df5", "stc_v1_f481b9bb35f9375d0a8b4bd9"]
     },
     {
       "case_id": "matebook_charging_precautions",
@@ -40,7 +40,7 @@
       "query": "MateBook B7-420 充电时有哪些注意事项？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "应在适宜温度范围和通风良好的阴凉区域为计算机充电。长时间工作和充电时表面发热属正常现象，感觉发烫时应关闭部分功能并停止充电。",
-      "relevant_chunk_ids": ["465601361524049411"]
+      "relevant_chunk_ids": ["stc_v1_8c8d0759924a7cefd768cbcf", "stc_v1_dd4805b1aec6cc42d7bb4c1f", "stc_v1_905800710cc6f3f5830c6175"]
     },
     {
       "case_id": "matebook_f10_restore",
@@ -48,7 +48,7 @@
       "query": "MateBook B7-420 的 F10 一键恢复出厂怎么操作，有什么注意事项？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "将计算机连接电源，开机过程中连续快速点按 F10 键，进入界面后按提示恢复出厂。该操作会删除 C 盘中的个人数据，需要提前备份。",
-      "relevant_chunk_ids": ["465601361524049412"]
+      "relevant_chunk_ids": ["stc_v1_785a7b8f62271093852d9b09", "stc_v1_8c8d0759924a7cefd768cbcf", "stc_v1_dd4805b1aec6cc42d7bb4c1f"]
     },
     {
       "case_id": "matebook_feature_tips",
@@ -56,7 +56,7 @@
       "query": "MateBook B7-420 想看更多精彩功能去哪里找？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "点击桌面底部任务栏上的华为电脑管家，进入玩机技巧即可获取更多精彩功能。",
-      "relevant_chunk_ids": ["465601361524049412"]
+      "relevant_chunk_ids": ["stc_v1_785a7b8f62271093852d9b09", "stc_v1_e0e99c593e1bce3925014df5", "stc_v1_f481b9bb35f9375d0a8b4bd9"]
     },
     {
       "case_id": "matebook_dock_devices",
@@ -64,7 +64,7 @@
       "query": "MateBook B7-420 通过扩展坞可以连接哪些设备？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "通过扩展坞接口或插槽，计算机可以连接投影仪、电视、U 盘等兼容设备和配件。HUAWEI MateDock 2 为可选配件，需要单独购买。",
-      "relevant_chunk_ids": ["465601361524049413"]
+      "relevant_chunk_ids": ["stc_v1_d2e4d6cd0cb59cc5df8fa326", "stc_v1_f375b53daf913ee50db58371", "stc_v1_f481b9bb35f9375d0a8b4bd9"]
     },
     {
       "case_id": "matebook_external_display",
@@ -72,7 +72,7 @@
       "query": "MateBook B7-420 连接电视、显示器或投影仪前需要准备什么？HDMI 和 VGA 能同时用吗？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "除了计算机、扩展坞和显示设备外，还需要准备 HDMI 或 VGA 连接线缆，并检查连接设备的端口。HDMI 接口和 VGA 接口不能同时使用。",
-      "relevant_chunk_ids": ["465601361524049414"]
+      "relevant_chunk_ids": ["stc_v1_f375b53daf913ee50db58371", "stc_v1_dd4805b1aec6cc42d7bb4c1f", "stc_v1_d2e4d6cd0cb59cc5df8fa326"]
     },
     {
       "case_id": "matebook_usb_setup",
@@ -80,7 +80,7 @@
       "query": "如何通过扩展坞给 MateBook B7-420 连接 USB 鼠标、打印机或其他 USB 设备？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "将设备的 USB 线缆插入扩展坞 USB-A 接口；如果设备需要供电，先接通电源并启动设备。首次安装 USB 设备时，计算机会自动安装所需软件。",
-      "relevant_chunk_ids": ["465601361524049415"]
+      "relevant_chunk_ids": ["stc_v1_f481b9bb35f9375d0a8b4bd9", "stc_v1_f375b53daf913ee50db58371", "stc_v1_dd4805b1aec6cc42d7bb4c1f"]
     },
     {
       "case_id": "matebook_mouse_install_battery",
@@ -88,7 +88,7 @@
       "query": "HUAWEI 蓝牙鼠标（第二代）怎么安装电池？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "掀开鼠标上壳，按电池仓正负极标志装入一节 AA 电池，再合上上壳即可完成安装。",
-      "relevant_chunk_ids": ["465601361524049418"]
+      "relevant_chunk_ids": ["stc_v1_4e2dfefb4d590beb84439bde", "stc_v1_103829a17c17451efcb61be4", "stc_v1_f481b9bb35f9375d0a8b4bd9"]
     },
     {
       "case_id": "matebook_mouse_multi_device",
@@ -96,7 +96,7 @@
       "query": "HUAWEI 蓝牙鼠标（第二代）如何在多台设备之间切换使用？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "短按多设备切换按键，即可让 HUAWEI 蓝牙鼠标（第二代）在多台蓝牙设备之间切换使用。",
-      "relevant_chunk_ids": ["465601361524049419"]
+      "relevant_chunk_ids": ["stc_v1_103829a17c17451efcb61be4", "stc_v1_012cfb1e1b90da327407f7c9", "stc_v1_17d4c69ca0be1daa3a9f5e35"]
     },
     {
       "case_id": "matebook_child_health",
@@ -104,7 +104,7 @@
       "query": "儿童使用 MateBook B7-420 或其配件时要注意什么？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "设备及其配件可能包含小零件，应放在儿童接触不到的地方，避免误吞或损坏设备。本设备并非玩具，儿童应在成人监护下使用。",
-      "relevant_chunk_ids": ["465601361524049421"]
+      "relevant_chunk_ids": ["stc_v1_2532d64daeff9b8d608e2622", "stc_v1_905800710cc6f3f5830c6175", "stc_v1_98aad1ae51cccaa383f64d46"]
     },
     {
       "case_id": "matebook_battery_safety",
@@ -112,7 +112,7 @@
       "query": "MateBook B7-420 的电池安全方面有哪些明确禁止事项？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "不要将电池暴露在高温或火源附近，不要跌落、挤压、穿刺、拆解或改装电池，也不要将其浸入水中或其他液体中，以免引起过热、起火或爆炸。",
-      "relevant_chunk_ids": ["465601361524049422"]
+      "relevant_chunk_ids": ["stc_v1_98aad1ae51cccaa383f64d46", "stc_v1_905800710cc6f3f5830c6175", "stc_v1_012cfb1e1b90da327407f7c9"]
     },
     {
       "case_id": "matebook_nfc_temperature",
@@ -120,7 +120,7 @@
       "query": "MateBook B7-420 的 NFC 工作电压和工作环境温度范围是多少？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "本产品 NFC 的工作电压为 3.3V，工作环境温度为 0℃ 到 35℃。",
-      "relevant_chunk_ids": ["465601361524049423"]
+      "relevant_chunk_ids": ["stc_v1_4d65dfc7adcd204a9b88a0e0", "stc_v1_905800710cc6f3f5830c6175", "stc_v1_8c8d0759924a7cefd768cbcf"]
     },
     {
       "case_id": "matebook_privacy_protection",
@@ -128,7 +128,7 @@
       "query": "MateBook B7-420 用户如何保护个人信息和数据安全？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "应将设备放在安全区域，设置屏幕锁定，不阅读陌生信息或邮件，不访问存在安全隐患的网站，并谨慎使用无线共享、蓝牙等功能，以降低个人信息和数据泄露风险。",
-      "relevant_chunk_ids": ["465601361524049424"]
+      "relevant_chunk_ids": ["stc_v1_edad2e3766ada080f7fae948", "stc_v1_012cfb1e1b90da327407f7c9", "stc_v1_dd4805b1aec6cc42d7bb4c1f"]
     },
     {
       "case_id": "matebook_manual_notice",
@@ -136,7 +136,7 @@
       "query": "为什么手册里的某些功能说明可能和实际购买到的 MateBook B7-420 不完全一致？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "因为手册描述的某些特性和功能取决于当地网络设计和性能、运营商或服务提供商支持情况，以及设备上安装的软件，所以手册内容可能与实际购买的产品或附件并非完全一一对应。",
-      "relevant_chunk_ids": ["465601361524049426"]
+      "relevant_chunk_ids": ["stc_v1_e8ebd8c526f11574fe3e047c", "stc_v1_2d2a5c0937dda0bbbdc603d6", "stc_v1_b5833849e7c7c0f90081f38d"]
     },
     {
       "case_id": "matebook_liability",
@@ -144,7 +144,7 @@
       "query": "华为对使用 MateBook B7-420 手册内容相关造成的损失承担什么责任？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "在适用法律允许的范围内，华为不对因使用本手册相关内容及所描述产品而产生的特殊、附带、间接或继发性损害，以及利润、数据、商誉或预期节约损失承担赔偿责任。",
-      "relevant_chunk_ids": ["465601361524049427"]
+      "relevant_chunk_ids": ["stc_v1_2d2a5c0937dda0bbbdc603d6", "stc_v1_e8ebd8c526f11574fe3e047c", "stc_v1_b5833849e7c7c0f90081f38d"]
     },
     {
       "case_id": "matebook_more_info",
@@ -152,7 +152,7 @@
       "query": "在哪里可以购买华为终端产品或查看更多 MateBook B7-420 的相关信息？",
       "item_names": ["HUAWEIMateBookB7-420"],
       "reference_answer": "购买华为终端产品可访问华为商城 https://www.vmall.com/ ，更多信息可访问 https://consumer.huawei.com/cn/ 。",
-      "relevant_chunk_ids": ["465601361524049428"]
+      "relevant_chunk_ids": ["stc_v1_9f3b5b2292e0b685e5c684eb", "stc_v1_2d2a5c0937dda0bbbdc603d6", "stc_v1_b5833849e7c7c0f90081f38d"]
     }
   ]
 }
