@@ -96,6 +96,22 @@ const METRIC_LABELS: Record<string, string> = {
   error_rate: '错误率',
 };
 
+const GROUND_TRUTH_SOURCE_LABELS: Record<string, string> = {
+  declared_ids: '沿用标注 chunk_id',
+  reference_answer_bm25: '按参考答案重映射',
+  unresolved: '未完成对齐',
+};
+
+const GROUND_TRUTH_REASON_LABELS: Record<string, string> = {
+  no_retrieval_ground_truth: '未提供检索金标',
+  item_name_not_in_corpus: 'item_name 不在当前知识库',
+  no_candidate_chunks: '当前知识库没有候选切片',
+  no_reference_match: '参考答案未命中候选切片',
+  reference_match_too_weak: '参考答案与候选切片匹配过弱',
+  declared_ids_stale: '历史 chunk_id 已失效',
+  unknown: '未标注原因',
+};
+
 const HEADLINE_METRIC_KEYS = [
   'factual_correctness',
   'faithfulness',
@@ -139,6 +155,11 @@ function formatVariantLabel(variantName: string, technique?: string) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function formatReportTimestamp(value?: string | null) {
+  if (!value) return '未知时间';
+  return value.replace('T', ' ').slice(0, 19);
 }
 
 function formatMs(value: number | null | undefined) {
@@ -221,6 +242,43 @@ function getSummaryMetric(summary: EvaluationSummary | null | undefined, metricK
   if (metricKey in summary.pipeline_metrics) return summary.pipeline_metrics[metricKey] ?? null;
   const perfMetric = summary.performance_metrics?.[metricKey];
   return typeof perfMetric === 'number' ? perfMetric : null;
+}
+
+function getMetricCoverage(summary: EvaluationSummary | null | undefined, metricKey: string) {
+  if (!summary) return null;
+  if (summary.ragas_coverage?.[metricKey] != null) return summary.ragas_coverage[metricKey];
+  if (summary.retrieval_coverage?.[metricKey] != null) return summary.retrieval_coverage[metricKey];
+  return null;
+}
+
+function formatCoverageLabel(summary: EvaluationSummary | null | undefined, metricKey: string) {
+  const coverage = getMetricCoverage(summary, metricKey);
+  return coverage == null ? undefined : `覆盖样本 ${coverage}`;
+}
+
+function formatBreakdown(
+  breakdown: Record<string, number> | null | undefined,
+  labelMap: Record<string, string> = {},
+) {
+  const entries = Object.entries(breakdown || {});
+  if (!entries.length) return '-';
+  return entries
+    .map(([key, value]) => `${labelMap[key] || key}: ${value}`)
+    .join(' · ');
+}
+
+function formatReportVariantSummary(
+  report: EvaluationReportListItem,
+  techniqueMap: Record<string, string>,
+) {
+  const labels = report.variants
+    .map((variantName) => formatVariantLabel(variantName, techniqueMap[variantName]))
+    .filter(Boolean);
+  if (labels.length === 0) return report.dataset_name || report.file_name;
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} vs ${labels[1]}`;
+  const finalLabel = formatVariantLabel(report.final_variant, techniqueMap[report.final_variant]);
+  return `${finalLabel} · ${labels.length} 个方案`;
 }
 
 function StatCard({
@@ -328,6 +386,7 @@ export default function PerformancePage() {
   const [activeEvaluationJob, setActiveEvaluationJob] = useState<EvaluationJob | null>(null);
   const [datasetPath, setDatasetPath] = useState('');
   const [selectedVariants, setSelectedVariants] = useState<string[]>([]);
+  const [selectedVariantName, setSelectedVariantName] = useState('');
   const [startingEvaluation, setStartingEvaluation] = useState(false);
   const [evaluationActionError, setEvaluationActionError] = useState<string | null>(null);
 
@@ -475,6 +534,21 @@ export default function PerformancePage() {
   }, [loadEvaluationRuntime]);
 
   useEffect(() => {
+    const variantNames = Object.keys(evaluationReport?.variants || {});
+    if (!variantNames.length) {
+      setSelectedVariantName('');
+      return;
+    }
+    setSelectedVariantName((prev) => {
+      if (prev && variantNames.includes(prev)) return prev;
+      if (evaluationReport?.final_variant && variantNames.includes(evaluationReport.final_variant)) {
+        return evaluationReport.final_variant;
+      }
+      return variantNames[0];
+    });
+  }, [evaluationReport]);
+
+  useEffect(() => {
     if (!activeEvaluationJob || !['pending', 'running'].includes(activeEvaluationJob.status)) {
       return;
     }
@@ -527,23 +601,62 @@ export default function PerformancePage() {
     [stages],
   );
 
-  const finalSummary = evaluationReport?.final_system_metrics ?? null;
+  const variantRows = useMemo(() => Object.entries(evaluationReport?.variants || {}), [evaluationReport]);
+  const activeVariantName =
+    selectedVariantName || evaluationReport?.final_variant || variantRows[0]?.[0] || '';
+  const selectedVariantPayload = activeVariantName
+    ? evaluationReport?.variants?.[activeVariantName]
+    : undefined;
+  const selectedSummary = selectedVariantPayload?.summary ?? null;
   const finalVariantPayload = evaluationReport?.final_variant
     ? evaluationReport.variants?.[evaluationReport.final_variant]
     : undefined;
-  const finalVariantQueryTypes = useMemo(
-    () => Object.entries(finalVariantPayload?.by_query_type || {}),
-    [finalVariantPayload],
+  const selectedVariantQueryTypes = useMemo(
+    () => Object.entries(selectedVariantPayload?.by_query_type || {}),
+    [selectedVariantPayload],
   );
-  const variantRows = useMemo(() => Object.entries(evaluationReport?.variants || {}), [evaluationReport]);
   const comparisonRows = useMemo(() => Object.entries(evaluationReport?.comparisons || {}), [evaluationReport]);
-  const ragasErrors = useMemo(
-    () => Object.entries(finalSummary?.ragas_errors || {}).filter(([, message]) => Boolean(message)),
-    [finalSummary],
+  const selectedComparisonRows = useMemo(() => {
+    if (!activeVariantName) return comparisonRows;
+    const matched = comparisonRows.filter(([, comparison]) =>
+      comparison.variant === activeVariantName || comparison.compare_to === activeVariantName,
+    );
+    return matched.sort((left, right) => {
+      const [leftName, leftComparison] = left;
+      const [rightName, rightComparison] = right;
+      const leftPriority =
+        leftComparison.variant === activeVariantName ? 0 : leftComparison.compare_to === activeVariantName ? 1 : 2;
+      const rightPriority =
+        rightComparison.variant === activeVariantName ? 0 : rightComparison.compare_to === activeVariantName ? 1 : 2;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      return leftName.localeCompare(rightName);
+    });
+  }, [activeVariantName, comparisonRows]);
+  const selectedRagasErrors = useMemo(
+    () => Object.entries(selectedSummary?.ragas_errors || {}).filter(([, message]) => Boolean(message)),
+    [selectedSummary],
+  );
+  const selectedWarnings = useMemo(
+    () => (selectedSummary?.warnings || []).filter((message) => Boolean(message?.trim())),
+    [selectedSummary],
   );
   const preferredTemplateDatasetPath = useMemo(
     () => resolveTemplateDatasetPath(evaluationConfig?.template_dataset_path),
     [evaluationConfig?.template_dataset_path],
+  );
+  const selectedVariantLabel = selectedVariantPayload
+    ? formatVariantLabel(activeVariantName, selectedVariantPayload.technique)
+    : '未选择方案';
+  const finalVariantLabel = evaluationReport?.final_variant
+    ? formatVariantLabel(evaluationReport.final_variant, finalVariantPayload?.technique)
+    : '-';
+  const selectedGroundTruthSummary = selectedSummary?.retrieval_ground_truth ?? null;
+  const variantTechniqueMap = useMemo(
+    () =>
+      Object.fromEntries(
+        (evaluationConfig?.variant_catalog || []).map((variant) => [variant.name, variant.technique]),
+      ),
+    [evaluationConfig?.variant_catalog],
   );
   const isEvaluationBusy =
     evaluationLoading || startingEvaluation || ['pending', 'running'].includes(activeEvaluationJob?.status || '');
@@ -621,22 +734,28 @@ export default function PerformancePage() {
                   />
                 </>
               ) : (
-                <select
-                  value={selectedReportId}
-                  onChange={(e) => void handleReportChange(e.target.value)}
-                  disabled={evaluationReports.length === 0 || evaluationLoading}
-                  className="min-w-[260px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
-                >
-                  {evaluationReports.length === 0 ? (
-                    <option value="">暂无评测报告</option>
-                  ) : (
-                    evaluationReports.map((report) => (
-                      <option key={report.report_id} value={report.report_id}>
-                        {report.generated_at.replace('T', ' ').slice(0, 19)} · {report.dataset_name || report.file_name}
-                      </option>
-                    ))
-                  )}
-                </select>
+                <div className="flex min-w-[260px] flex-col gap-1">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    历史评测报告（时间 + 对比变量）
+                  </span>
+                  <select
+                    value={selectedReportId}
+                    onChange={(e) => void handleReportChange(e.target.value)}
+                    disabled={evaluationReports.length === 0 || evaluationLoading}
+                    className="min-w-[260px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    {evaluationReports.length === 0 ? (
+                      <option value="">暂无评测报告</option>
+                    ) : (
+                      evaluationReports.map((report) => (
+                        <option key={report.report_id} value={report.report_id}>
+                          {formatReportTimestamp(report.generated_at)} ·{' '}
+                          {formatReportVariantSummary(report, variantTechniqueMap)}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
               )}
 
               <button
@@ -1023,6 +1142,79 @@ export default function PerformancePage() {
             </div>
           ) : (
             <div className="mt-6 space-y-6">
+              {evaluationError ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+                  {evaluationError}
+                </div>
+              ) : null}
+
+              <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-violet-500" />
+                    <h3 className="text-lg font-semibold">方案对比</h3>
+                  </div>
+                  <p className="text-xs text-gray-500">点击任一方案，下方所有指标都会切换到对应结果。</p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                  {variantRows.map(([variantName, variant]) => {
+                    const isSelected = variantName === activeVariantName;
+                    const isFinal = variantName === evaluationReport.final_variant;
+                    return (
+                      <button
+                        key={variantName}
+                        type="button"
+                        onClick={() => setSelectedVariantName(variantName)}
+                        className={`rounded-2xl border p-4 text-left transition-all ${
+                          isSelected
+                            ? 'border-violet-300 bg-violet-50 shadow-sm dark:border-violet-700 dark:bg-violet-950/20'
+                            : 'border-gray-200 bg-white hover:border-violet-200 hover:bg-violet-50/50 dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-violet-900'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-base font-semibold text-gray-900 dark:text-white">
+                                {formatVariantLabel(variantName, variant.technique)}
+                              </span>
+                              {isSelected ? (
+                                <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[11px] font-medium text-white">
+                                  当前查看
+                                </span>
+                              ) : null}
+                              {isFinal ? (
+                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                  最终方案
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-sm text-gray-500">{variant.description}</p>
+                          </div>
+                          <div className="rounded-xl bg-violet-100 p-2 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
+                            <Target className="h-4 w-4" />
+                          </div>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+                          {[
+                            'factual_correctness',
+                            'faithfulness',
+                            'recall@3',
+                            'avg_total_duration_ms',
+                          ].map((metricKey) => (
+                            <div key={metricKey} className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-950/60">
+                              <div className="text-gray-500">{formatMetricLabel(metricKey)}</div>
+                              <div className="mt-1 font-semibold text-gray-900 dark:text-white">
+                                {formatMetricValue(metricKey, getSummaryMetric(variant.summary, metricKey))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <StatCard
                   title="评测样本"
@@ -1032,81 +1224,83 @@ export default function PerformancePage() {
                   loading={evaluationLoading && !evaluationMeta}
                 />
                 <StatCard
-                  title="最终方案"
-                  value={formatVariantLabel(evaluationReport.final_variant, finalVariantPayload?.technique)}
-                  subtitle={evaluationMeta?.generated_at ? `生成于 ${evaluationMeta.generated_at.replace('T', ' ').slice(0, 19)}` : undefined}
+                  title="当前查看"
+                  value={selectedVariantLabel}
+                  subtitle={
+                    evaluationMeta?.generated_at
+                      ? `生成于 ${evaluationMeta.generated_at.replace('T', ' ').slice(0, 19)} · 最终方案 ${finalVariantLabel}`
+                      : `最终方案 ${finalVariantLabel}`
+                  }
                   icon={<Target className="h-5 w-5" />}
-                  loading={evaluationLoading && !finalSummary}
+                  loading={evaluationLoading && !selectedSummary}
                 />
                 {HEADLINE_METRIC_KEYS.map((metricKey) => (
                   <StatCard
                     key={metricKey}
                     title={formatMetricLabel(metricKey)}
-                    value={formatMetricValue(metricKey, getSummaryMetric(finalSummary, metricKey))}
-                    subtitle={
-                      finalSummary?.ragas_coverage?.[metricKey] != null
-                        ? `覆盖样本 ${finalSummary.ragas_coverage[metricKey]}`
-                        : undefined
-                    }
+                    value={formatMetricValue(metricKey, getSummaryMetric(selectedSummary, metricKey))}
+                    subtitle={formatCoverageLabel(selectedSummary, metricKey)}
                     icon={<Sparkles className="h-5 w-5" />}
-                    loading={evaluationLoading && !finalSummary}
+                    loading={evaluationLoading && !selectedSummary}
                   />
                 ))}
               </div>
 
-              {evaluationError ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
-                  {evaluationError}
-                </div>
+              {(selectedGroundTruthSummary || selectedWarnings.length > 0) ? (
+                <section
+                  className={`rounded-2xl border p-4 shadow-sm ${
+                    selectedWarnings.length > 0 || (selectedGroundTruthSummary?.unresolved_cases || 0) > 0
+                      ? 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20'
+                      : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900/60'
+                  }`}
+                >
+                  <div className="mb-4 flex items-center gap-2">
+                    <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">评测口径与数据对齐</h3>
+                  </div>
+                  {selectedGroundTruthSummary ? (
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+                      <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-gray-950/40">
+                        <div className="text-xs text-gray-500">检索金标对齐</div>
+                        <div className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                          {selectedGroundTruthSummary.resolved_cases}/{selectedGroundTruthSummary.eligible_cases}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          未对齐 {selectedGroundTruthSummary.unresolved_cases}，历史 chunk 重映射 {selectedGroundTruthSummary.stale_declared_cases}
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-gray-950/40">
+                        <div className="text-xs text-gray-500">金标来源</div>
+                        <div className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                          {formatBreakdown(selectedGroundTruthSummary.source_breakdown, GROUND_TRUTH_SOURCE_LABELS)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-gray-950/40">
+                        <div className="text-xs text-gray-500">未对齐原因</div>
+                        <div className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                          {selectedGroundTruthSummary.unresolved_cases > 0
+                            ? formatBreakdown(
+                                selectedGroundTruthSummary.unresolved_reasons,
+                                GROUND_TRUTH_REASON_LABELS,
+                              )
+                            : '当前方案的检索金标已全部完成对齐'}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  {selectedWarnings.length > 0 ? (
+                    <div className="mt-4 space-y-2 text-sm text-amber-800 dark:text-amber-200">
+                      {selectedWarnings.map((message) => (
+                        <div key={message} className="rounded-xl bg-white/80 px-4 py-3 dark:bg-gray-950/40">
+                          {message}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
               ) : null}
 
-              <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
-                <div className="mb-4 flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-violet-500" />
-                  <h3 className="text-lg font-semibold">方案对比</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="border-b border-gray-200 text-gray-500 dark:border-gray-800 dark:text-gray-400">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">方案</th>
-                        {VARIANT_METRIC_KEYS.map((metricKey) => (
-                          <th key={metricKey} className="px-3 py-2 text-right font-medium">
-                            {formatMetricLabel(metricKey)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {variantRows.map(([variantName, variant]) => {
-                        const isFinal = variantName === evaluationReport.final_variant;
-                        return (
-                          <tr
-                            key={variantName}
-                            className={`border-b border-gray-100 dark:border-gray-800/70 ${
-                              isFinal ? 'bg-violet-50/70 dark:bg-violet-950/20' : ''
-                            }`}
-                          >
-                            <td className="px-3 py-3">
-                              <div className="font-medium text-gray-900 dark:text-white">
-                                {formatVariantLabel(variantName, variant.technique)}
-                              </div>
-                              <div className="mt-1 text-xs text-gray-500">{variant.description}</div>
-                            </td>
-                            {VARIANT_METRIC_KEYS.map((metricKey) => (
-                              <td key={metricKey} className="px-3 py-3 text-right">
-                                {formatMetricValue(metricKey, getSummaryMetric(variant.summary, metricKey))}
-                              </td>
-                            ))}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              {comparisonRows.length > 0 ? (
+              {selectedComparisonRows.length > 0 ? (
                 <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
                   <div className="mb-4 flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-violet-500" />
@@ -1125,11 +1319,19 @@ export default function PerformancePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {comparisonRows.map(([comparisonName, comparison]) => (
+                        {selectedComparisonRows.map(([comparisonName, comparison]) => (
                           <tr key={comparisonName} className="border-b border-gray-100 dark:border-gray-800/70">
                             <td className="px-3 py-3">
                               <div className="font-medium text-gray-900 dark:text-white">
-                                {formatVariantLabel(comparison.variant)} vs {formatVariantLabel(comparison.compare_to)}
+                                {formatVariantLabel(
+                                  comparison.variant,
+                                  evaluationReport.variants?.[comparison.variant]?.technique,
+                                )}{' '}
+                                vs{' '}
+                                {formatVariantLabel(
+                                  comparison.compare_to,
+                                  evaluationReport.variants?.[comparison.compare_to]?.technique,
+                                )}
                               </div>
                               <div className="mt-1 text-xs text-gray-500">{comparison.technique}</div>
                             </td>
@@ -1146,7 +1348,7 @@ export default function PerformancePage() {
                 </section>
               ) : null}
 
-              {finalVariantQueryTypes.length > 0 ? (
+              {selectedVariantQueryTypes.length > 0 ? (
                 <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
                   <div className="mb-4 flex items-center gap-2">
                     <Search className="h-5 w-5 text-violet-500" />
@@ -1166,7 +1368,7 @@ export default function PerformancePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {finalVariantQueryTypes.map(([queryType, querySummary]) => (
+                        {selectedVariantQueryTypes.map(([queryType, querySummary]) => (
                           <tr key={queryType} className="border-b border-gray-100 dark:border-gray-800/70">
                             <td className="px-3 py-3 font-medium text-gray-900 dark:text-white">
                               {formatQueryTypeLabel(queryType)}
@@ -1185,14 +1387,14 @@ export default function PerformancePage() {
                 </section>
               ) : null}
 
-              {ragasErrors.length > 0 ? (
+              {selectedRagasErrors.length > 0 ? (
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/40 dark:bg-amber-950/20">
                   <div className="mb-3 flex items-center gap-2">
                     <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                     <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100">RAGAS 指标提示</h3>
                   </div>
                   <div className="space-y-2 text-sm text-amber-800 dark:text-amber-200">
-                    {ragasErrors.map(([metricKey, message]) => (
+                    {selectedRagasErrors.map(([metricKey, message]) => (
                       <div key={metricKey}>
                         <span className="font-medium">{formatMetricLabel(metricKey)}：</span>
                         <span>{message}</span>

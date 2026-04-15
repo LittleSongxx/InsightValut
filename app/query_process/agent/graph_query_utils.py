@@ -316,10 +316,14 @@ def build_query_route(
 def _get_evaluation_overrides(state: Dict[str, Any] | None) -> Dict[str, Any]:
     if not isinstance(state, dict):
         return {}
+    merged: Dict[str, Any] = {}
+    runtime_overrides = state.get("route_overrides")
+    if isinstance(runtime_overrides, dict):
+        merged.update(runtime_overrides)
     overrides = state.get("evaluation_overrides")
     if isinstance(overrides, dict):
-        return overrides
-    return {}
+        merged.update(overrides)
+    return merged
 
 
 def get_bm25_enabled(state: Dict[str, Any] | None = None) -> bool:

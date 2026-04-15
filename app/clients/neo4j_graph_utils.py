@@ -736,3 +736,108 @@ def query_graph_context(
         "used_fallback": fallback_used,
     }
     return {"kg_chunks": deduped[:safe_limit], "summary": summary}
+
+
+def expand_chunk_context(
+    chunk_ids: Sequence[str] | None,
+    *,
+    neighbor_limit: int = 1,
+    evidence_limit: int = 3,
+    max_chars: int = 1200,
+) -> Dict[str, Dict[str, Any]]:
+    normalized_ids = [
+        _clean_text(chunk_id) for chunk_id in (chunk_ids or []) if _clean_text(chunk_id)
+    ]
+    if not normalized_ids:
+        return {}
+
+    ensure_graph_indexes()
+    driver = get_neo4j_driver()
+    results: Dict[str, Dict[str, Any]] = {}
+
+    with driver.session(database=_get_database()) as session:
+        records = session.run(
+            """
+            MATCH (c:Chunk)
+            WHERE c.chunk_id IN $chunk_ids
+            OPTIONAL MATCH (prev:Chunk)-[:NEXT]->(c)
+            OPTIONAL MATCH (c)-[:NEXT]->(next:Chunk)
+            OPTIONAL MATCH (s:Section)-[:HAS_CHUNK]->(c)
+            OPTIONAL MATCH (d:Document)-[:HAS_SECTION]->(s)
+            OPTIONAL MATCH (e:KGEntity)-[:EVIDENCED_BY]->(c)
+            WITH c, prev, next, s, d,
+                 collect(distinct {
+                    name: coalesce(e.name, e.title, ''),
+                    entity_type: coalesce(e.entity_type, head(labels(e)), ''),
+                    description: coalesce(e.description, e.value, '')
+                 })[0..$evidence_limit] AS entities
+            RETURN c.chunk_id AS chunk_id,
+                   c.content AS content,
+                   c.title AS title,
+                   c.image_urls AS image_urls,
+                   s.title AS section_title,
+                   d.title AS document_title,
+                   prev.chunk_id AS prev_chunk_id,
+                   prev.content AS prev_content,
+                   next.chunk_id AS next_chunk_id,
+                   next.content AS next_content,
+                   entities AS entities
+            """,
+            chunk_ids=normalized_ids,
+            evidence_limit=max(1, int(evidence_limit)),
+        )
+        for row in records:
+            chunk_id = _clean_text(row.get("chunk_id"))
+            if not chunk_id:
+                continue
+
+            prev_content = _clean_text(row.get("prev_content"))
+            next_content = _clean_text(row.get("next_content"))
+            section_title = _clean_text(row.get("section_title"))
+            document_title = _clean_text(row.get("document_title"))
+            entity_lines: List[str] = []
+            entity_names: List[str] = []
+            for entity in row.get("entities") or []:
+                if not isinstance(entity, dict):
+                    continue
+                name = _clean_text(entity.get("name"))
+                if not name or name in entity_names:
+                    continue
+                entity_names.append(name)
+                entity_type = _clean_text(entity.get("entity_type"))
+                description = _clean_text(entity.get("description"))
+                line = f"{entity_type}:{name}" if entity_type else name
+                if description:
+                    line += f" - {description}"
+                entity_lines.append(line)
+
+            parts = []
+            if document_title or section_title:
+                locator = " / ".join(part for part in [document_title, section_title] if part)
+                parts.append(f"章节定位：{locator}")
+            if prev_content and neighbor_limit > 0:
+                parts.append(f"上文：{prev_content[:220]}")
+            if next_content and neighbor_limit > 0:
+                parts.append(f"下文：{next_content[:220]}")
+            if entity_lines:
+                parts.append("关联实体：" + "；".join(entity_lines[: max(1, evidence_limit)]))
+
+            expanded_text = "\n".join(parts).strip()[:max_chars]
+            expanded_chunk_ids = [chunk_id]
+            prev_chunk_id = _clean_text(row.get("prev_chunk_id"))
+            next_chunk_id = _clean_text(row.get("next_chunk_id"))
+            if prev_chunk_id and neighbor_limit > 0:
+                expanded_chunk_ids.append(prev_chunk_id)
+            if next_chunk_id and neighbor_limit > 0:
+                expanded_chunk_ids.append(next_chunk_id)
+
+            results[chunk_id] = {
+                "expanded_text": expanded_text,
+                "expanded_chunk_ids": expanded_chunk_ids,
+                "section_title": section_title,
+                "document_title": document_title,
+                "entity_names": entity_names,
+                "image_urls": row.get("image_urls") or [],
+            }
+
+    return results

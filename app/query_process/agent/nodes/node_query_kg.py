@@ -64,7 +64,7 @@ def node_query_kg(state: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         # 图谱查询失败不应阻断主流程
-        logger.error(f"node_query_kg 执行失败: {e}", exc_info=True)
+        logger.exception("node_query_kg 执行失败")
     finally:
         add_done_task(
             state["session_id"],

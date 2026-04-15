@@ -11,6 +11,11 @@ from app.query_process.agent.nodes.node_item_name_confirm import node_item_name_
 from app.query_process.agent.nodes.node_query_decompose import node_query_decompose
 from app.query_process.agent.nodes.node_query_kg import node_query_kg
 from app.query_process.agent.nodes.node_answer_output import node_answer_output
+from app.query_process.agent.nodes.node_answer_plan import node_answer_plan
+from app.query_process.agent.nodes.node_context_expand import node_context_expand
+from app.query_process.agent.nodes.node_evidence_coverage import (
+    node_evidence_coverage,
+)
 from app.query_process.agent.nodes.node_rerank import node_rerank
 from app.query_process.agent.nodes.node_rrf import node_rrf
 from app.query_process.agent.nodes.node_search_bm25 import node_search_bm25
@@ -75,10 +80,20 @@ builder.add_node(
 )
 builder.add_node("node_join", lambda x: {})  # 虚拟节点：多路搜索合并点
 builder.add_node("node_rrf", _perf_wrap("node_rrf", node_rrf))  # 排序
+builder.add_node(
+    "node_context_expand", _perf_wrap("node_context_expand", node_context_expand)
+)
 builder.add_node("node_rerank", _perf_wrap("node_rerank", node_rerank))  # 重排
+builder.add_node(
+    "node_evidence_coverage",
+    _perf_wrap("node_evidence_coverage", node_evidence_coverage),
+)
 builder.add_node(
     "node_retrieval_grader", _perf_wrap("node_retrieval_grader", node_retrieval_grader)
 )  # CRAG 检索质量判断
+builder.add_node(
+    "node_answer_plan", _perf_wrap("node_answer_plan", node_answer_plan)
+)
 builder.add_node(
     "node_answer_output", _perf_wrap("node_answer_output", node_answer_output)
 )  # 生成
@@ -99,10 +114,10 @@ def route_after_item_confirm(state: QueryGraphState):
     """意图确认后的路由：直接输出 / 进入复合问题分解"""
     # 如果已有答案（如候选澄清/未命中），直接输出
     if state.get("answer"):
-        return "node_answer_output"
+        return "node_answer_plan"
     # 若判定为通用对话，不走RAG检索，直接由生成节点回答
     if state.get("need_rag") is False:
-        return "node_answer_output"
+        return "node_answer_plan"
     if state.get("graph_preferred"):
         return "node_query_kg_primary"
     # 否则进入复合问题分解（新增）
@@ -111,10 +126,12 @@ def route_after_item_confirm(state: QueryGraphState):
 
 def route_after_decompose(state: QueryGraphState):
     """复合问题分解后的路由：复合查询已内联检索 / 简单查询走正常多路搜索"""
-    if state.get("is_compound_query") and state.get("rrf_chunks"):
+    if state.get("is_compound_query") and (
+        state.get("rrf_chunks") or state.get("web_search_docs")
+    ):
         # 复合查询已在 node_query_decompose 中完成内联检索并生成 rrf_chunks
-        # 直接跳到 rerank
-        return "node_rerank"
+        # 先做命中上下文扩展，再进入 rerank
+        return "node_context_expand"
     if state.get("graph_preferred"):
         return "node_query_kg_primary"
     # 简单查询走正常多路搜索
@@ -129,7 +146,7 @@ def route_after_grading(state: QueryGraphState):
         # 这样可以确保 suggested_query 涉及不同商品时，item_names 能被正确更新
         return "node_item_name_confirm"
     # sufficient 或 insufficient（重试耗尽）均进入答案生成
-    return "node_answer_output"
+    return "node_answer_plan"
 
 
 def route_after_hallucination_check(state: QueryGraphState):
@@ -137,7 +154,7 @@ def route_after_hallucination_check(state: QueryGraphState):
     if state.get("hallucination_check_passed", True):
         return END
     # 幻觉未通过，回退到答案生成重新生成（answer 已被清空）
-    return "node_answer_output"
+    return "node_answer_plan"
 
 
 # ===================== 注册边和条件边 =====================
@@ -170,13 +187,16 @@ builder.add_edge("node_query_kg", "node_join")
 
 # 5. 合并 → 排序 → 重排 → CRAG质量判断
 builder.add_edge("node_join", "node_rrf")
-builder.add_edge("node_rrf", "node_rerank")
-builder.add_edge("node_rerank", "node_retrieval_grader")
+builder.add_edge("node_rrf", "node_context_expand")
+builder.add_edge("node_context_expand", "node_rerank")
+builder.add_edge("node_rerank", "node_evidence_coverage")
+builder.add_edge("node_evidence_coverage", "node_retrieval_grader")
 
-# 6. CRAG质量判断 → (条件分叉) → 答案生成 / 回退重试
+# 6. CRAG质量判断 → (条件分叉) → 回答规划 / 回退重试
 builder.add_conditional_edges("node_retrieval_grader", route_after_grading)
 
-# 7. 答案生成 → 幻觉自检
+# 7. 回答规划 → 答案生成 → 幻觉自检
+builder.add_edge("node_answer_plan", "node_answer_output")
 builder.add_edge("node_answer_output", "node_hallucination_check")
 
 # 8. 幻觉自检 → (条件分叉) → 结束 / 回退重新生成

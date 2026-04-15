@@ -1,7 +1,7 @@
 # HyDE节点
 import sys
 from app.utils.task_utils import add_running_task, add_done_task
-from app.lm.lm_utils import get_llm_client
+from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.core.logger import logger
 from app.core.load_prompt import load_prompt
 from app.conf.query_threshold_config import query_threshold_config
@@ -27,16 +27,16 @@ def step_1_create_hyde_doc(rewritten_query: str) -> str:
         logger.debug(f"Step 1: Prompt加载成功, 长度: {len(hyde_prompt)}")
 
         response = llm.invoke(hyde_prompt)
-        hyde_doc = response.content
+        hyde_doc = coerce_llm_content(response.content)
 
         logger.info(f"Step 1: 假设文档生成完成, 长度: {len(hyde_doc)} 字符")
         logger.debug(f"Step 1: 文档预览: {hyde_doc[:50]}...")
 
         return hyde_doc
 
-    except Exception as e:
-        logger.error(f"Step 1: 生成假设文档失败: {e}")
-        raise e
+    except Exception:
+        logger.exception("Step 1: 生成假设文档失败")
+        raise
 
 
 def step_2_search_by_query_and_hyde(
@@ -89,8 +89,8 @@ def step_2_search_by_query_and_hyde(
             norm_score=norm_score,
         )
         logger.info(f"Step 2a: Query 单独检索完成，召回 {len(query_chunks)} 条")
-    except Exception as e:
-        logger.error(f"Step 2a: Query 单独检索失败: {e}")
+    except Exception:
+        logger.exception("Step 2a: Query 单独检索失败")
         query_chunks = []
 
     # ---- 2b. (Query + 假设文档) 拼接检索 ----
@@ -109,8 +109,8 @@ def step_2_search_by_query_and_hyde(
         logger.info(
             f"Step 2b: (Query+假设文档) 检索完成，召回 {len(combined_chunks)} 条"
         )
-    except Exception as e:
-        logger.error(f"Step 2b: (Query+假设文档) 检索失败: {e}")
+    except Exception:
+        logger.exception("Step 2b: (Query+假设文档) 检索失败")
         combined_chunks = []
 
     if not query_chunks and not combined_chunks:
@@ -190,8 +190,8 @@ def node_search_embedding_hyde(state):
         hyde_doc = step_1_create_hyde_doc(rewritten_query)
         logger.info(f"Step 1: 假设文档生成成功 (长度: {len(hyde_doc)})")
         logger.debug(f"假设文档预览: {hyde_doc[:100]}...")
-    except Exception as e:
-        logger.error(f"Step 1 (生成假设文档) 发生异常: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Step 1 (生成假设文档) 发生异常")
         return {}
 
     # 阶段2：双路检索 + RRF 融合
@@ -220,8 +220,8 @@ def node_search_embedding_hyde(state):
             "hyde_embedding_chunks": res if res else [],
             "hyde_doc": hyde_doc,
         }
-    except Exception as e:
-        logger.error(f"Step 2 (双路检索+RRF融合) 发生异常: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Step 2 (双路检索+RRF融合) 发生异常")
         return {}
     finally:
         add_done_task(

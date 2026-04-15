@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -50,6 +51,16 @@ def _load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _sanitize_for_json(value: Any) -> Any:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _sanitize_for_json(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    return value
+
+
 def _dataset_name(report: Dict[str, Any]) -> str:
     dataset_path = str(report.get("dataset_path") or "").strip()
     if not dataset_path:
@@ -59,7 +70,7 @@ def _dataset_name(report: Dict[str, Any]) -> str:
 
 def _build_report_meta(path: Path, report: Dict[str, Any]) -> Dict[str, Any]:
     final_summary = report.get("final_system_metrics") or {}
-    return {
+    return _sanitize_for_json({
         "report_id": path.name,
         "file_name": path.name,
         "generated_at": str(report.get("generated_at") or _report_mtime(path)),
@@ -71,7 +82,7 @@ def _build_report_meta(path: Path, report: Dict[str, Any]) -> Dict[str, Any]:
         "variants": list((report.get("variants") or {}).keys()),
         "headline_metrics": final_summary.get("headline_metrics") or {},
         "size_bytes": path.stat().st_size,
-    }
+    })
 
 
 def _strip_case_results(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -80,7 +91,7 @@ def _strip_case_results(report: Dict[str, Any]) -> Dict[str, Any]:
         variant_data = dict(payload or {})
         variant_data.pop("case_results", None)
         variants_payload[variant_name] = variant_data
-    return {
+    return _sanitize_for_json({
         "generated_at": report.get("generated_at"),
         "dataset_path": report.get("dataset_path"),
         "case_count": int(report.get("case_count") or 0),
@@ -88,7 +99,7 @@ def _strip_case_results(report: Dict[str, Any]) -> Dict[str, Any]:
         "final_system_metrics": report.get("final_system_metrics") or {},
         "variants": variants_payload,
         "comparisons": report.get("comparisons") or {},
-    }
+    })
 
 
 def list_evaluation_reports() -> Dict[str, Any]:

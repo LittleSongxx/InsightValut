@@ -2,10 +2,14 @@ import sys
 import json
 
 from app.utils.task_utils import add_running_task, add_done_task
-from app.lm.lm_utils import get_llm_client
+from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.core.load_prompt import load_prompt
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.agentic_utils import (
+    build_retrieval_rescue_plan,
+    get_agentic_features,
+)
 
 cfg = query_threshold_config
 
@@ -57,7 +61,7 @@ def step_1_grade_retrieval(question: str, reranked_docs: list) -> dict:
         )
 
         response = client.invoke(prompt)
-        content = response.content
+        content = coerce_llm_content(response.content)
 
         # 清理 Markdown 代码块
         if content.startswith("```json"):
@@ -76,7 +80,7 @@ def step_1_grade_retrieval(question: str, reranked_docs: list) -> dict:
         }
 
     except Exception as e:
-        logger.error(f"Step 1: 检索质量评估失败: {e}", exc_info=True)
+        logger.exception("Step 1: 检索质量评估失败")
         # 降级：评估失败时默认通过（避免阻塞主流程）
         return {
             "grade": "sufficient",
@@ -106,34 +110,48 @@ def node_retrieval_grader(state):
     question = state.get("rewritten_query") or state.get("original_query", "")
     reranked_docs = state.get("reranked_docs") or []
     retry_count = state.get("retry_count", 0)
+    evidence_coverage = state.get("evidence_coverage_summary") or {}
+    agentic_features = get_agentic_features(state)
 
     # 阶段1：评估检索质量
     grade_result = step_1_grade_retrieval(question, reranked_docs)
     grade = grade_result.get("grade", "sufficient")
+    rescue_plan = build_retrieval_rescue_plan(state, grade_result)
+    needs_rescue = bool(evidence_coverage.get("needs_rescue")) and bool(
+        agentic_features.get("retrieval_rescue", True)
+    )
 
-    result = {}
+    result = {
+        "rescue_plan": rescue_plan,
+    }
 
-    if grade == "sufficient":
+    if rescue_plan.get("action") == "clarify":
+        logger.info(
+            "CRAG: 触发澄清守卫, reason=%s", rescue_plan.get("reason", "clarify")
+        )
+        result["retrieval_grade"] = "insufficient"
+        result["answer"] = rescue_plan.get("clarification_question") or (
+            "当前问题还缺少关键条件，请补充后我再继续检索。"
+        )
+        result["clarification_reason"] = rescue_plan.get("reason") or ""
+
+    elif grade == "sufficient" and not needs_rescue:
         # 检索质量合格，继续流程
         logger.info(f"CRAG: 检索质量合格 (reason: {grade_result.get('reason')})")
         result["retrieval_grade"] = "sufficient"
 
-    elif retry_count < CRAG_MAX_RETRIES:
-        # 检索质量不足 + 还有重试机会 → 改写查询，回退到商品名确认节点重新提取商品名
-        # 重要：retry 重新进入 node_item_name_confirm，可以根据 suggested_query 重新确认商品
-        # 若 suggested_query 涉及了不同商品，商品过滤条件会被正确更新
-        suggested_query = grade_result.get("suggested_query", "").strip()
-        new_query = suggested_query if suggested_query else question
+    elif rescue_plan.get("action") == "retry" and retry_count < CRAG_MAX_RETRIES:
+        # 检索质量不足 + 还有重试机会 → 进入 Agentic 补救重试
+        new_query = rescue_plan.get("question") or question
 
         logger.info(
             f"CRAG: 检索质量不足，触发重试 (retry {retry_count + 1}/{CRAG_MAX_RETRIES}), "
-            f"新查询: {new_query}，将回退到 node_item_name_confirm 重新确认商品名"
+            f"新查询: {new_query}，补救步骤: {rescue_plan.get('steps')}"
         )
         result["retrieval_grade"] = "retry"
-        # 更新 rewritten_query 为建议的查询词，供 node_item_name_confirm 使用
         result["rewritten_query"] = new_query
         result["retry_count"] = retry_count + 1
-        # 清空旧检索结果，为新一轮检索做准备
+        result["route_overrides"] = rescue_plan.get("route_overrides") or {}
         result["embedding_chunks"] = []
         result["hyde_embedding_chunks"] = []
         result["bm25_chunks"] = []
@@ -141,6 +159,36 @@ def node_retrieval_grader(state):
         result["rrf_chunks"] = []
         result["reranked_docs"] = []
         result["web_search_docs"] = []
+        result["sub_query_routes"] = []
+        result["sub_query_results"] = []
+        result["context_expansion_summary"] = {}
+        result["evidence_coverage_summary"] = {}
+        result["answer_plan"] = {}
+        if result["route_overrides"].get("drop_item_names"):
+            result["item_names"] = []
+
+    elif grade != "sufficient" and retry_count < CRAG_MAX_RETRIES:
+        suggested_query = grade_result.get("suggested_query", "").strip()
+        new_query = suggested_query if suggested_query else question
+        logger.info(
+            f"CRAG: 使用旧版重试策略 (retry {retry_count + 1}/{CRAG_MAX_RETRIES}), "
+            f"新查询: {new_query}"
+        )
+        result["retrieval_grade"] = "retry"
+        result["rewritten_query"] = new_query
+        result["retry_count"] = retry_count + 1
+        result["embedding_chunks"] = []
+        result["hyde_embedding_chunks"] = []
+        result["bm25_chunks"] = []
+        result["kg_chunks"] = []
+        result["rrf_chunks"] = []
+        result["reranked_docs"] = []
+        result["web_search_docs"] = []
+        result["sub_query_routes"] = []
+        result["sub_query_results"] = []
+        result["context_expansion_summary"] = {}
+        result["evidence_coverage_summary"] = {}
+        result["answer_plan"] = {}
 
     else:
         # 检索质量不足 + 重试耗尽 → 标记低置信度，继续生成

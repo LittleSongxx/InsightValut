@@ -1,4 +1,5 @@
 import sys
+from typing import Any, Dict
 from urllib.parse import urlsplit
 from app.utils.task_utils import add_running_task, add_done_task, set_task_result
 from app.utils.sse_utils import push_to_session, SSEEvent
@@ -6,9 +7,10 @@ from app.utils.markdown_image_utils import extract_markdown_image_urls
 from app.query_process.agent.state import QueryGraphState
 from app.core.logger import logger
 from app.core.load_prompt import load_prompt
-from app.lm.lm_utils import get_llm_client
+from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.clients.mongo_history_utils import save_chat_message
 from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.agentic_utils import build_agentic_response_metadata
 
 _IMAGE_BLOCK_MARKER = "【图片】"
 cfg = query_threshold_config
@@ -124,6 +126,34 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
         )
         logger.info(f"已追加幻觉反馈约束: {hallucination_feedback}")
 
+    answer_plan = state.get("answer_plan") or {}
+    evidence_coverage = state.get("evidence_coverage_summary") or {}
+    if answer_plan:
+        sections = "\n".join(
+            f"- {section}" for section in (answer_plan.get("sections") or [])
+        )
+        style_instructions = "\n".join(
+            f"- {instruction}"
+            for instruction in (answer_plan.get("style_instructions") or [])
+        )
+        must_cover = ", ".join(answer_plan.get("must_cover") or []) or "无硬性覆盖项"
+        response_format = answer_plan.get("response_format") or "paragraph"
+        prompt += (
+            "\n\n【回答规划】\n"
+            f"回答格式：{response_format}\n"
+            f"建议章节：\n{sections or '- 直接回答'}\n"
+            f"写作要求：\n{style_instructions or '- 直接、准确、保守回答'}\n"
+            f"需要优先覆盖的对象：{must_cover}\n"
+        )
+
+    missing_focus_terms = evidence_coverage.get("missing_focus_terms") or []
+    if missing_focus_terms:
+        prompt += (
+            "\n【证据覆盖提醒】当前证据未完全覆盖以下焦点词："
+            f"{', '.join(missing_focus_terms[:5])}。"
+            "如果证据不足，请明确说明“当前资料未直接给出”，不要自行补全。"
+        )
+
     logger.info(f"组装后的提示词为：{prompt}")
 
     return prompt
@@ -152,19 +182,19 @@ def step_3_generate_response(state: QueryGraphState, prompt: str) -> QueryGraphS
                     push_to_session(session_id, SSEEvent.DELTA, {"delta": delta})
             logger.info(f"流式输出完成，总长度: {len(final_text)}")
         except Exception as e:
-            logger.error(f"流式生成出错: {e}", exc_info=True)
+            logger.exception("流式生成出错")
             push_to_session(session_id, SSEEvent.ERROR, {"error": str(e)})
         state["answer"] = final_text
     else:
         logger.info(f"模式: 非流式输出 (Blocking), Session: {session_id}")
         try:
             response = llm.invoke(prompt)
-            content = response.content
+            content = coerce_llm_content(response.content)
             state["answer"] = content
             set_task_result(session_id, "answer", content)
             logger.info(f"生成回答完成，长度: {len(content)}")
-        except Exception as e:
-            logger.error(f"生成回答出错: {e}", exc_info=True)
+        except Exception:
+            logger.exception("生成回答出错")
             state["answer"] = "抱歉，生成回答时出现错误。"
 
     return state
@@ -221,7 +251,11 @@ def _extract_images_from_docs(docs):
     return images
 
 
-def step_4_write_history(state: QueryGraphState, image_urls=None) -> QueryGraphState:
+def step_4_write_history(
+    state: QueryGraphState,
+    image_urls=None,
+    metadata: Dict[str, Any] | None = None,
+) -> QueryGraphState:
     """
     阶段四：把本轮答案写入 MongoDB history。
     """
@@ -240,10 +274,11 @@ def step_4_write_history(state: QueryGraphState, image_urls=None) -> QueryGraphS
                 rewritten_query="",
                 item_names=item_names,
                 image_urls=image_urls,
+                metadata=metadata,
                 message_id=None,
             )
-    except Exception as e:
-        logger.error(f"写入Mongo历史记录失败: {e}")
+    except Exception:
+        logger.exception("写入Mongo历史记录失败")
 
     return state
 
@@ -278,11 +313,15 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
 
     # 提取图片URL（用于历史记录和前端展示）
     image_urls = _extract_images_from_docs(state.get("reranked_docs") or [])
+    if state.get("answer") and not state.get("is_stream"):
+        set_task_result(state["session_id"], "answer", state.get("answer"))
+    response_metadata = build_agentic_response_metadata(state, image_urls=image_urls)
+    set_task_result(state["session_id"], "metadata", response_metadata)
 
     # 把答案写入到mongodb的history中
     if state.get("answer"):
         logger.info("---写入MongoDB历史记录---")
-        step_4_write_history(state, image_urls=image_urls)
+        step_4_write_history(state, image_urls=image_urls, metadata=response_metadata)
 
     add_done_task(
         state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
@@ -298,6 +337,7 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
                 "answer": state["answer"],
                 "status": "completed",
                 "image_urls": image_urls,
+                "metadata": response_metadata,
             },
         )
 

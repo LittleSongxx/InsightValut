@@ -5,6 +5,102 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { CopyButton } from '../common';
 import { normalizeAssetUrls } from '../../utils/media';
 
+function formatCoverageScore(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  return `${(value * 100).toFixed(0)}%`;
+}
+
+function AgenticTracePanel({ message }: { message: Message }) {
+  const metadata = message.metadata;
+  if (!metadata) return null;
+
+  const coverage = metadata.evidence_coverage_summary;
+  const rescue = metadata.rescue_plan;
+  const contextExpansion = metadata.context_expansion_summary;
+  const answerPlan = metadata.answer_plan;
+  const queryType = metadata.query_type;
+  const coverageScore = formatCoverageScore(coverage?.coverage_score);
+  const rescueSteps = rescue?.steps?.filter(Boolean) ?? [];
+  const focusTerms = metadata.query_focus_terms?.filter(Boolean) ?? [];
+  const missingTerms = coverage?.missing_focus_terms?.filter(Boolean) ?? [];
+  const hasMeaningfulContent = Boolean(
+    queryType ||
+    typeof metadata.graph_preferred === 'boolean' ||
+    coverageScore ||
+    rescue?.action ||
+    (contextExpansion?.expanded_docs ?? 0) > 0 ||
+    answerPlan?.response_format ||
+    focusTerms.length > 0,
+  );
+
+  if (!hasMeaningfulContent) return null;
+
+  return (
+    <div className="mt-3 w-full max-w-4xl rounded-2xl border border-sky-200/80 bg-sky-50/80 px-4 py-3 shadow-sm dark:border-sky-900/70 dark:bg-slate-900/70">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+        <Sparkles className="h-3.5 w-3.5" />
+        Agentic Trace
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs text-slate-700 dark:text-slate-300">
+        {queryType && (
+          <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
+            题型：{queryType}
+          </span>
+        )}
+        {typeof metadata.graph_preferred === 'boolean' && (
+          <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
+            图优先：{metadata.graph_preferred ? '是' : '否'}
+          </span>
+        )}
+        {coverageScore && (
+          <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
+            证据覆盖：{coverageScore}
+          </span>
+        )}
+        {answerPlan?.response_format && (
+          <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
+            回答格式：{answerPlan.response_format}
+          </span>
+        )}
+        {(contextExpansion?.expanded_docs ?? 0) > 0 && (
+          <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
+            上下文扩展：{contextExpansion?.expanded_docs}/{contextExpansion?.candidate_docs ?? contextExpansion?.expanded_docs}
+          </span>
+        )}
+        {rescue?.action && rescue.action !== 'none' && (
+          <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
+            补救动作：{rescue.action}
+          </span>
+        )}
+      </div>
+
+      {focusTerms.length > 0 && (
+        <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+          焦点词：{focusTerms.slice(0, 6).join('、')}
+        </div>
+      )}
+
+      {missingTerms.length > 0 && (
+        <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+          尚未完全覆盖：{missingTerms.slice(0, 5).join('、')}
+        </div>
+      )}
+
+      {rescueSteps.length > 0 && (
+        <div className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+          补救步骤：{rescueSteps.join(' → ')}
+        </div>
+      )}
+
+      {metadata.clarification_reason && (
+        <div className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+          澄清原因：{metadata.clarification_reason}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
   const hasText = !!(message.content && message.content.trim().length > 0);
@@ -82,6 +178,8 @@ export function MessageBubble({ message }: { message: Message }) {
             </div>
           </div>
         )}
+
+        {!isUser && <AgenticTracePanel message={message} />}
 
         {/* Streaming cursor */}
         {!isUser && message.isStreaming && !hasText && (

@@ -1,3 +1,54 @@
+export interface AgenticEvidenceCoverageSummary {
+  enabled?: boolean;
+  coverage_score?: number;
+  doc_count?: number;
+  needs_rescue?: boolean;
+  missing_focus_terms?: string[];
+  missing_item_names?: string[];
+  missing_sub_queries?: string[];
+  clarification_required?: boolean;
+  clarification_reason?: string;
+}
+
+export interface AgenticRescuePlan {
+  action?: string;
+  reason?: string;
+  steps?: string[];
+  coverage_score?: number;
+}
+
+export interface AgenticContextExpansionSummary {
+  enabled?: boolean;
+  candidate_docs?: number;
+  expanded_docs?: number;
+  affected_chunk_ids?: string[];
+}
+
+export interface AgenticAnswerPlan {
+  query_type?: string;
+  structured_output?: boolean;
+  response_format?: string;
+  sections?: string[];
+  style_instructions?: string[];
+  must_cover?: string[];
+}
+
+export interface AgenticMetadata {
+  query_type?: string;
+  graph_preferred?: boolean;
+  query_focus_terms?: string[];
+  query_route_reason?: string;
+  retrieval_plan?: Record<string, unknown>;
+  kg_query_summary?: Record<string, unknown>;
+  evidence_coverage_summary?: AgenticEvidenceCoverageSummary;
+  rescue_plan?: AgenticRescuePlan;
+  context_expansion_summary?: AgenticContextExpansionSummary;
+  answer_plan?: AgenticAnswerPlan;
+  clarification_reason?: string;
+  image_urls?: string[];
+  agentic_features?: Record<string, boolean>;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -8,6 +59,7 @@ export interface Message {
   sources?: string[];
   startTime?: number;
   endTime?: number;
+  metadata?: AgenticMetadata;
 }
 
 export interface ProgressData {
@@ -24,6 +76,7 @@ export interface HistoryItem {
   rewritten_query: string;
   item_names: string[];
   image_urls: string[] | null;
+  metadata?: AgenticMetadata | null;
   ts: number;
 }
 
@@ -93,6 +146,15 @@ export interface EvaluationStageSummary {
   count: number;
 }
 
+export interface EvaluationRetrievalGroundTruthSummary {
+  eligible_cases: number;
+  resolved_cases: number;
+  unresolved_cases: number;
+  source_breakdown: Record<string, number>;
+  unresolved_reasons: Record<string, number>;
+  stale_declared_cases: number;
+}
+
 export interface EvaluationSummary {
   variant: string;
   description: string;
@@ -102,6 +164,8 @@ export interface EvaluationSummary {
   ragas_coverage: Record<string, number>;
   ragas_errors: Record<string, string>;
   retrieval_metrics: Record<string, number | null>;
+  retrieval_coverage: Record<string, number>;
+  retrieval_ground_truth: EvaluationRetrievalGroundTruthSummary;
   pipeline_metrics: Record<string, number | null>;
   performance_metrics: {
     avg_total_duration_ms?: number | null;
@@ -111,9 +175,10 @@ export interface EvaluationSummary {
     p50_first_answer_ms?: number | null;
     p95_first_answer_ms?: number | null;
     stages?: EvaluationStageSummary[];
-    [key: string]: number | EvaluationStageSummary[] | null | undefined;
+      [key: string]: number | EvaluationStageSummary[] | null | undefined;
   };
   headline_metrics: Record<string, number | null>;
+  warnings: string[];
 }
 
 export interface EvaluationVariantResult {

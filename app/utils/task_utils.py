@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Any, Dict, List
 from .sse_utils import push_to_session
 
 # ---------------------------
@@ -15,7 +15,7 @@ _tasks_status: Dict[str, str] = {}
 
 # key: task_id
 # value: 任务结果（例如 query 的 answer）
-_tasks_result: Dict[str, Dict[str, str]] = {}
+_tasks_result: Dict[str, Dict[str, Any]] = {}
 
 TASK_STATUS_PENDING = "pending"
 TASK_STATUS_PROCESSING = "processing"
@@ -38,13 +38,22 @@ _NODE_NAME_TO_CN: Dict[str, str] = {
     "END": "处理完成",
     # --- Query 流程节点（kb/query_process/main_graph.py）---
     "node_item_name_confirm": "意图识别与商品确认",
+    "node_query_decompose": "复合问题分解",
+    "node_context_expand": "命中上下文扩展",
     "node_answer_output": "生成答案",
+    "node_answer_plan": "结构化回答规划",
     "node_rerank": "重排序",
     "node_rrf": "倒排融合",
+    "node_evidence_coverage": "证据覆盖检查",
+    "node_retrieval_grader": "检索补救与质量判断",
+    "node_hallucination_check": "答案事实自检",
     "node_web_search_mcp": "网络搜索",
     "node_search_embedding": "切片搜索",
     "node_search_embedding_hyde": "切片搜索(假设性文档)",
+    "node_search_bm25": "BM25搜索",
     "node_multi_search": "多路搜索",
+    "node_multi_search_graph_first": "图优先多路搜索",
+    "node_query_kg_primary": "图优先知识图谱查询",
     "node_query_kg": "查询知识图谱",
     "node_join": "多路搜索合并",
 }
@@ -108,7 +117,7 @@ def add_done_task(task_id: str, node_name: str, is_stream: bool = False) -> None
         task_push_queue(task_id)
 
 
-def set_task_result(task_id: str, key: str, value: str) -> None:
+def set_task_result(task_id: str, key: str, value: Any) -> None:
     """
     存储任务结果字段（如 answer / error）。
     """
@@ -116,7 +125,7 @@ def set_task_result(task_id: str, key: str, value: str) -> None:
     _tasks_result[task_id][key] = value
 
 
-def get_task_result(task_id: str, key: str, default: str = "") -> str:
+def get_task_result(task_id: str, key: str, default: Any = "") -> Any:
     """
     获取任务结果字段（如 answer / error）。
     """

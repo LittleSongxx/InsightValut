@@ -13,7 +13,7 @@ from app.clients.mongo_history_utils import (
     save_chat_message,
     update_message_item_names,
 )
-from app.lm.lm_utils import get_llm_client
+from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.lm.embedding_utils import generate_embeddings
 from app.clients.milvus_utils import (
     get_milvus_client,
@@ -26,6 +26,10 @@ from app.conf.query_threshold_config import query_threshold_config
 from app.query_process.agent.graph_query_utils import (
     apply_route_overrides,
     build_query_route,
+)
+from app.query_process.agent.agentic_utils import (
+    build_clarification_request,
+    is_agentic_feature_enabled,
 )
 
 load_dotenv(find_dotenv())
@@ -95,8 +99,8 @@ def step_3_extract_info(query: str, history: List[Dict]) -> Dict:
             "rewritten_query_and_itemnames", history_text=history_text, query=query
         )
         logger.debug(f"Step 3: 提示词加载成功，Prompt长度: {len(prompt)}")
-    except Exception as e:
-        logger.error(f"Step 3: 加载提示词失败: {e}")
+    except Exception:
+        logger.exception("Step 3: 加载提示词失败")
         return {
             "item_names": [],
             "rewritten_query": query,
@@ -113,7 +117,7 @@ def step_3_extract_info(query: str, history: List[Dict]) -> Dict:
     try:
         logger.info("Step 3: 正在调用 LLM 进行提取...")
         response = client.invoke(messages)
-        content = response.content
+        content = coerce_llm_content(response.content)
         logger.debug(f"Step 3: LLM 原始响应: {content}")
 
         # 清理 Markdown 代码块
@@ -145,8 +149,8 @@ def step_3_extract_info(query: str, history: List[Dict]) -> Dict:
         )
         return result
 
-    except Exception as e:
-        logger.error(f"Step 3: LLM 提取或解析失败: {e}")
+    except Exception:
+        logger.exception("Step 3: LLM 提取或解析失败")
         return {
             "item_names": [],
             "rewritten_query": query,
@@ -224,8 +228,8 @@ def step_4_vectorize_and_query(item_names: List[str]) -> List[Dict]:
                 logger.error(f"Step 4: 处理商品 '{name}' 时出错: {inner_e}")
                 results.append({"extracted_name": name, "matches": []})
 
-    except Exception as e:
-        logger.error(f"Step 4: 向量化或搜索过程发生全局错误: {e}")
+    except Exception:
+        logger.exception("Step 4: 向量化或搜索过程发生全局错误")
 
     return results
 
@@ -382,18 +386,7 @@ def step_7_write_history(
     if state.get("evaluation_mode"):
         return state
 
-    # 如果有助手回答（分支 B/C），写入助手消息
-    if state.get("answer"):
-        logger.info("Step 7: 保存助手回答")
-        save_chat_message(
-            session_id=session_id,
-            role="assistant",
-            text=state["answer"],
-            rewritten_query="",
-            item_names=[],
-        )
-
-    # 更新用户消息（关联 rewrite_query 和 item_names）
+    # 这里只更新用户消息；助手回答统一交由 node_answer_output 写入，避免重复历史记录
     logger.info(f"Step 7: 更新用户消息 (ID: {message_id})")
     save_chat_message(
         session_id=session_id,
@@ -466,6 +459,9 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
         item_names = [
             str(name).strip() for name in forced_item_names if str(name).strip()
         ]
+    if bool((state.get("route_overrides") or {}).get("drop_item_names")):
+        logger.info("Node: 运行期补救计划要求丢弃 item_names 过滤，转为全库检索")
+        item_names = []
 
     # 更新 State 中的 rewrite_query
     state["rewritten_query"] = rewritten_query
@@ -526,6 +522,21 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     state["retrieval_plan"] = route_info.get("retrieval_plan", {})
     if not state.get("kg_query_summary"):
         state["kg_query_summary"] = {}
+    state["clarification_reason"] = ""
+
+    if (
+        use_rag
+        and not state.get("answer")
+        and is_agentic_feature_enabled(state, "clarification_guard")
+    ):
+        clarification = build_clarification_request(state)
+        if clarification.get("required"):
+            state["answer"] = clarification.get("question") or ""
+            state["clarification_reason"] = clarification.get("reason") or ""
+            logger.info(
+                "Node: 触发细粒度澄清策略, reason=%s",
+                state["clarification_reason"],
+            )
 
     # 7. 写入最终历史
     final_state = step_7_write_history(

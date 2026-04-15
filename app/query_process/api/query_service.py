@@ -167,10 +167,12 @@ async def query(background_tasks: BackgroundTasks, request: QueryRequest):
         # 同步运行
         run_query_graph(session_id, user_query, is_stream)
         answer = get_task_result(session_id, "answer", "")
+        metadata = get_task_result(session_id, "metadata", {})
         return {
             "message": "处理完成！",
             "session_id": session_id,
             "answer": answer,
+            "metadata": metadata,
             "done_list": [],
         }
 
@@ -210,6 +212,7 @@ async def history(session_id: str, limit: int = 50):
                     "rewritten_query": r.get("rewritten_query", ""),
                     "item_names": r.get("item_names", []),
                     "image_urls": r.get("image_urls", []),
+                    "metadata": r.get("metadata", {}),
                     "ts": r.get("ts"),
                 }
             )

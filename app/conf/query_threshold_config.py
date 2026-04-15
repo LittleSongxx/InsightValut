@@ -83,6 +83,18 @@ class QueryThresholdConfig:
     max_context_chars: int
     # 幻觉检查/CRAG 评估时文档摘要最大字符数
     grader_doc_max_chars: int
+    # 证据覆盖检查的最低通过分数
+    evidence_min_coverage_score: float
+    # 证据覆盖检查要求的最少文档数
+    evidence_min_docs: int
+    # 上下文扩展阶段最多处理的候选文档数
+    context_expand_top_k: int
+    # 图上下文扩展时，为每个命中 chunk 拉取的前后邻居数量
+    context_expand_neighbor_limit: int
+    # 图上下文扩展时，最多附带的证据实体数量
+    context_expand_evidence_limit: int
+    # 上下文扩展追加到单文档中的最大字符数
+    context_expand_max_chars: int
 
 
 # 工厂函数：从环境变量加载配置，无则使用默认值
@@ -156,4 +168,16 @@ query_threshold_config = QueryThresholdConfig(
     # Prompt 上下文限制
     max_context_chars=_int(os.getenv("MAX_CONTEXT_CHARS"), 12000),
     grader_doc_max_chars=_int(os.getenv("GRADER_DOC_MAX_CHARS"), 6000),
+    evidence_min_coverage_score=_float(
+        os.getenv("EVIDENCE_MIN_COVERAGE_SCORE"), 0.55
+    ),
+    evidence_min_docs=_int(os.getenv("EVIDENCE_MIN_DOCS"), 2),
+    context_expand_top_k=_int(os.getenv("CONTEXT_EXPAND_TOP_K"), 4),
+    context_expand_neighbor_limit=_int(
+        os.getenv("CONTEXT_EXPAND_NEIGHBOR_LIMIT"), 1
+    ),
+    context_expand_evidence_limit=_int(
+        os.getenv("CONTEXT_EXPAND_EVIDENCE_LIMIT"), 3
+    ),
+    context_expand_max_chars=_int(os.getenv("CONTEXT_EXPAND_MAX_CHARS"), 1200),
 )

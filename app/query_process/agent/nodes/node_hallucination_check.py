@@ -2,7 +2,7 @@ import sys
 import json
 
 from app.utils.task_utils import add_running_task, add_done_task
-from app.lm.lm_utils import get_llm_client
+from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.core.load_prompt import load_prompt
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
@@ -46,7 +46,7 @@ def step_1_check_hallucination(question: str, answer: str, reranked_docs: list) 
         )
 
         response = client.invoke(prompt)
-        content = response.content
+        content = coerce_llm_content(response.content)
 
         # 清理 Markdown 代码块
         if content.startswith("```json"):
@@ -68,7 +68,7 @@ def step_1_check_hallucination(question: str, answer: str, reranked_docs: list) 
         return {"passed": passed, "hallucinations": hallucinations}
 
     except Exception as e:
-        logger.error(f"Step 1: 幻觉检查失败: {e}", exc_info=True)
+        logger.exception("Step 1: 幻觉检查失败")
         # 降级：检查失败时默认通过
         return {"passed": True, "hallucinations": f"检查失败(降级通过): {e}"}
 

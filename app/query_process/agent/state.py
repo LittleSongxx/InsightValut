@@ -37,7 +37,15 @@ class QueryGraphState(TypedDict):
     query_focus_terms: list  # 图谱检索时使用的焦点词
     query_route_reason: str  # 问题类型识别原因
     retrieval_plan: dict  # 按题型生成的检索执行计划
+    route_overrides: dict  # 运行期动态路由调整（补救重试/评测开关）
     kg_query_summary: dict  # 图谱查询摘要（命中模板、结果数等）
+    sub_query_routes: list  # 复合问题中每个子查询对应的路由结果
+    sub_query_results: list  # 复合问题中每个子查询的检索摘要
+    context_expansion_summary: dict  # 上下文扩展摘要
+    evidence_coverage_summary: dict  # 证据覆盖检查摘要
+    rescue_plan: dict  # 检索补救计划
+    answer_plan: dict  # 结构化回答规划
+    clarification_reason: str  # 触发澄清的原因
     evaluation_mode: bool
     evaluation_overrides: dict
     message_id: str

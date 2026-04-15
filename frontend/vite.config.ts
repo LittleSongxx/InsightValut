@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const queryTarget = env.VITE_QUERY_TARGET || 'http://localhost:8001'
-  const importTarget = env.VITE_IMPORT_TARGET || 'http://localhost:8000'
+  const importTarget = env.VITE_IMPORT_TARGET || 'http://localhost:18000'
 
   return {
     plugins: [react(), tailwindcss()],

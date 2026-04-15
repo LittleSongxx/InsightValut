@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Message, ProgressData } from '../types';
+import type { AgenticMetadata, Message, ProgressData } from '../types';
 import { ChatWindow, ChatInput, ProgressPanel, ImportProgressPanel } from '../components';
 import type { UploadingFile } from '../components/chat/ChatInput';
 import { sendQuery, createSSEConnection, getHistory, uploadFile, getImportStatus } from '../services/api';
@@ -94,7 +94,8 @@ export default function ChatPage() {
           role: item.role === 'user' ? 'user' : 'assistant',
           content: item.text,
           timestamp: new Date(item.ts * 1000),
-          images: normalizeAssetUrls(item.image_urls),
+          images: normalizeAssetUrls(item.image_urls || item.metadata?.image_urls || []),
+          metadata: item.metadata ?? undefined,
         }));
         setMessages((prev) => {
           if (historyLoadingSessionRef.current !== currentSessionId) {
@@ -207,10 +208,17 @@ export default function ChatPage() {
         });
 
         es.addEventListener('final', (e: MessageEvent) => {
-          const data = parsePayload<{ answer?: string; content?: string; image_urls?: string[] }>(e.data);
+          const data = parsePayload<{
+            answer?: string;
+            content?: string;
+            image_urls?: string[];
+            metadata?: AgenticMetadata;
+          }>(e.data);
           if (data) {
             const answer = data.answer || data.content || '';
-            const images = normalizeAssetUrls(data.image_urls || []);
+            const images = normalizeAssetUrls(
+              data.image_urls || data.metadata?.image_urls || [],
+            );
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -220,6 +228,7 @@ export default function ChatPage() {
                     isStreaming: false,
                     endTime: Date.now(),
                     images: images.length > 0 ? images : m.images,
+                    metadata: data.metadata || m.metadata,
                   }
                   : m,
               ),

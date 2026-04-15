@@ -4,7 +4,7 @@ import threading
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.exceptions import LangChainException
-from typing import Optional
+from typing import Any, Optional
 
 # 项目内部依赖
 from app.conf.lm_config import lm_config
@@ -14,6 +14,35 @@ from app.core.logger import logger
 # 作用：避免重复初始化客户端，提升性能，统一实例管理
 _llm_client_cache = {}
 _llm_cache_lock = threading.Lock()
+
+
+def coerce_llm_content(content: Any) -> str:
+    """
+    将 LangChain/兼容 OpenAI 返回的 content 统一规整为字符串。
+    某些模型可能返回分段列表，若不规整会在后续 .strip() / json.loads() 中触发类型错误。
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("content") or item.get("value")
+                if text is not None:
+                    parts.append(str(text))
+                    continue
+            text = getattr(item, "text", None) or getattr(item, "content", None)
+            if text is not None:
+                parts.append(str(text))
+            else:
+                parts.append(str(item))
+        return "".join(parts)
+    return str(content)
 
 
 def get_llm_client(model: Optional[str] = None, json_mode: bool = False) -> ChatOpenAI:

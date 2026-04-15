@@ -1,259 +1,158 @@
 {
-  "dataset_name": "InsightVault Doc-Based Evaluation Seed",
-  "generated_at": "2026-04-15",
-  "description": "基于本地 doc 目录对应的已导入 chunks 产物整理的首版评测集。HAK180 案例保留了真实 relevant_chunk_ids，其余案例优先保证 reference_answer 可用于答案级 RAGAS 评测。",
+  "dataset_name": "graph_eval_cases.docs.json",
+  "generated_at": "2026-04-15T06:40:00+08:00",
+  "description": "基于当前 InsightVault 默认知识库中已导入的《HUAWEI MateBook B7-420 用户指南》重建的统一评测集。所有 case 均与当前 Milvus 中的 HUAWEIMateBookB7-420 chunks 对齐。",
   "notes": [
-    "HAK180 的 4 个 case 复用了 output/retrieval_tests 中已经验证过的 chunk 标注。",
-    "HUAWEI MateBook B7-420 与 华为平板 C7 的 case 来自本地 output/*/chunks.json 的清洗后正文。",
-    "未导出真实 chunk_id 的 case 将 relevant_chunk_ids 置为空数组，仍可参与答案级与流程级评测。"
+    "本评测集用于控制变量对比 Baseline RAG、HyDE、BM25、Graph First 与 Agentic 增强方案。",
+    "relevant_chunk_ids 已对齐当前默认知识库；若后续重新导入导致 chunk_id 漂移，统一评测器会基于 reference_answer 自动重映射当前 chunk。"
   ],
   "sources": [
-    {
-      "doc_title": "hak180产品安全手册",
-      "output_path": "output/20260319/f9cc9d68-2a21-4b24-881c-0e8d41dd7ad3/chunks.json"
-    },
-    {
-      "doc_title": "HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn)",
-      "output_path": "output/20260414/ecc44750-1dc0-4442-9f3a-25a84a0fcfc2/chunks.json"
-    },
-    {
-      "doc_title": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "output_path": "output/20260413/da6d5c1f-47a9-48f9-9c28-e3cf75340860/chunks.json"
-    }
+    "docs/HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn).pdf"
   ],
   "cases": [
     {
-      "case_id": "hak180_env_range",
-      "query_type": "constraint",
-      "query": "HAK 180 烫金机适用的温度和湿度范围是什么？",
-      "item_names": [
-        "HAK180烫金机"
-      ],
-      "reference_answer": "HAK 180 烫金机应在温度 10℃ 至 32℃、湿度 20% 至 80% 且无冷凝的环境中使用。",
-      "relevant_chunk_ids": [
-        "465580465677681359"
-      ],
-      "source_doc": "hak180产品安全手册",
-      "source_chunk_titles": [
-        "# 警告"
-      ]
-    },
-    {
-      "case_id": "hak180_power_requirement",
-      "query_type": "constraint",
-      "query": "HAK 180 烫金机的电源要求是什么？",
-      "item_names": [
-        "HAK180烫金机"
-      ],
-      "reference_answer": "设备通过 AC 220V-240V、50/60Hz 电源供电，不应连接到直流电源或逆变器。",
-      "relevant_chunk_ids": [
-        "465580465677681360"
-      ],
-      "source_doc": "hak180产品安全手册",
-      "source_chunk_titles": [
-        "# 电源线"
-      ]
-    },
-    {
-      "case_id": "hak180_overheat_smoke",
-      "query_type": "explain",
-      "query": "HAK 180 烫金机异常高温或冒烟时应该怎么处理？",
-      "item_names": [
-        "HAK180烫金机"
-      ],
-      "reference_answer": "如果设备异常高温、冒烟或出现强烈气味，应立即从电源插座拔掉插头，并联系 Brother 呼叫中心或当地经销商，不要继续使用。",
-      "relevant_chunk_ids": [
-        "465580465677681359"
-      ],
-      "source_doc": "hak180产品安全手册",
-      "source_chunk_titles": [
-        "# 警告"
-      ]
-    },
-    {
-      "case_id": "hak180_long_idle_power",
-      "query_type": "general",
-      "query": "HAK 180 烫金机长时间不使用时，电源线应该怎么处理？",
-      "item_names": [
-        "HAK180烫金机"
-      ],
-      "reference_answer": "如果长时间不使用 HAK 180 烫金机，应从电源插座中拔掉电源线以确保安全。",
-      "relevant_chunk_ids": [
-        "465580465677681361"
-      ],
-      "source_doc": "hak180产品安全手册",
-      "source_chunk_titles": [
-        "# 电源线"
-      ]
-    },
-    {
-      "case_id": "matebook_fn_key_mode",
-      "query_type": "general",
-      "query": "HUAWEI MateBook B7-420 怎么把 F1、F2 这些键切换成标准功能键？",
-      "item_names": [],
-      "reference_answer": "可以按 Fn 键把 F1、F2 等键锁定为功能键模式；也可以进入华为电脑管家设置中心，把键盘设置为“功能键优先”。若要切回热键模式，可再次按 Fn，或把设置改回“热键优先”。",
-      "relevant_chunk_ids": [],
-      "source_doc": "HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn)",
-      "source_chunk_titles": [
-        "# 快捷键与功能键切换"
-      ]
+      "case_id": "matebook_fn_mode_switch",
+      "query_type": "comparison",
+      "query": "MateBook B7-420 的快捷键模式和功能键模式有什么区别，怎么切换？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "快捷键模式下 F1、F2 等按键默认执行亮度、背光等热键功能；功能键模式下它们作为普通功能键使用。可以按 Fn 键切换，也可以在华为电脑管家中设置为功能键优先。",
+      "relevant_chunk_ids": ["465601361524049409"]
     },
     {
       "case_id": "matebook_touchpad_settings",
       "query_type": "navigation",
-      "query": "HUAWEI MateBook B7-420 怎么修改触摸板设置？",
-      "item_names": [],
-      "reference_answer": "进入设置中的触摸板相关选项后，可以开启或关闭触摸板、设置连接鼠标时是否关闭触摸板、调整滚动方向和手指动作功能。压力触控板的按压灵敏度和振动强度可在华为电脑管家中进一步设置。",
-      "relevant_chunk_ids": [],
-      "source_doc": "HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn)",
-      "source_chunk_titles": [
-        "# 更改触摸板设置"
-      ]
+      "query": "如何更改 MateBook B7-420 的触摸板设置？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "打开设置界面后进入触摸板相关页面，可以开启或关闭触摸板、设置连接鼠标时的触摸板状态、调整滚动方向，以及设置手指动作功能。",
+      "relevant_chunk_ids": ["465601361524049410"]
+    },
+    {
+      "case_id": "matebook_battery_status",
+      "query_type": "navigation",
+      "query": "在 MateBook B7-420 上怎么看电池剩余时间和充满时间？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "点击桌面右下角的电池图标即可查看电池状态。连接电源时可以查看充满时间；未连接电源时可以查看剩余电量和剩余使用时间。",
+      "relevant_chunk_ids": ["465601361524049411"]
+    },
+    {
+      "case_id": "matebook_charging_precautions",
+      "query_type": "constraint",
+      "query": "MateBook B7-420 充电时有哪些注意事项？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "应在适宜温度范围和通风良好的阴凉区域为计算机充电。长时间工作和充电时表面发热属正常现象，感觉发烫时应关闭部分功能并停止充电。",
+      "relevant_chunk_ids": ["465601361524049411"]
     },
     {
       "case_id": "matebook_f10_restore",
-      "query_type": "explain",
-      "query": "HUAWEI MateBook B7-420 用 F10 恢复出厂会清掉哪些数据，怎么进入？",
-      "item_names": [],
-      "reference_answer": "F10 系统恢复会删除 C 盘中的数据，包括桌面文件、下载和文档等个人数据，因此操作前需要先备份。进入方法是先连接电源，在开机过程中连续快速按 F10，进入界面后按提示执行恢复。",
-      "relevant_chunk_ids": [],
-      "source_doc": "HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn)",
-      "source_chunk_titles": [
-        "# 获取精彩功能"
-      ]
+      "query_type": "navigation",
+      "query": "MateBook B7-420 的 F10 一键恢复出厂怎么操作，有什么注意事项？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "将计算机连接电源，开机过程中连续快速点按 F10 键，进入界面后按提示恢复出厂。该操作会删除 C 盘中的个人数据，需要提前备份。",
+      "relevant_chunk_ids": ["465601361524049412"]
+    },
+    {
+      "case_id": "matebook_feature_tips",
+      "query_type": "general",
+      "query": "MateBook B7-420 想看更多精彩功能去哪里找？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "点击桌面底部任务栏上的华为电脑管家，进入玩机技巧即可获取更多精彩功能。",
+      "relevant_chunk_ids": ["465601361524049412"]
+    },
+    {
+      "case_id": "matebook_dock_devices",
+      "query_type": "relation",
+      "query": "MateBook B7-420 通过扩展坞可以连接哪些设备？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "通过扩展坞接口或插槽，计算机可以连接投影仪、电视、U 盘等兼容设备和配件。HUAWEI MateDock 2 为可选配件，需要单独购买。",
+      "relevant_chunk_ids": ["465601361524049413"]
     },
     {
       "case_id": "matebook_external_display",
+      "query_type": "navigation",
+      "query": "MateBook B7-420 连接电视、显示器或投影仪前需要准备什么？HDMI 和 VGA 能同时用吗？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "除了计算机、扩展坞和显示设备外，还需要准备 HDMI 或 VGA 连接线缆，并检查连接设备的端口。HDMI 接口和 VGA 接口不能同时使用。",
+      "relevant_chunk_ids": ["465601361524049414"]
+    },
+    {
+      "case_id": "matebook_usb_setup",
+      "query_type": "navigation",
+      "query": "如何通过扩展坞给 MateBook B7-420 连接 USB 鼠标、打印机或其他 USB 设备？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "将设备的 USB 线缆插入扩展坞 USB-A 接口；如果设备需要供电，先接通电源并启动设备。首次安装 USB 设备时，计算机会自动安装所需软件。",
+      "relevant_chunk_ids": ["465601361524049415"]
+    },
+    {
+      "case_id": "matebook_mouse_install_battery",
+      "query_type": "navigation",
+      "query": "HUAWEI 蓝牙鼠标（第二代）怎么安装电池？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "掀开鼠标上壳，按电池仓正负极标志装入一节 AA 电池，再合上上壳即可完成安装。",
+      "relevant_chunk_ids": ["465601361524049418"]
+    },
+    {
+      "case_id": "matebook_mouse_multi_device",
+      "query_type": "relation",
+      "query": "HUAWEI 蓝牙鼠标（第二代）如何在多台设备之间切换使用？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "短按多设备切换按键，即可让 HUAWEI 蓝牙鼠标（第二代）在多台蓝牙设备之间切换使用。",
+      "relevant_chunk_ids": ["465601361524049419"]
+    },
+    {
+      "case_id": "matebook_child_health",
       "query_type": "constraint",
-      "query": "HUAWEI MateBook B7-420 连接电视、显示器或投影仪时有什么限制，投影方式怎么选？",
-      "item_names": [],
-      "reference_answer": "连接外接显示设备时需要准备扩展坞和 HDMI 或 VGA 线缆，且 HDMI 接口与 VGA 接口不能同时使用。连接并打开外接设备后，可在热键模式下使用投影快捷键或 Win+P 打开投影界面，选择仅电脑屏幕、复制、扩展或仅第二屏幕。",
-      "relevant_chunk_ids": [],
-      "source_doc": "HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn)",
-      "source_chunk_titles": [
-        "# 连接到电视、显示器或投影仪"
-      ]
+      "query": "儿童使用 MateBook B7-420 或其配件时要注意什么？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "设备及其配件可能包含小零件，应放在儿童接触不到的地方，避免误吞或损坏设备。本设备并非玩具，儿童应在成人监护下使用。",
+      "relevant_chunk_ids": ["465601361524049421"]
     },
     {
-      "case_id": "matebook_usb_device_setup",
-      "query_type": "navigation",
-      "query": "HUAWEI MateBook B7-420 通过扩展坞连接 USB 设备的步骤是什么？",
-      "item_names": [],
-      "reference_answer": "先把设备的 USB 线缆插入扩展坞 USB-A 接口；如果设备需要独立供电，再接通设备电源并启动；首次连接时，计算机会自动安装所需软件。",
-      "relevant_chunk_ids": [],
-      "source_doc": "HUAWEI MateBook B7-420 用户指南-(MRGFZ,Windows11_02,zh-cn)",
-      "source_chunk_titles": [
-        "# 连接 USB 鼠标、打印机或其他设备"
-      ]
+      "case_id": "matebook_battery_safety",
+      "query_type": "constraint",
+      "query": "MateBook B7-420 的电池安全方面有哪些明确禁止事项？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "不要将电池暴露在高温或火源附近，不要跌落、挤压、穿刺、拆解或改装电池，也不要将其浸入水中或其他液体中，以免引起过热、起火或爆炸。",
+      "relevant_chunk_ids": ["465601361524049422"]
     },
     {
-      "case_id": "tablet_gesture_nav",
-      "query_type": "navigation",
-      "query": "华为平板 C7 开启手势导航后，怎么返回桌面和进入最近任务？",
-      "item_names": [],
-      "reference_answer": "在手势导航下，从屏幕底部边缘上滑可以返回桌面；从屏幕底部边缘向上滑并停顿，可以进入最近任务。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 常用手势"
-      ]
+      "case_id": "matebook_nfc_temperature",
+      "query_type": "constraint",
+      "query": "MateBook B7-420 的 NFC 工作电压和工作环境温度范围是多少？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "本产品 NFC 的工作电压为 3.3V，工作环境温度为 0℃ 到 35℃。",
+      "relevant_chunk_ids": ["465601361524049423"]
     },
     {
-      "case_id": "tablet_nav_comparison",
-      "query_type": "comparison",
-      "query": "华为平板 C7 的手势导航和屏幕内三键导航，在返回桌面和进入多任务上有什么区别？",
-      "item_names": [],
-      "reference_answer": "手势导航通过从屏幕底部上滑返回桌面、从底部上滑并停顿进入最近任务；屏幕内三键导航则通过点击主屏幕键返回桌面，点击多任务键进入多任务管理界面。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 常用手势",
-        "# 使用屏幕内三键虚拟导航"
-      ]
-    },
-    {
-      "case_id": "tablet_clone_android",
-      "query_type": "navigation",
-      "query": "华为平板 C7 怎么把旧安卓设备的数据迁移到新平板？",
-      "item_names": [],
-      "reference_answer": "在新平板打开平板克隆并选择“这是新设备 > 华为或其他安卓”，再在旧设备安装并打开平板克隆，选择“这是旧设备”，通过扫码或手动连接建立连接，最后在旧设备上选择数据并开始迁移。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 从华为或其他安卓设备迁移数据"
-      ]
-    },
-    {
-      "case_id": "tablet_auto_lock",
+      "case_id": "matebook_privacy_protection",
       "query_type": "general",
-      "query": "华为平板 C7 怎么设置自动锁屏时间？",
-      "item_names": [],
-      "reference_answer": "进入设置 > 显示和亮度 > 休眠，然后选择需要的屏幕自动休眠时长即可。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 设置自动锁屏时间"
-      ]
+      "query": "MateBook B7-420 用户如何保护个人信息和数据安全？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "应将设备放在安全区域，设置屏幕锁定，不阅读陌生信息或邮件，不访问存在安全隐患的网站，并谨慎使用无线共享、蓝牙等功能，以降低个人信息和数据泄露风险。",
+      "relevant_chunk_ids": ["465601361524049424"]
     },
     {
-      "case_id": "tablet_service_card_pin",
-      "query_type": "navigation",
-      "query": "华为平板 C7 怎么把服务卡片固定到桌面？",
-      "item_names": [],
-      "reference_answer": "先上滑应用图标展开服务卡片，然后可以长按卡片并拖到屏幕空位，或点击添加按钮把卡片加入当前屏幕。若当前屏幕没有空位，系统会尝试放到下一屏或自动新建一屏。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 服务卡片"
-      ]
-    },
-    {
-      "case_id": "tablet_big_folder",
-      "query_type": "navigation",
-      "query": "华为平板 C7 怎么创建大文件夹并重命名？",
-      "item_names": [],
-      "reference_answer": "先长按一个应用图标并拖到另一个图标上，生成新文件夹；再长按文件夹并选择显示为大文件夹；之后打开大文件夹，点击文件夹名称或长按后选择重命名即可修改名称。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 创建大文件夹"
-      ]
-    },
-    {
-      "case_id": "tablet_pure_mode",
-      "query_type": "constraint",
-      "query": "华为平板 C7 开启纯净模式后，对安装第三方应用有什么影响？怎么开启？",
-      "item_names": [],
-      "reference_answer": "可通过设置 > 系统和更新 > 纯净模式开启，也可以从控制中心编辑快捷开关后开启。开启后，已在应用市场上架的应用可按提示前往应用市场安装或继续安装；未上架应用默认不建议安装，若用户仍信任可继续安装并输入密码，但若检测到不可控风险则会被禁止安装。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 开启纯净模式"
-      ]
-    },
-    {
-      "case_id": "tablet_factory_reset",
+      "case_id": "matebook_manual_notice",
       "query_type": "explain",
-      "query": "华为平板 C7 恢复出厂设置会删除哪些内容？",
-      "item_names": [],
-      "reference_answer": "恢复出厂设置会删除内部存储中的帐户、系统和应用数据与设置、已安装应用、音乐、图片、内部文件、安全芯片信息，以及与帐号关联并存储在本设备上的系统、应用和个人数据，因此执行前需要先备份。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 将平板还原至默认状态"
-      ]
+      "query": "为什么手册里的某些功能说明可能和实际购买到的 MateBook B7-420 不完全一致？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "因为手册描述的某些特性和功能取决于当地网络设计和性能、运营商或服务提供商支持情况，以及设备上安装的软件，所以手册内容可能与实际购买的产品或附件并非完全一一对应。",
+      "relevant_chunk_ids": ["465601361524049426"]
     },
     {
-      "case_id": "tablet_erecovery",
-      "query_type": "navigation",
-      "query": "华为平板 C7 无法开机或系统不稳定时，怎么用 eRecovery 恢复系统？",
-      "item_names": [],
-      "reference_answer": "平板关机后同时长按音量上键和电源键，或重启后立即长按音量上键，进入 Recovery 模式；然后选择“升级模式 > eRecovery模式 > 下载最新版本并恢复 > 下载并恢复”，连接稳定 WLAN 下载恢复包，下载完成后系统会自动升级并重启。",
-      "relevant_chunk_ids": [],
-      "source_doc": "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)",
-      "source_chunk_titles": [
-        "# 在线升级平板参数版本"
-      ]
+      "case_id": "matebook_liability",
+      "query_type": "explain",
+      "query": "华为对使用 MateBook B7-420 手册内容相关造成的损失承担什么责任？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "在适用法律允许的范围内，华为不对因使用本手册相关内容及所描述产品而产生的特殊、附带、间接或继发性损害，以及利润、数据、商誉或预期节约损失承担赔偿责任。",
+      "relevant_chunk_ids": ["465601361524049427"]
+    },
+    {
+      "case_id": "matebook_more_info",
+      "query_type": "general",
+      "query": "在哪里可以购买华为终端产品或查看更多 MateBook B7-420 的相关信息？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "购买华为终端产品可访问华为商城 https://www.vmall.com/ ，更多信息可访问 https://consumer.huawei.com/cn/ 。",
+      "relevant_chunk_ids": ["465601361524049428"]
     }
   ]
 }

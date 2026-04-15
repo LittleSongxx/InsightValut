@@ -26,13 +26,22 @@ def step_1_merge_docs(state):
             logger.warning(f"本地文档格式异常 (index={i}): {type(entity)}")
             continue
 
-        content = get_entity_field(entity, "content")
+        content = (
+            get_entity_field(entity, "expanded_text")
+            or get_entity_field(entity, "content")
+            or get_entity_field(entity, "text")
+        )
         if not content:
             logger.debug(f"跳过无内容文档 (index={i}, keys={list(entity.keys())})")
             continue
 
         chunk_id = extract_chunk_id(entity)
-        title = get_entity_field(entity, "title") or get_entity_field(entity, "item_name") or ""
+        title = (
+            get_entity_field(entity, "title")
+            or get_entity_field(entity, "document_title")
+            or get_entity_field(entity, "item_name")
+            or ""
+        )
         source = get_entity_field(entity, "source") or "local"
 
         doc_items.append(
@@ -43,6 +52,19 @@ def step_1_merge_docs(state):
                 "title": title,
                 "url": "",
                 "source": source,
+                "image_urls": get_entity_field(entity, "image_urls") or [],
+                "graph_fact": get_entity_field(entity, "graph_fact") or "",
+                "graph_entities": get_entity_field(entity, "graph_entities") or [],
+                "section_title": get_entity_field(entity, "section_title") or "",
+                "document_title": get_entity_field(entity, "document_title") or "",
+                "expanded_chunk_ids": get_entity_field(entity, "expanded_chunk_ids")
+                or [],
+                "context_expanded": bool(
+                    get_entity_field(entity, "context_expanded", default=False)
+                ),
+                "evidence_chunk_ids": get_entity_field(entity, "evidence_chunk_ids")
+                or [],
+                "evidence_text": get_entity_field(entity, "evidence_text") or "",
             }
         )
 
@@ -63,6 +85,15 @@ def step_1_merge_docs(state):
                 "title": title,
                 "url": url,
                 "source": "web",
+                "image_urls": doc.get("image_urls") or [],
+                "graph_fact": "",
+                "graph_entities": [],
+                "section_title": "",
+                "document_title": "",
+                "expanded_chunk_ids": [],
+                "context_expanded": False,
+                "evidence_chunk_ids": [],
+                "evidence_text": "",
             }
         )
 
@@ -101,12 +132,21 @@ def step_2_rerank_docs(state, doc_items):
                     "doc_id": item.get("doc_id"),
                     "url": item.get("url") or "",
                     "title": item.get("title") or "",
+                    "image_urls": item.get("image_urls") or [],
+                    "graph_fact": item.get("graph_fact") or "",
+                    "graph_entities": item.get("graph_entities") or [],
+                    "section_title": item.get("section_title") or "",
+                    "document_title": item.get("document_title") or "",
+                    "expanded_chunk_ids": item.get("expanded_chunk_ids") or [],
+                    "context_expanded": bool(item.get("context_expanded", False)),
+                    "evidence_chunk_ids": item.get("evidence_chunk_ids") or [],
+                    "evidence_text": item.get("evidence_text") or "",
                 }
             )
         scored_docs.sort(key=lambda x: x["score"], reverse=True)
         return scored_docs
-    except Exception as e:
-        logger.error(f"Step 2: 重排序过程发生异常: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Step 2: 重排序过程发生异常")
         fallback_docs = [
             {
                 "text": x.get("text"),
@@ -116,6 +156,15 @@ def step_2_rerank_docs(state, doc_items):
                 "doc_id": x.get("doc_id"),
                 "url": x.get("url") or "",
                 "title": x.get("title") or "",
+                "image_urls": x.get("image_urls") or [],
+                "graph_fact": x.get("graph_fact") or "",
+                "graph_entities": x.get("graph_entities") or [],
+                "section_title": x.get("section_title") or "",
+                "document_title": x.get("document_title") or "",
+                "expanded_chunk_ids": x.get("expanded_chunk_ids") or [],
+                "context_expanded": bool(x.get("context_expanded", False)),
+                "evidence_chunk_ids": x.get("evidence_chunk_ids") or [],
+                "evidence_text": x.get("evidence_text") or "",
             }
             for x in doc_items
         ]
