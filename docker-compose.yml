@@ -19,26 +19,34 @@ x-common-backend-env: &common-backend-env # 项目路径（写死在镜像里，
 
   # ---------- 大模型 ----------
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-  OPENAI_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
-  LLM_DEFAULT_MODEL: qwen3.6-plus-2026-04-02
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+  DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+  QWEN_API_KEY: ${QWEN_API_KEY:-}
+  QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+  QWEN_MODEL: ${QWEN_MODEL:-qwen3.5-122b-a10b}
+  LLM_AVAILABLE_MODELS: ${LLM_AVAILABLE_MODELS:-deepseek-chat,qwen3.5-122b-a10b}
+  LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-deepseek-chat}
+  LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-qwen3.5-122b-a10b}
   VL_MODEL: qwen3-vl-flash
   LLM_DEFAULT_TEMPERATURE: "0.1"
 
   # ---------- Embedding ----------
   BGE_M3_PATH: /app/.cache/models/bge-m3
   BGE_M3: BAAI/bge-m3
-  BGE_DEVICE: cpu
-  BGE_FP16: "0"
+  BGE_DEVICE: ${BGE_DEVICE:-cpu}
+  BGE_FP16: ${BGE_FP16:-0}
   ITEM_NAME_DIAG: "1"
   EMBEDDING_DIM: "1024"
 
   # ---------- 重排（DashScope API，无需本地模型） ----------
-  RERANKER_MODE: dashscope
+  RERANKER_MODE: ${RERANKER_MODE:-dashscope}
   DASHSCOPE_RERANK_MODEL: ${DASHSCOPE_RERANK_MODEL:-gte-rerank-v2}
   DASHSCOPE_RERANK_BASE_URL: ${DASHSCOPE_RERANK_BASE_URL:-https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank}
   BGE_RERANKER_LARGE: ${BGE_RERANKER_LARGE:-BAAI/bge-reranker-v2-m3}
-  BGE_RERANKER_DEVICE: cpu
-  BGE_RERANKER_FP16: "0"
+  BGE_RERANKER_DEVICE: ${BGE_RERANKER_DEVICE:-cpu}
+  BGE_RERANKER_FP16: ${BGE_RERANKER_FP16:-0}
 
   # ---------- 日志 ----------
   LOG_CONSOLE_ENABLE: "True"
@@ -86,7 +94,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-16379}:6379"
     volumes:
       - ./.docker-data/redis:/data
 
@@ -211,6 +219,7 @@ services:
       MILVUS_FORCE_RECREATE_COLLECTION: "0"
     ports:
       - "${IMPORT_PORT:-18000}:8000"
+    gpus: all
     volumes:
       - ./app:/app/app
       - ./.cache:/app/.cache
@@ -253,6 +262,7 @@ services:
       QUERY_CACHE_REDIS_URL: redis://redis:6379/0
     ports:
       - "${QUERY_PORT:-8001}:8001"
+    gpus: all
     volumes:
       - ./app:/app/app
       - ./.cache:/app/.cache

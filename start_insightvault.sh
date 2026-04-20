@@ -7,6 +7,7 @@ LOG_DIR="$PROJECT_ROOT/logs"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 START_LOCK_FILE="$RUN_DIR/start.lock"
 FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
+DOCKER_CONFIG_FALLBACK_DIR="$RUN_DIR/docker-config"
 FRONTEND_PORT="${FRONTEND_PORT:-3002}"
 FRONTEND_HOST="127.0.0.1"
 FRONTEND_URL="http://$FRONTEND_HOST:$FRONTEND_PORT"
@@ -125,6 +126,32 @@ parse_args() {
     esac
     shift
   done
+}
+
+prepare_docker_config() {
+  local docker_config_dir config_path creds_store helper
+
+  docker_config_dir="${DOCKER_CONFIG:-$HOME/.docker}"
+  config_path="$docker_config_dir/config.json"
+  if [[ ! -r "$config_path" ]]; then
+    return 0
+  fi
+
+  creds_store="$(tr -d '\n' < "$config_path" | sed -nE 's/.*"credsStore"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')"
+  if [[ -z "$creds_store" ]]; then
+    return 0
+  fi
+
+  helper="docker-credential-$creds_store"
+  if command -v "$helper" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  mkdir -p "$DOCKER_CONFIG_FALLBACK_DIR"
+  printf '{\n  "auths": {}\n}\n' > "$DOCKER_CONFIG_FALLBACK_DIR/config.json"
+  export DOCKER_CONFIG="$DOCKER_CONFIG_FALLBACK_DIR"
+  echo "[warn] docker credsStore '$creds_store' is configured but helper '$helper' is unavailable"
+  echo "[warn] using temporary anonymous docker config for public image pulls in this project"
 }
 
 acquire_start_lock() {
@@ -281,6 +308,8 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+prepare_docker_config
+
 ensure_env_file
 
 echo "[info] startup mode: build=$DO_BUILD warmup=$DO_WARMUP"
@@ -322,5 +351,5 @@ if curl --noproxy '*' -s -o /dev/null -m 3 "$QUERY_HOST_URL/health" 2>/dev/null;
 else
   echo "- query  API  : container check via docker compose exec -T app-query curl $QUERY_CONTAINER_URL/health"
 fi
-echo "- local stop  : ./stop_insightvault.sh"
-echo "- stop all    : ./stop_insightvault.sh --docker"
+echo "- stop apps   : ./stop_insightvault.sh"
+echo "- stop all    : ./stop_insightvault.sh --all"
