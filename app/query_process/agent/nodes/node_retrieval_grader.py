@@ -18,6 +18,18 @@ CRAG_MAX_RETRIES = cfg.crag_max_retries
 CRAG_MIN_DOCS = cfg.crag_min_docs
 
 
+def _bool_override(state: dict, key: str, default: bool = True) -> bool:
+    value = default
+    for container in (
+        state,
+        state.get("route_overrides") or {},
+        state.get("evaluation_overrides") or {},
+    ):
+        if isinstance(container, dict) and key in container:
+            value = bool(container.get(key))
+    return value
+
+
 def step_1_grade_retrieval(question: str, reranked_docs: list) -> dict:
     """
     阶段1：利用LLM评估检索结果质量
@@ -112,6 +124,23 @@ def node_retrieval_grader(state):
     retry_count = state.get("retry_count", 0)
     evidence_coverage = state.get("evidence_coverage_summary") or {}
     agentic_features = get_agentic_features(state)
+    retrieval_grader_enabled = _bool_override(state, "retrieval_grader_enabled", True)
+    legacy_retry_enabled = _bool_override(state, "legacy_retry_enabled", True)
+
+    if not retrieval_grader_enabled:
+        result = {
+            "retrieval_grade": "disabled",
+            "rescue_plan": {
+                "action": "none",
+                "reason": "retrieval_grader_disabled",
+                "steps": [],
+            },
+        }
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        logger.info("---node_retrieval_grader 跳过: retrieval_grader_enabled=False---")
+        return result
 
     # 阶段1：评估检索质量
     grade_result = step_1_grade_retrieval(question, reranked_docs)
@@ -167,7 +196,11 @@ def node_retrieval_grader(state):
         if result["route_overrides"].get("drop_item_names"):
             result["item_names"] = []
 
-    elif grade != "sufficient" and retry_count < CRAG_MAX_RETRIES:
+    elif (
+        legacy_retry_enabled
+        and grade != "sufficient"
+        and retry_count < CRAG_MAX_RETRIES
+    ):
         suggested_query = grade_result.get("suggested_query", "").strip()
         new_query = suggested_query if suggested_query else question
         logger.info(

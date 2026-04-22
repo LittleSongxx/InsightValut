@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    cacheDir: 'node_modules/.vite',
     build: {
       rollupOptions: {
         output: {

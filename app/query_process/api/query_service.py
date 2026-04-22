@@ -26,11 +26,13 @@ from app.utils.perf_tracker import (
     get_stage_breakdown,
 )
 from app.utils.eval_report_utils import (
+    delete_evaluation_report,
     list_evaluation_reports,
     get_evaluation_report,
     get_latest_evaluation_report,
 )
 from app.utils.eval_job_utils import (
+    cancel_evaluation_job,
     create_evaluation_job,
     get_evaluation_config,
     get_evaluation_job,
@@ -344,6 +346,19 @@ async def evaluation_report(report_id: str):
     return report
 
 
+@app.delete("/evaluation/reports/{report_id}")
+async def delete_evaluation_report_api(report_id: str):
+    """删除指定统一评测报告"""
+    try:
+        return delete_evaluation_report(report_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="evaluation report not found")
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"delete evaluation report error: {e}"
+        )
+
+
 @app.get("/evaluation/config")
 async def evaluation_config():
     """获取评测运行配置"""
@@ -369,6 +384,18 @@ async def evaluation_job(job_id: str):
         job = get_evaluation_job(job_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"evaluation job error: {e}")
+    if job is None:
+        raise HTTPException(status_code=404, detail="evaluation job not found")
+    return job
+
+
+@app.post("/evaluation/jobs/{job_id}/cancel")
+async def cancel_evaluation_job_api(job_id: str):
+    """取消指定评测任务"""
+    try:
+        job = cancel_evaluation_job(job_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"cancel evaluation job error: {e}")
     if job is None:
         raise HTTPException(status_code=404, detail="evaluation job not found")
     return job

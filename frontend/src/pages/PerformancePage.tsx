@@ -11,8 +11,10 @@ import {
   RefreshCcw,
   Search,
   ShieldAlert,
+  Square,
   Sparkles,
   Target,
+  Trash2,
 } from 'lucide-react';
 import {
   Bar,
@@ -27,7 +29,9 @@ import {
   YAxis,
 } from 'recharts';
 import {
+  cancelEvaluationJob,
   createEvaluationJob,
+  deleteEvaluationReport,
   getEvaluationConfig,
   getEvaluationJob,
   getEvaluationJobs,
@@ -98,7 +102,6 @@ const METRIC_LABELS: Record<string, string> = {
   empty_answer_rate: '空回答率',
   crag_retry_rate: 'CRAG 重试率',
   hallucination_retry_rate: '幻觉重试率',
-  graph_preferred_rate: '图优先比例',
   need_rag_rate: 'RAG 使用率',
   cache_hit_rate: '缓存命中率',
   l0_cache_hit_rate: 'L0 命中率',
@@ -107,6 +110,7 @@ const METRIC_LABELS: Record<string, string> = {
   retrieval_cache_rate: '检索缓存命中率',
   answer_cache_rate: '答案缓存命中率',
   avg_cache_writes: '平均缓存写入',
+  llm_fallback_rate: '模型回退率',
   error_rate: '错误率',
 };
 
@@ -170,6 +174,11 @@ const CACHE_METRIC_KEYS = [
 ] as const;
 
 const FRONTEND_EVALUATION_TEMPLATE_PATH = '/app/docs/graph_eval_cases.docs.json';
+const HIDDEN_EVALUATION_VARIANTS = new Set(['neo4j_graph_first']);
+
+function isVisibleEvaluationVariant(variantName?: string | null) {
+  return Boolean(variantName) && !HIDDEN_EVALUATION_VARIANTS.has(String(variantName));
+}
 
 function upsertJob(list: EvaluationJob[], nextJob: EvaluationJob) {
   const existing = list.find((job) => job.job_id === nextJob.job_id);
@@ -267,6 +276,8 @@ function formatJobStatus(status: EvaluationJob['status']) {
   const mapping: Record<EvaluationJob['status'], string> = {
     pending: '等待中',
     running: '运行中',
+    cancelling: '停止中',
+    cancelled: '已取消',
     completed: '已完成',
     failed: '失败',
   };
@@ -320,17 +331,36 @@ function formatBreakdown(
     .join(' · ');
 }
 
+function formatQualityJudgeSummary(metadata: Record<string, unknown> | null | undefined) {
+  if (!metadata) return '';
+  const qualityMode = typeof metadata.quality_mode === 'string' ? metadata.quality_mode : '';
+  const methodCounts =
+    metadata.method_counts && typeof metadata.method_counts === 'object'
+      ? (metadata.method_counts as Record<string, unknown>)
+      : null;
+  const methodText = methodCounts
+    ? Object.entries(methodCounts)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join(' · ')
+    : '';
+  return [qualityMode ? `评估模式 ${qualityMode}` : '', methodText].filter(Boolean).join(' · ');
+}
+
 function formatReportVariantSummary(
   report: EvaluationReportListItem,
   techniqueMap: Record<string, string>,
 ) {
-  const labels = report.variants
+  const visibleVariants = report.variants.filter((variantName) => isVisibleEvaluationVariant(variantName));
+  const labels = visibleVariants
     .map((variantName) => formatVariantLabel(variantName, techniqueMap[variantName]))
     .filter(Boolean);
   if (labels.length === 0) return report.dataset_name || report.file_name;
   if (labels.length === 1) return labels[0];
   if (labels.length === 2) return `${labels[0]} vs ${labels[1]}`;
-  const finalLabel = formatVariantLabel(report.final_variant, techniqueMap[report.final_variant]);
+  const finalVariantName = isVisibleEvaluationVariant(report.final_variant)
+    ? report.final_variant
+    : visibleVariants[visibleVariants.length - 1] || visibleVariants[0] || report.final_variant;
+  const finalLabel = formatVariantLabel(finalVariantName, techniqueMap[finalVariantName]);
   return `${finalLabel} · ${labels.length} 个方案`;
 }
 
@@ -508,15 +538,16 @@ export default function PerformancePage() {
   const loadEvaluationRuntime = useCallback(async () => {
     try {
       const [configData, jobsData] = await Promise.all([getEvaluationConfig(), getEvaluationJobs()]);
-      setEvaluationActionError(null);
-      setEvaluationActionMessage(null);
       setEvaluationConfig(configData);
       setDatasetPath((prev) => prev || resolveTemplateDatasetPath(configData.template_dataset_path));
-      setSelectedVariants((prev) => (prev.length > 0 ? prev : configData.default_variants || []));
+      const visibleDefaultVariants = (configData.default_variants || []).filter(isVisibleEvaluationVariant);
+      setSelectedVariants((prev) =>
+        prev.length > 0 ? prev.filter(isVisibleEvaluationVariant) : visibleDefaultVariants,
+      );
       const jobs = jobsData.jobs || [];
       setEvaluationJobs(jobs);
       setActiveEvaluationJob((prev) => {
-        if (prev && (prev.status === 'pending' || prev.status === 'running')) {
+        if (prev && ['pending', 'running', 'cancelling'].includes(prev.status)) {
           const updated = jobs.find((job) => job.job_id === prev.job_id);
           return updated || prev;
         }
@@ -593,6 +624,44 @@ export default function PerformancePage() {
       setStartingEvaluation(false);
     }
   }, [datasetPath, loadEvaluationRuntime, selectedVariants]);
+
+  const handleCancelEvaluation = useCallback(async () => {
+    if (!activeEvaluationJob) return;
+    if (!['pending', 'running', 'cancelling'].includes(activeEvaluationJob.status)) return;
+
+    setEvaluationActionError(null);
+    setEvaluationActionMessage(null);
+    try {
+      const job = await cancelEvaluationJob(activeEvaluationJob.job_id);
+      setActiveEvaluationJob(job);
+      setEvaluationJobs((prev) => upsertJob(prev, job));
+      setEvaluationActionMessage(
+        job.status === 'cancelled' ? '评测任务已取消。' : '已向后台发送停止评测请求。',
+      );
+      void loadEvaluationRuntime();
+    } catch (err: unknown) {
+      setEvaluationActionError(err instanceof Error && err.message ? err.message : '停止评测失败');
+    }
+  }, [activeEvaluationJob, loadEvaluationRuntime]);
+
+  const handleDeleteSelectedReport = useCallback(async () => {
+    if (!selectedReportId) return;
+    const reportLabel = evaluationMeta?.file_name || selectedReportId;
+    if (!window.confirm(`确认删除评测报告 ${reportLabel} 吗？此操作不可撤销。`)) {
+      return;
+    }
+
+    setEvaluationActionError(null);
+    setEvaluationActionMessage(null);
+    try {
+      await deleteEvaluationReport(selectedReportId);
+      setEvaluationActionMessage(`已删除评测报告：${reportLabel}`);
+      await loadEvaluationData();
+      await loadEvaluationRuntime();
+    } catch (err: unknown) {
+      setEvaluationActionError(err instanceof Error && err.message ? err.message : '删除评测报告失败');
+    }
+  }, [evaluationMeta?.file_name, loadEvaluationData, loadEvaluationRuntime, selectedReportId]);
 
   const handleSyncEvaluationDataset = useCallback(async () => {
     const targetDatasetPath = (
@@ -714,7 +783,7 @@ export default function PerformancePage() {
   }, [loadQueryCacheRuntime]);
 
   useEffect(() => {
-    const variantNames = Object.keys(evaluationReport?.variants || {});
+    const variantNames = Object.keys(evaluationReport?.variants || {}).filter(isVisibleEvaluationVariant);
     if (!variantNames.length) {
       setSelectedVariantName('');
       return;
@@ -729,7 +798,7 @@ export default function PerformancePage() {
   }, [evaluationReport]);
 
   useEffect(() => {
-    if (!activeEvaluationJob || !['pending', 'running'].includes(activeEvaluationJob.status)) {
+    if (!activeEvaluationJob || !['pending', 'running', 'cancelling'].includes(activeEvaluationJob.status)) {
       return;
     }
     const timer = window.setInterval(async () => {
@@ -749,6 +818,11 @@ export default function PerformancePage() {
         } else if (latestJob.status === 'failed') {
           window.clearInterval(timer);
           setEvaluationActionError(latestJob.error || '评测任务失败');
+          void loadEvaluationRuntime();
+          void loadQueryCacheRuntime();
+        } else if (latestJob.status === 'cancelled') {
+          window.clearInterval(timer);
+          setEvaluationActionMessage('评测任务已取消。');
           void loadEvaluationRuntime();
           void loadQueryCacheRuntime();
         }
@@ -783,21 +857,41 @@ export default function PerformancePage() {
     [stages],
   );
 
-  const variantRows = useMemo(() => Object.entries(evaluationReport?.variants || {}), [evaluationReport]);
+  const variantRows = useMemo(
+    () =>
+      Object.entries(evaluationReport?.variants || {}).filter(([variantName]) =>
+        isVisibleEvaluationVariant(variantName),
+      ),
+    [evaluationReport],
+  );
   const activeVariantName =
-    selectedVariantName || evaluationReport?.final_variant || variantRows[0]?.[0] || '';
+    selectedVariantName ||
+    (evaluationReport?.final_variant && isVisibleEvaluationVariant(evaluationReport.final_variant)
+      ? evaluationReport.final_variant
+      : '') ||
+    variantRows[0]?.[0] ||
+    '';
   const selectedVariantPayload = activeVariantName
     ? evaluationReport?.variants?.[activeVariantName]
     : undefined;
   const selectedSummary = selectedVariantPayload?.summary ?? null;
-  const finalVariantPayload = evaluationReport?.final_variant
-    ? evaluationReport.variants?.[evaluationReport.final_variant]
-    : undefined;
+  const finalVariantPayload =
+    evaluationReport?.final_variant && isVisibleEvaluationVariant(evaluationReport.final_variant)
+      ? evaluationReport.variants?.[evaluationReport.final_variant]
+      : undefined;
   const selectedVariantQueryTypes = useMemo(
     () => Object.entries(selectedVariantPayload?.by_query_type || {}),
     [selectedVariantPayload],
   );
-  const comparisonRows = useMemo(() => Object.entries(evaluationReport?.comparisons || {}), [evaluationReport]);
+  const comparisonRows = useMemo(
+    () =>
+      Object.entries(evaluationReport?.comparisons || {}).filter(
+        ([, comparison]) =>
+          isVisibleEvaluationVariant(comparison.variant) &&
+          isVisibleEvaluationVariant(comparison.compare_to),
+      ),
+    [evaluationReport],
+  );
   const selectedComparisonRows = useMemo(() => {
     if (!activeVariantName) return comparisonRows;
     const matched = comparisonRows.filter(([, comparison]) =>
@@ -825,9 +919,10 @@ export default function PerformancePage() {
   const selectedVariantLabel = selectedVariantPayload
     ? formatVariantLabel(activeVariantName, selectedVariantPayload.technique)
     : '未选择方案';
-  const finalVariantLabel = evaluationReport?.final_variant
-    ? formatVariantLabel(evaluationReport.final_variant, finalVariantPayload?.technique)
-    : '-';
+  const finalVariantLabel =
+    evaluationReport?.final_variant && isVisibleEvaluationVariant(evaluationReport.final_variant)
+      ? formatVariantLabel(evaluationReport.final_variant, finalVariantPayload?.technique)
+      : '-';
   const currentEvaluationDatasetPath = (
     evaluationMeta?.dataset_path ||
     evaluationReport?.dataset_path ||
@@ -859,7 +954,9 @@ export default function PerformancePage() {
   const variantTechniqueMap = useMemo(
     () =>
       Object.fromEntries(
-        (evaluationConfig?.variant_catalog || []).map((variant) => [variant.name, variant.technique]),
+        (evaluationConfig?.variant_catalog || [])
+          .filter((variant) => isVisibleEvaluationVariant(variant.name))
+          .map((variant) => [variant.name, variant.technique]),
       ),
     [evaluationConfig?.variant_catalog],
   );
@@ -872,7 +969,7 @@ export default function PerformancePage() {
     startingEvaluation ||
     syncingEvaluationDataset ||
     migratingKnowledgeBase ||
-    ['pending', 'running'].includes(activeEvaluationJob?.status || '');
+    ['pending', 'running', 'cancelling'].includes(activeEvaluationJob?.status || '');
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
@@ -946,27 +1043,38 @@ export default function PerformancePage() {
                   />
                 </>
               ) : (
-                <div className="flex min-w-[260px] flex-col gap-1">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    历史评测报告（时间 + 对比变量）
-                  </span>
-                  <select
-                    value={selectedReportId}
-                    onChange={(e) => void handleReportChange(e.target.value)}
-                    disabled={evaluationReports.length === 0 || evaluationLoading}
-                    className="min-w-[260px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
+                <div className="flex min-w-[260px] items-end gap-2">
+                  <div className="flex min-w-[260px] flex-col gap-1">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      历史评测报告（时间 + 对比变量）
+                    </span>
+                    <select
+                      value={selectedReportId}
+                      onChange={(e) => void handleReportChange(e.target.value)}
+                      disabled={evaluationReports.length === 0 || evaluationLoading}
+                      className="min-w-[260px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
+                    >
+                      {evaluationReports.length === 0 ? (
+                        <option value="">暂无评测报告</option>
+                      ) : (
+                        evaluationReports.map((report) => (
+                          <option key={report.report_id} value={report.report_id}>
+                            {formatReportTimestamp(report.generated_at)} ·{' '}
+                            {formatReportVariantSummary(report, variantTechniqueMap)}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteSelectedReport()}
+                    disabled={!selectedReportId || evaluationLoading}
+                    className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/20"
+                    title="删除当前评测报告"
                   >
-                    {evaluationReports.length === 0 ? (
-                      <option value="">暂无评测报告</option>
-                    ) : (
-                      evaluationReports.map((report) => (
-                        <option key={report.report_id} value={report.report_id}>
-                          {formatReportTimestamp(report.generated_at)} ·{' '}
-                          {formatReportVariantSummary(report, variantTechniqueMap)}
-                        </option>
-                      ))
-                    )}
-                  </select>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               )}
 
@@ -1169,14 +1277,18 @@ export default function PerformancePage() {
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">评测变体</label>
                           <button
                             type="button"
-                            onClick={() => setSelectedVariants(evaluationConfig?.default_variants || [])}
+                            onClick={() =>
+                              setSelectedVariants((evaluationConfig?.default_variants || []).filter(isVisibleEvaluationVariant))
+                            }
                             className="text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400"
                           >
                             恢复默认
                           </button>
                         </div>
                         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                          {(evaluationConfig?.variant_catalog || []).map((variant) => {
+                          {(evaluationConfig?.variant_catalog || [])
+                            .filter((variant) => isVisibleEvaluationVariant(variant.name))
+                            .map((variant) => {
                             const checked = selectedVariants.includes(variant.name);
                             return (
                               <label
@@ -1213,6 +1325,8 @@ export default function PerformancePage() {
                           <span
                             className={`rounded-full px-2.5 py-1 text-xs font-medium ${activeEvaluationJob.status === 'completed'
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                : activeEvaluationJob.status === 'cancelled'
+                                  ? 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
                                 : activeEvaluationJob.status === 'failed'
                                   ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'
                                   : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
@@ -1246,6 +1360,22 @@ export default function PerformancePage() {
                               <span>样本数</span>
                               <span className="text-gray-700 dark:text-gray-300">{activeEvaluationJob.case_count || '-'}</span>
                             </div>
+                            {activeEvaluationJob.current_variant_total_cases ? (
+                              <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+                                <span>当前变体样本进度</span>
+                                <span className="text-gray-700 dark:text-gray-300">
+                                  {activeEvaluationJob.completed_cases || 0}/{activeEvaluationJob.current_variant_total_cases}
+                                </span>
+                              </div>
+                            ) : null}
+                            {activeEvaluationJob.current_case_id || activeEvaluationJob.current_case_query ? (
+                              <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:bg-gray-950/60">
+                                <div>当前样本</div>
+                                <div className="mt-1 text-gray-700 dark:text-gray-300">
+                                  {activeEvaluationJob.current_case_id || activeEvaluationJob.current_case_query}
+                                </div>
+                              </div>
+                            ) : null}
                             {activeEvaluationJob.report_id ? (
                               <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
                                 <span>输出报告</span>
@@ -1256,19 +1386,34 @@ export default function PerformancePage() {
                         ) : null}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => void handleStartEvaluation()}
-                        disabled={startingEvaluation || activeEvaluationJob?.status === 'running'}
-                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {startingEvaluation || activeEvaluationJob?.status === 'running' ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                        开始评测
-                      </button>
+                      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleStartEvaluation()}
+                          disabled={startingEvaluation || ['pending', 'running', 'cancelling'].includes(activeEvaluationJob?.status || '')}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {startingEvaluation ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                          开始评测
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleCancelEvaluation()}
+                          disabled={!['pending', 'running', 'cancelling'].includes(activeEvaluationJob?.status || '')}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:bg-gray-950/40 dark:text-amber-300 dark:hover:bg-amber-950/20"
+                        >
+                          {activeEvaluationJob?.status === 'cancelling' ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Square className="h-4 w-4" />
+                          )}
+                          停止评测
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1578,6 +1723,12 @@ export default function PerformancePage() {
                     />
                   ))}
                 </div>
+
+                {formatQualityJudgeSummary(selectedSummary?.ragas_metadata as Record<string, unknown> | undefined) ? (
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-300">
+                    {formatQualityJudgeSummary(selectedSummary?.ragas_metadata as Record<string, unknown> | undefined)}
+                  </div>
+                ) : null}
 
                 <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
                   <div className="mb-4 flex items-center gap-2">

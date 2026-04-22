@@ -4,6 +4,7 @@ import type {
   EvaluationDatasetSyncResult,
   EvaluationJob,
   EvaluationReportDetail,
+  EvaluationReportDeleteResult,
   EvaluationReportListItem,
   HistoryItem,
   ImportTask,
@@ -227,6 +228,23 @@ export async function getEvaluationReport(reportId: string): Promise<{
   return res.json();
 }
 
+export async function deleteEvaluationReport(reportId: string): Promise<EvaluationReportDeleteResult> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/reports/${encodeURIComponent(reportId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    let message = `Delete evaluation report failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
 export async function getEvaluationConfig(): Promise<EvaluationConfig> {
   const res = await fetch(`${QUERY_BASE}/evaluation/config`);
   if (!res.ok) throw new Error(`Evaluation config failed: ${res.status}`);
@@ -242,6 +260,23 @@ export async function getEvaluationJobs(limit = 10): Promise<{ jobs: EvaluationJ
 export async function getEvaluationJob(jobId: string): Promise<EvaluationJob> {
   const res = await fetch(`${QUERY_BASE}/evaluation/jobs/${encodeURIComponent(jobId)}`);
   if (!res.ok) throw new Error(`Evaluation job failed: ${res.status}`);
+  return res.json();
+}
+
+export async function cancelEvaluationJob(jobId: string): Promise<EvaluationJob> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    let message = `Cancel evaluation job failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 

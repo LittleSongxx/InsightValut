@@ -25,7 +25,6 @@ function AgenticTracePanel({ message }: { message: Message }) {
   const missingTerms = coverage?.missing_focus_terms?.filter(Boolean) ?? [];
   const hasMeaningfulContent = Boolean(
     queryType ||
-    typeof metadata.graph_preferred === 'boolean' ||
     coverageScore ||
     rescue?.action ||
     (contextExpansion?.expanded_docs ?? 0) > 0 ||
@@ -45,11 +44,6 @@ function AgenticTracePanel({ message }: { message: Message }) {
         {queryType && (
           <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
             题型：{queryType}
-          </span>
-        )}
-        {typeof metadata.graph_preferred === 'boolean' && (
-          <span className="rounded-full bg-white/90 px-2.5 py-1 shadow-sm dark:bg-slate-800">
-            图优先：{metadata.graph_preferred ? '是' : '否'}
           </span>
         )}
         {coverageScore && (

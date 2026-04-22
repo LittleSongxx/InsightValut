@@ -1,7 +1,9 @@
 import argparse
 import copy
 import json
+import math
 import os
+import re
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -19,10 +21,8 @@ except ImportError:
 
 
 from app.clients.milvus_utils import get_milvus_client, query_chunks_by_filter
-from app.lm.embedding_utils import generate_embeddings
 from app.query_process.agent.agentic_utils import DEFAULT_AGENTIC_FEATURES
-from app.lm.lm_utils import get_llm_client
-from app.query_process.agent.graph_query_utils import GRAPH_PREFERRED_QUERY_TYPES
+from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.query_process.agent.main_graph import query_app
 from app.query_process.agent.retrieval_utils import build_item_name_filter_expr
 from app.utils.bm25_utils import rank_documents_bm25, tokenize_text
@@ -77,13 +77,14 @@ GROUND_TRUTH_OUTPUT_FIELDS = [
     "file_title",
     "content",
 ]
-GROUND_TRUTH_SEARCH_LIMIT = 80
+GROUND_TRUTH_SEARCH_LIMIT = int(
+    os.environ.get("EVAL_GROUND_TRUTH_SEARCH_LIMIT") or 1000
+)
 DEFAULT_VARIANTS = [
     "baseline_rag",
     "bm25_hybrid",
     "hyde_hybrid",
     "kg_hybrid",
-    "neo4j_graph_first",
     "final_system",
     "agentic_context_expansion",
     "agentic_rescue_system",
@@ -92,6 +93,16 @@ DEFAULT_VARIANTS = [
 ]
 
 ProgressCallback = Optional[Callable[[Dict[str, Any]], None]]
+CancelCallback = Optional[Callable[[], bool]]
+
+
+class EvaluationCancelledError(RuntimeError):
+    """Raised when an evaluation job is cancelled by the user."""
+
+
+def _raise_if_cancelled(cancel_callback: CancelCallback) -> None:
+    if cancel_callback is not None and cancel_callback():
+        raise EvaluationCancelledError("用户已取消评测任务")
 
 
 def _agentic_features(**overrides: bool) -> Dict[str, bool]:
@@ -107,6 +118,24 @@ def _ensure_ragas_ready() -> None:
         ) from _RAGAS_IMPORT_ERROR
 
 
+QUALITY_METRIC_KEYS = [
+    "factual_correctness",
+    "faithfulness",
+    "response_relevancy",
+    "llm_context_recall",
+]
+ID_CONTEXT_METRIC_KEYS = [
+    "id_based_context_precision",
+    "id_based_context_recall",
+]
+QUALITY_JUDGE_CONTEXT_CHARS = int(
+    os.environ.get("EVAL_JUDGE_CONTEXT_CHARS") or 6000
+)
+QUALITY_JUDGE_TEXT_CHARS = int(
+    os.environ.get("EVAL_JUDGE_TEXT_CHARS") or 1200
+)
+
+
 VARIANTS: Dict[str, Dict[str, Any]] = {
     "baseline_rag": {
         "description": "最原始基线：仅 embedding 检索 + rerank + answer",
@@ -116,6 +145,8 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
             "force_need_rag": True,
             "force_query_type": "general",
             "force_graph_preferred": False,
+            "retrieval_grader_enabled": False,
+            "legacy_retry_enabled": False,
             "route_reason": "eval_baseline_rag",
             "agentic_features": _agentic_features(),
             "retrieval_plan_overrides": {
@@ -141,6 +172,8 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
             "force_query_type": "general",
             "force_graph_preferred": False,
             "bm25_enabled": True,
+            "retrieval_grader_enabled": False,
+            "legacy_retry_enabled": False,
             "route_reason": "eval_bm25_hybrid",
             "agentic_features": _agentic_features(),
             "retrieval_plan_overrides": {
@@ -164,6 +197,8 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
             "force_need_rag": True,
             "force_query_type": "general",
             "force_graph_preferred": False,
+            "retrieval_grader_enabled": False,
+            "legacy_retry_enabled": False,
             "route_reason": "eval_hyde_hybrid",
             "agentic_features": _agentic_features(),
             "retrieval_plan_overrides": {
@@ -182,10 +217,13 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
         "description": "在最原始基线上引入 Neo4j 作为额外检索源，但不启用 graph-first",
         "technique": "Neo4j KG",
         "compare_to": "baseline_rag",
-        "use_case_query_type": True,
+        "use_case_query_type": False,
         "evaluation_overrides": {
             "force_need_rag": True,
+            "force_query_type": "general",
             "force_graph_preferred": False,
+            "retrieval_grader_enabled": False,
+            "legacy_retry_enabled": False,
             "route_reason": "eval_kg_hybrid",
             "agentic_features": _agentic_features(),
             "retrieval_plan_overrides": {
@@ -200,86 +238,110 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
             },
         },
     },
-    "neo4j_graph_first": {
-        "description": "按题型启用 graph-first，但关闭其它额外增强器以隔离图路由收益",
-        "technique": "Neo4j Graph-First",
-        "compare_to": "kg_hybrid",
-        "use_case_query_type": True,
+    "final_system": {
+        "description": "在 Baseline 上统一开启 BM25 / HyDE / Neo4j 与 CRAG 重试，作为 Agentic 消融底盘",
+        "technique": "Final Unified RAG",
+        "compare_to": "baseline_rag",
+        "use_case_query_type": False,
         "evaluation_overrides": {
             "force_need_rag": True,
-            "route_reason": "eval_neo4j_graph_first",
+            "force_query_type": "general",
+            "force_graph_preferred": False,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": True,
+            "route_reason": "eval_final_system",
             "agentic_features": _agentic_features(),
             "retrieval_plan_overrides": {
-                "run_embedding": True,
+                "graph_first": False,
                 "run_kg": True,
-                "run_bm25": False,
-                "run_hyde": False,
+                "run_embedding": True,
+                "run_bm25": True,
+                "run_hyde": True,
                 "run_web": False,
-                "bm25_weight_multiplier": 0.0,
-                "hyde_weight_multiplier": 0.0,
             },
         },
     },
-    "final_system": {
-        "description": "当前最终版统一系统：保留原有题型路由与图优先策略，关闭新增 Agentic 增强",
-        "technique": "Final Unified RAG",
-        "compare_to": "neo4j_graph_first",
-        "use_case_query_type": True,
-        "evaluation_overrides": {
-            "force_need_rag": True,
-            "route_reason": "eval_final_system",
-            "agentic_features": _agentic_features(),
-        },
-    },
-    "final_system_with_bm25": {
-        "description": "在关闭新增 Agentic 增强的最终版系统上显式开启 BM25，用于量化 BM25 增益/代价",
-        "technique": "BM25 on Final System",
-        "compare_to": "final_system",
-        "use_case_query_type": True,
-        "evaluation_overrides": {
-            "force_need_rag": True,
-            "bm25_enabled": True,
-            "route_reason": "eval_final_system_with_bm25",
-            "agentic_features": _agentic_features(),
-            "retrieval_plan_overrides": {"run_bm25": True},
-        },
-    },
     "agentic_context_expansion": {
-        "description": "在原最终版上只开启命中上下文扩展，用于量化章节/相邻步骤补文效果",
+        "description": "在统一多路检索底盘上只开启命中上下文扩展，用于量化章节/相邻步骤补文效果",
         "technique": "Agentic Context Expansion",
         "compare_to": "final_system",
-        "use_case_query_type": True,
+        "use_case_query_type": False,
         "evaluation_overrides": {
             "force_need_rag": True,
+            "force_query_type": "general",
+            "force_graph_preferred": False,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": True,
             "route_reason": "eval_agentic_context_expansion",
             "agentic_features": _agentic_features(context_expansion=True),
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
+            },
         },
     },
     "agentic_rescue_system": {
-        "description": "在原最终版上开启子问题级路由、证据覆盖和检索补救，用于量化复杂问题的自适应检索收益",
+        "description": "在统一多路检索底盘上开启子问题级路由、证据覆盖和检索补救，用于量化复杂问题的自适应检索收益",
         "technique": "Agentic Retrieval Rescue",
         "compare_to": "final_system",
         "use_case_query_type": True,
         "evaluation_overrides": {
             "force_need_rag": True,
+            "force_graph_preferred": False,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": False,
             "route_reason": "eval_agentic_rescue_system",
             "agentic_features": _agentic_features(
                 subquery_routing=True,
                 evidence_coverage=True,
                 retrieval_rescue=True,
-                clarification_guard=True,
+                clarification_guard=False,
             ),
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
+            },
         },
     },
     "agentic_enhanced_system": {
-        "description": "完整 Agentic 增强系统：子问题级路由、上下文扩展、证据覆盖、检索补救和结构化回答全部开启",
+        "description": "完整 Agentic 增强系统：在统一多路检索底盘上开启检索补救、上下文扩展和结构化回答",
         "technique": "Agentic Enhanced RAG",
         "compare_to": "final_system",
         "use_case_query_type": True,
         "evaluation_overrides": {
             "force_need_rag": True,
+            "force_graph_preferred": False,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": False,
             "route_reason": "eval_agentic_enhanced_system",
-            "agentic_features": dict(DEFAULT_AGENTIC_FEATURES),
+            "agentic_features": _agentic_features(
+                subquery_routing=True,
+                context_expansion=True,
+                evidence_coverage=True,
+                retrieval_rescue=True,
+                structured_answer=True,
+                clarification_guard=False,
+            ),
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
+            },
         },
     },
     "agentic_enhanced_system_cached": {
@@ -291,9 +353,28 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
         "reset_cache_before_run": True,
         "evaluation_overrides": {
             "force_need_rag": True,
+            "force_graph_preferred": False,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": False,
             "route_reason": "eval_agentic_enhanced_system_cached",
-            "agentic_features": dict(DEFAULT_AGENTIC_FEATURES),
+            "agentic_features": _agentic_features(
+                subquery_routing=True,
+                context_expansion=True,
+                evidence_coverage=True,
+                retrieval_rescue=True,
+                structured_answer=True,
+                clarification_guard=False,
+            ),
             "cache_enabled": True,
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
+            },
         },
     },
 }
@@ -784,7 +865,10 @@ def _num(value: Any) -> Optional[float]:
     try:
         if value is None or value == "":
             return None
-        return float(value)
+        casted = float(value)
+        if not math.isfinite(casted):
+            return None
+        return casted
     except (TypeError, ValueError):
         return None
 
@@ -832,9 +916,7 @@ def _build_overrides(variant_name: str, case: Dict[str, Any]) -> Dict[str, Any]:
     if config.get("use_case_query_type"):
         query_type = _query_type(case)
         overrides["force_query_type"] = query_type
-        overrides.setdefault(
-            "force_graph_preferred", query_type in GRAPH_PREFERRED_QUERY_TYPES
-        )
+        overrides.setdefault("force_graph_preferred", False)
     item_names = _item_names(case)
     if item_names:
         overrides.setdefault("force_item_names", item_names)
@@ -921,6 +1003,15 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
     clear_task(session_id)
     reranked_docs = final_state.get("reranked_docs") or []
     retrieved_contexts = _extract_contexts(reranked_docs)
+    answer_error = str(final_state.get("answer_error") or "").strip()
+    item_name_extract_error = str(
+        final_state.get("item_name_extract_error") or ""
+    ).strip()
+    runtime_error = " | ".join(
+        value
+        for value in [error.strip(), answer_error, item_name_extract_error]
+        if value
+    )
     return {
         "case_id": case_id,
         "query": query,
@@ -943,7 +1034,6 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         ],
         "retrieval_plan": final_state.get("retrieval_plan") or {},
         "runtime_query_type": str(final_state.get("query_type") or _query_type(case)),
-        "graph_preferred": bool(final_state.get("graph_preferred", False)),
         "sub_query_routes": final_state.get("sub_query_routes") or [],
         "sub_query_results": final_state.get("sub_query_results") or [],
         "context_expansion_summary": final_state.get("context_expansion_summary") or {},
@@ -951,6 +1041,8 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         "rescue_plan": final_state.get("rescue_plan") or {},
         "answer_plan": final_state.get("answer_plan") or {},
         "clarification_reason": str(final_state.get("clarification_reason") or ""),
+        "answer_error": answer_error,
+        "item_name_extract_error": item_name_extract_error,
         "agentic_features": (
             initial_state.get("evaluation_overrides", {}).get("agentic_features") or {}
         ),
@@ -963,11 +1055,17 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
             final_state.get("hallucination_check_passed", True)
         ),
         "need_rag": bool(final_state.get("need_rag", True)),
+        "llm_requested_model": str(final_state.get("llm_requested_model") or ""),
+        "llm_model_used": str(final_state.get("llm_model_used") or ""),
+        "llm_base_url_used": str(final_state.get("llm_base_url_used") or ""),
+        "llm_fallback_model": str(final_state.get("llm_fallback_model") or ""),
+        "llm_fallback_used": bool(final_state.get("llm_fallback_used", False)),
+        "llm_fallback_reason": str(final_state.get("llm_fallback_reason") or ""),
         "cache_summary": final_state.get("cache_summary") or cache_summary,
         "latency_ms": _num(perf_doc.get("total_duration_ms")),
         "first_answer_ms": _num(perf_doc.get("first_answer_ms")),
         "stage_durations_ms": _stage_map(perf_doc),
-        "error": error,
+        "error": runtime_error,
     }
 
 
@@ -982,69 +1080,240 @@ def _build_ragas_row(case_result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _metric_column(frame, aliases: Sequence[str]) -> Optional[str]:
-    columns = [str(column) for column in getattr(frame, "columns", [])]
-    for alias in aliases:
-        if alias in columns:
-            return alias
-    normalized_columns = {
-        column: "".join(ch for ch in column.lower() if ch.isalnum())
-        for column in columns
+def _clamp_score(value: Any) -> Optional[float]:
+    casted = _num(value)
+    if casted is None:
+        return None
+    return round(max(0.0, min(1.0, casted)), 4)
+
+
+def _metric_tokens(text: str) -> List[str]:
+    return [token for token in tokenize_text(str(text or "")) if token]
+
+
+def _token_recall(reference: str, candidate: str) -> float:
+    reference_tokens = set(_metric_tokens(reference))
+    if not reference_tokens:
+        return 0.0
+    candidate_tokens = set(_metric_tokens(candidate))
+    if not candidate_tokens:
+        return 0.0
+    return len(reference_tokens & candidate_tokens) / len(reference_tokens)
+
+
+def _token_precision(reference: str, candidate: str) -> float:
+    candidate_tokens = set(_metric_tokens(candidate))
+    if not candidate_tokens:
+        return 0.0
+    reference_tokens = set(_metric_tokens(reference))
+    if not reference_tokens:
+        return 0.0
+    return len(reference_tokens & candidate_tokens) / len(candidate_tokens)
+
+
+def _token_f1(reference: str, candidate: str) -> float:
+    precision = _token_precision(reference, candidate)
+    recall = _token_recall(reference, candidate)
+    if precision <= 0 or recall <= 0:
+        return 0.0
+    return (2 * precision * recall) / (precision + recall)
+
+
+def _join_contexts(
+    contexts: Sequence[str], limit: int = QUALITY_JUDGE_CONTEXT_CHARS
+) -> str:
+    text = "\n\n".join(
+        str(item or "").strip() for item in contexts if str(item or "").strip()
+    )
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip()
+
+
+def _quality_mode() -> str:
+    mode = str(os.environ.get("EVAL_QUALITY_MODE") or "hybrid").strip().lower()
+    if mode in {"llm", "judge", "llm_judge"}:
+        return "llm"
+    if mode in {"lexical", "heuristic", "local"}:
+        return "lexical"
+    if mode in {"off", "disabled", "none"}:
+        return "disabled"
+    enabled = str(os.environ.get("EVAL_LLM_JUDGE_ENABLED") or "1").strip().lower()
+    if enabled in {"0", "false", "no", "off"}:
+        return "lexical"
+    return "hybrid"
+
+
+def _extract_json_object(text: str) -> Dict[str, Any]:
+    cleaned = str(text or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"```$", "", cleaned).strip()
+    try:
+        value = json.loads(cleaned)
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        pass
+    match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+    if not match:
+        return {}
+    try:
+        value = json.loads(match.group(0))
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _lexical_quality_scores(row: Dict[str, Any]) -> Dict[str, float]:
+    query = str(row.get("user_input") or "")
+    response = str(row.get("response") or "")
+    reference = str(row.get("reference") or "")
+    context_text = _join_contexts(row.get("retrieved_contexts") or [])
+    reference_answer_basis = reference or query
+
+    factual = _token_f1(reference_answer_basis, response) if response else 0.0
+    faithfulness = _token_recall(response, context_text) if response else 0.0
+    relevancy = max(
+        _token_recall(query, response) if response else 0.0,
+        _token_recall(query, reference) if reference else 0.0,
+    )
+    context_recall = _token_recall(reference_answer_basis, context_text)
+
+    return {
+        "factual_correctness": round(factual, 4),
+        "faithfulness": round(faithfulness, 4),
+        "response_relevancy": round(relevancy, 4),
+        "llm_context_recall": round(context_recall, 4),
     }
-    for alias in aliases:
-        alias_norm = "".join(ch for ch in alias.lower() if ch.isalnum())
-        for column in columns:
-            if column.startswith(f"{alias}(") or column.startswith(f"{alias}["):
-                return column
-            normalized = normalized_columns[column]
-            if normalized == alias_norm or normalized.startswith(alias_norm):
-                return column
-    return None
 
 
-def _run_ragas(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    _ensure_ragas_ready()
-    llm = get_llm_client()
-    embeddings = BgeM3LangChainEmbeddings()
+def _llm_quality_scores(row: Dict[str, Any]) -> Dict[str, float]:
+    prompt_payload = {
+        "question": str(row.get("user_input") or "")[:QUALITY_JUDGE_TEXT_CHARS],
+        "reference_answer": str(row.get("reference") or "")[
+            :QUALITY_JUDGE_TEXT_CHARS
+        ],
+        "model_answer": str(row.get("response") or "")[:QUALITY_JUDGE_TEXT_CHARS],
+        "retrieved_contexts": _join_contexts(row.get("retrieved_contexts") or []),
+    }
+    prompt = (
+        "你是企业产品手册 RAG 评测员。请只基于输入给出 0 到 1 的小数评分，"
+        "必须返回严格 JSON，不要输出解释。\n"
+        "评分含义：\n"
+        "- factual_correctness：模型答案与参考答案的事实一致程度；空答案为 0。\n"
+        "- faithfulness：模型答案是否被 retrieved_contexts 支撑；未被证据支撑的内容扣分。\n"
+        "- response_relevancy：模型答案是否直接回答 question。\n"
+        "- llm_context_recall：retrieved_contexts 是否覆盖 reference_answer 所需信息。\n"
+        '返回格式：{"factual_correctness":0.0,"faithfulness":0.0,'
+        '"response_relevancy":0.0,"llm_context_recall":0.0}\n'
+        f"输入：{json.dumps(prompt_payload, ensure_ascii=False)}"
+    )
+    judge_model = str(os.environ.get("EVAL_JUDGE_MODEL") or "").strip() or None
+    llm = get_llm_client(model=judge_model, json_mode=True)
+    response = llm.invoke(prompt)
+    parsed = _extract_json_object(
+        coerce_llm_content(getattr(response, "content", response))
+    )
+    scores: Dict[str, float] = {}
+    for key in QUALITY_METRIC_KEYS:
+        score = _clamp_score(parsed.get(key))
+        if score is None:
+            raise ValueError(f"LLM 评估返回缺失或非法字段：{key}")
+        scores[key] = score
+    return scores
+
+
+def _id_context_scores(row: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    retrieved_ids = normalize_ids(row.get("retrieved_context_ids") or [])
+    reference_ids = normalize_ids(row.get("reference_context_ids") or [])
+    if not reference_ids:
+        return {
+            "id_based_context_precision": None,
+            "id_based_context_recall": None,
+        }
+    relevant = set(reference_ids)
+    hit_count = sum(1 for chunk_id in retrieved_ids if chunk_id in relevant)
+    precision = hit_count / len(retrieved_ids) if retrieved_ids else 0.0
+    recall = hit_count / len(relevant)
+    return {
+        "id_based_context_precision": round(precision, 4),
+        "id_based_context_recall": round(recall, 4),
+    }
+
+
+def _score_quality_row(
+    row: Dict[str, Any], mode: str
+) -> tuple[Dict[str, Optional[float]], str, str]:
+    scores: Dict[str, Optional[float]] = {}
+    scores.update(_id_context_scores(row))
+    if mode == "disabled":
+        for key in QUALITY_METRIC_KEYS:
+            scores[key] = None
+        return scores, "disabled", ""
+
+    if mode in {"hybrid", "llm"}:
+        try:
+            scores.update(_llm_quality_scores(row))
+            return scores, "llm_judge", ""
+        except Exception as exc:
+            if mode == "llm":
+                for key in QUALITY_METRIC_KEYS:
+                    scores[key] = None
+                return scores, "llm_judge_failed", str(exc)
+            scores.update(_lexical_quality_scores(row))
+            return scores, "lexical_fallback", str(exc)
+
+    scores.update(_lexical_quality_scores(row))
+    return scores, "lexical", ""
+
+
+def _run_ragas(
+    case_results: List[Dict[str, Any]],
+    cancel_callback: CancelCallback = None,
+) -> Dict[str, Any]:
     rows = [_build_ragas_row(case_result) for case_result in case_results]
     per_case_scores: List[Dict[str, Optional[float]]] = [dict() for _ in case_results]
     summary: Dict[str, Any] = {}
     coverage: Dict[str, int] = {}
     errors: Dict[str, str] = {}
+    mode = _quality_mode()
+    method_counts: Counter[str] = Counter()
+    llm_errors: Counter[str] = Counter()
 
-    for metric in RAGAS_METRICS:
-        eligible_indices = [
-            index for index, row in enumerate(rows) if metric["requires"](row)
+    for index, row in enumerate(rows):
+        _raise_if_cancelled(cancel_callback)
+        scores, method, error = _score_quality_row(row, mode)
+        per_case_scores[index] = scores
+        method_counts[method] += 1
+        if error:
+            llm_errors[_preview(error, 220)] += 1
+
+    for metric_key in [*QUALITY_METRIC_KEYS, *ID_CONTEXT_METRIC_KEYS]:
+        values = [
+            per_case_score.get(metric_key)
+            for per_case_score in per_case_scores
+            if per_case_score.get(metric_key) is not None
         ]
-        coverage[metric["name"]] = len(eligible_indices)
-        if not eligible_indices:
-            continue
-        dataset = EvaluationDataset.from_list(
-            [rows[index] for index in eligible_indices]
+        coverage[metric_key] = len(values)
+        summary_value = _avg(values)
+        if summary_value is not None:
+            summary[metric_key] = summary_value
+
+    if llm_errors:
+        errors["quality_judge"] = (
+            f"LLM 评估失败 {sum(llm_errors.values())} 次，已使用词项覆盖评分兜底；"
+            f"最常见错误：{llm_errors.most_common(1)[0][0]}"
         )
-        try:
-            result = evaluate(
-                dataset=dataset,
-                metrics=[metric["factory"]()],
-                llm=llm,
-                embeddings=embeddings,
-            )
-            frame = result.to_pandas()
-            column = _metric_column(frame, metric["aliases"])
-            if not column:
-                errors[metric["name"]] = "未在 RAGAS 输出中找到指标列"
-                continue
-            values = [_num(value) for value in frame[column].tolist()]
-            for offset, case_index in enumerate(eligible_indices):
-                per_case_scores[case_index][metric["name"]] = values[offset]
-            summary[metric["name"]] = _avg(values)
-        except Exception as exc:
-            errors[metric["name"]] = str(exc)
     return {
         "summary": summary,
         "coverage": coverage,
         "errors": errors,
         "per_case_scores": per_case_scores,
+        "metadata": {
+            "quality_mode": mode,
+            "method_counts": dict(sorted(method_counts.items())),
+            "llm_error_count": sum(llm_errors.values()),
+        },
     }
 
 
@@ -1183,10 +1452,6 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             ]
         )
         or 0.0,
-        "graph_preferred_rate": _avg(
-            [1.0 if item.get("graph_preferred") else 0.0 for item in case_results]
-        )
-        or 0.0,
         "need_rag_rate": _avg(
             [1.0 if item.get("need_rag") else 0.0 for item in case_results]
         )
@@ -1259,6 +1524,10 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         )
         or 0.0,
         "error_rate": _avg([1.0 if item.get("error") else 0.0 for item in case_results])
+        or 0.0,
+        "llm_fallback_rate": _avg(
+            [1.0 if item.get("llm_fallback_used") else 0.0 for item in case_results]
+        )
         or 0.0,
         "cache_hit_rate": _avg([bucket.get("hit_rate") for bucket in cache_overall])
         or 0.0,
@@ -1352,6 +1621,7 @@ def _build_headline_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
         "l2_cache_hit_rate",
         "retrieval_cache_rate",
         "answer_cache_rate",
+        "llm_fallback_rate",
     ):
         if key in pipeline_metrics:
             result[key] = pipeline_metrics.get(key)
@@ -1380,6 +1650,7 @@ def _summarize_variant(
         "ragas_metrics": {},
         "ragas_coverage": {},
         "ragas_errors": {},
+        "ragas_metadata": {},
         "retrieval_metrics": retrieval_metrics,
         "retrieval_coverage": retrieval_coverage,
         "retrieval_ground_truth": retrieval_ground_truth,
@@ -1393,6 +1664,7 @@ def _summarize_variant(
         summary["ragas_metrics"] = ragas_bundle.get("summary") or {}
         summary["ragas_coverage"] = ragas_bundle.get("coverage") or {}
         summary["ragas_errors"] = ragas_bundle.get("errors") or {}
+        summary["ragas_metadata"] = ragas_bundle.get("metadata") or {}
     summary["headline_metrics"] = _build_headline_metrics(summary)
     return summary
 
@@ -1503,7 +1775,9 @@ def evaluate_variants(
     dataset_path: str,
     variant_names: Sequence[str],
     progress_callback: ProgressCallback = None,
+    cancel_callback: CancelCallback = None,
 ) -> Dict[str, Any]:
+    _raise_if_cancelled(cancel_callback)
     cases = _prepare_cases(load_cases(dataset_path))
     resolved_variants = _resolve_variants(variant_names)
     variants_payload: Dict[str, Any] = {}
@@ -1519,10 +1793,12 @@ def evaluate_variants(
 
     total_variants = len(resolved_variants)
     for index, variant_name in enumerate(resolved_variants, start=1):
+        _raise_if_cancelled(cancel_callback)
         variant_config = VARIANTS.get(variant_name, {})
         if variant_config.get("reset_cache_before_run"):
             reset_query_cache(reason=f"evaluation:{variant_name}:start")
         warmup_rounds = max(0, int(variant_config.get("warmup_rounds") or 0))
+        total_cases = len(cases)
         if progress_callback is not None:
             progress_callback(
                 {
@@ -1530,23 +1806,62 @@ def evaluate_variants(
                     "variant_name": variant_name,
                     "variant_index": index,
                     "total_variants": total_variants,
+                    "total_cases": total_cases,
                 }
             )
         if warmup_rounds:
             for warmup_index in range(1, warmup_rounds + 1):
+                _raise_if_cancelled(cancel_callback)
                 if progress_callback is not None:
                     progress_callback(
                         {
                             "stage": "variant_warmup",
                             "variant_name": variant_name,
+                            "variant_index": index,
+                            "total_variants": total_variants,
                             "warmup_round": warmup_index,
                             "warmup_rounds": warmup_rounds,
+                            "total_cases": total_cases,
                         }
                     )
                 for case in cases:
+                    _raise_if_cancelled(cancel_callback)
                     _run_single_case(case, variant_name)
-        case_results = [_run_single_case(case, variant_name) for case in cases]
-        ragas_bundle = _run_ragas(case_results)
+        case_results = []
+        for case_index, case in enumerate(cases, start=1):
+            _raise_if_cancelled(cancel_callback)
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "stage": "case_started",
+                        "variant_name": variant_name,
+                        "variant_index": index,
+                        "total_variants": total_variants,
+                        "case_id": str(case.get("case_id") or case.get("id") or ""),
+                        "case_index": case_index,
+                        "total_cases": total_cases,
+                        "query": _query(case),
+                    }
+                )
+            case_result = _run_single_case(case, variant_name)
+            case_results.append(case_result)
+            _raise_if_cancelled(cancel_callback)
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "stage": "case_completed",
+                        "variant_name": variant_name,
+                        "variant_index": index,
+                        "total_variants": total_variants,
+                        "case_id": str(case_result.get("case_id") or ""),
+                        "case_index": case_index,
+                        "total_cases": total_cases,
+                        "query": str(case_result.get("query") or ""),
+                        "error": str(case_result.get("error") or ""),
+                    }
+                )
+        _raise_if_cancelled(cancel_callback)
+        ragas_bundle = _run_ragas(case_results, cancel_callback=cancel_callback)
         _merge_ragas_scores(case_results, ragas_bundle.get("per_case_scores") or [])
         grouped_summaries = {
             query_type: _summarize_variant(
@@ -1572,9 +1887,11 @@ def evaluate_variants(
                     "variant_name": variant_name,
                     "variant_index": index,
                     "total_variants": total_variants,
+                    "total_cases": total_cases,
                 }
             )
 
+    _raise_if_cancelled(cancel_callback)
     final_variant = resolved_variants[-1]
     for preferred_variant in (
         "agentic_enhanced_system_cached",
@@ -1612,11 +1929,13 @@ def evaluate_variants_to_file(
     variant_names: Sequence[str],
     output_path: str | None = None,
     progress_callback: ProgressCallback = None,
+    cancel_callback: CancelCallback = None,
 ) -> Dict[str, Any]:
     report = evaluate_variants(
         dataset_path,
         variant_names,
         progress_callback=progress_callback,
+        cancel_callback=cancel_callback,
     )
     resolved_output_path = Path(output_path) if output_path else _default_output_path()
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)

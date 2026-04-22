@@ -256,6 +256,31 @@ start_frontend() {
   wait_http "frontend" "$FRONTEND_URL" 120
 }
 
+prewarm_frontend() {
+  local url
+  local warm_paths=(
+    "/"
+    "/src/main.tsx"
+    "/src/App.tsx"
+    "/src/contexts/index.ts"
+    "/src/pages/ChatPage.tsx"
+    "/src/pages/PerformancePage.tsx"
+    "/node_modules/.vite/deps/react.js"
+    "/node_modules/.vite/deps/react-dom_client.js"
+    "/node_modules/.vite/deps/react-router-dom.js"
+    "/node_modules/.vite/deps/lucide-react.js"
+    "/node_modules/.vite/deps/recharts.js"
+  )
+
+  echo "[info] prewarming frontend module graph..."
+  for path in "${warm_paths[@]}"; do
+    url="${FRONTEND_URL}${path}"
+    curl --noproxy '*' -s -o /dev/null -m 10 "$url" || true
+  done
+
+  sleep 2
+}
+
 ensure_env_file() {
   if [[ -f "$ENV_FILE" ]]; then
     return 0
@@ -330,6 +355,7 @@ fi
 
 log_step "waiting for frontend dev server (docker)..."
 start_frontend
+prewarm_frontend
 
 echo ""
 echo "insightvault started successfully"

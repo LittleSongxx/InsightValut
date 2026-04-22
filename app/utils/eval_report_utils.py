@@ -146,3 +146,43 @@ def get_latest_evaluation_report() -> Optional[Dict[str, Any]]:
         "meta": _build_report_meta(latest_path, report),
         "report": _strip_case_results(report),
     }
+
+
+def delete_evaluation_report(report_id: str) -> Dict[str, Any]:
+    safe_name = Path(str(report_id or "")).name
+    if not safe_name or safe_name != report_id:
+        raise ValueError("非法的评测报告 ID")
+
+    candidate_paths = [
+        output_dir / safe_name
+        for output_dir in _eval_output_dirs()
+        if (output_dir / safe_name).exists() and (output_dir / safe_name).is_file()
+    ]
+    if not candidate_paths:
+        raise FileNotFoundError("evaluation report not found")
+
+    primary_path = candidate_paths[0]
+    meta: Dict[str, Any]
+    try:
+        meta = _build_report_meta(primary_path, _load_json(primary_path))
+    except Exception:
+        meta = {
+            "report_id": safe_name,
+            "file_name": safe_name,
+            "deleted_paths": [str(path.resolve()) for path in candidate_paths],
+        }
+
+    deleted_paths: List[str] = []
+    for path in candidate_paths:
+        path.unlink(missing_ok=True)
+        deleted_paths.append(str(path.resolve()))
+
+    return _sanitize_for_json(
+        {
+            "ok": True,
+            "report_id": safe_name,
+            "deleted_paths": deleted_paths,
+            "deleted_count": len(deleted_paths),
+            "meta": meta,
+        }
+    )

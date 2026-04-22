@@ -47,7 +47,6 @@ export interface QueryCacheRequestSummary {
 
 export interface AgenticMetadata {
   query_type?: string;
-  graph_preferred?: boolean;
   query_focus_terms?: string[];
   query_route_reason?: string;
   retrieval_plan?: Record<string, unknown>;
@@ -195,6 +194,7 @@ export interface EvaluationSummary {
   ragas_metrics: Record<string, number | null>;
   ragas_coverage: Record<string, number>;
   ragas_errors: Record<string, string>;
+  ragas_metadata?: Record<string, unknown>;
   retrieval_metrics: Record<string, number | null>;
   retrieval_coverage: Record<string, number>;
   retrieval_ground_truth: EvaluationRetrievalGroundTruthSummary;
@@ -309,7 +309,7 @@ export interface ChunkIdMigrationResult {
 
 export interface EvaluationJob {
   job_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'cancelling' | 'cancelled' | 'completed' | 'failed';
   dataset_path: string;
   variants: string[];
   output_path: string;
@@ -318,10 +318,22 @@ export interface EvaluationJob {
   completed_variants: number;
   total_variants: number;
   case_count: number;
+  current_case_id?: string;
+  current_case_query?: string;
+  completed_cases?: number;
+  current_variant_total_cases?: number;
   report_id: string;
   report_path: string;
   error: string;
   created_at: string;
   started_at: string;
   finished_at: string;
+}
+
+export interface EvaluationReportDeleteResult {
+  ok: boolean;
+  report_id: string;
+  deleted_paths: string[];
+  deleted_count: number;
+  meta?: EvaluationReportListItem | Record<string, unknown>;
 }

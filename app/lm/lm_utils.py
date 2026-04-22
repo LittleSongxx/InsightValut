@@ -4,7 +4,7 @@ import threading
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.exceptions import LangChainException
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 # 项目内部依赖
 from app.conf.lm_config import lm_config
@@ -45,6 +45,50 @@ def coerce_llm_content(content: Any) -> str:
     return str(content)
 
 
+def _normalize_base_url(base_url: str) -> str:
+    return str(base_url or "").strip().rstrip("/")
+
+
+def _is_deepseek_model(model_name: str) -> bool:
+    return str(model_name or "").strip().lower().startswith("deepseek")
+
+
+def _is_qwen_family_model(model_name: str) -> bool:
+    normalized = str(model_name or "").strip().lower()
+    return normalized.startswith(("qwen", "qwq"))
+
+
+def _resolve_llm_connection(model_name: str) -> Tuple[str, str]:
+    """
+    根据模型名选择对应的 OpenAI-compatible provider 配置。
+
+    现有项目同时使用 DeepSeek 与 DashScope(Qwen)：
+    - deepseek-* 走 DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL
+    - qwen*/qwq* 默认走 QWEN_API_KEY / QWEN_BASE_URL，若未单独配置则回退到 OPENAI_API_KEY / OPENAI_BASE_URL
+    - 其他模型沿用 OPENAI_API_KEY / OPENAI_BASE_URL
+    """
+    normalized_model = str(model_name or "").strip()
+    if _is_deepseek_model(normalized_model):
+        api_key = str(os.getenv("DEEPSEEK_API_KEY") or "").strip()
+        base_url = _normalize_base_url(os.getenv("DEEPSEEK_BASE_URL") or "")
+        return api_key, base_url
+
+    if _is_qwen_family_model(normalized_model):
+        api_key = str(
+            os.getenv("QWEN_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
+        ).strip()
+        base_url = _normalize_base_url(
+            os.getenv("QWEN_BASE_URL") or os.getenv("OPENAI_BASE_URL") or ""
+        )
+        return api_key, base_url
+
+    api_key = str(os.getenv("OPENAI_API_KEY") or lm_config.api_key or "").strip()
+    base_url = _normalize_base_url(
+        os.getenv("OPENAI_BASE_URL") or lm_config.base_url or ""
+    )
+    return api_key, base_url
+
+
 def get_llm_client(model: Optional[str] = None, json_mode: bool = False) -> ChatOpenAI:
     """
     获取带全局缓存的LangChain ChatOpenAI客户端实例
@@ -59,8 +103,9 @@ def get_llm_client(model: Optional[str] = None, json_mode: bool = False) -> Chat
     """
     # 1. 确定目标模型（优先级递减，保证模型名非空）
     target_model = model or lm_config.llm_model or "qwen3-32b"
-    # 缓存键：模型名+JSON模式，唯一标识不同配置的客户端
-    cache_key = (target_model, json_mode)
+    api_key, base_url = _resolve_llm_connection(target_model)
+    # 缓存键：模型名+JSON模式+路由目标，避免不同 provider 错复用
+    cache_key = (target_model, json_mode, base_url)
 
     # 2. 缓存命中（无锁快速路径）：直接返回已初始化的实例，避免重复创建
     if cache_key in _llm_client_cache:
@@ -75,23 +120,24 @@ def get_llm_client(model: Optional[str] = None, json_mode: bool = False) -> Chat
             return _llm_client_cache[cache_key]
 
         # 3. 核心配置校验：拦截缺失的API关键配置，提前抛出明确异常
-        if not lm_config.api_key:
+        if not api_key:
             raise ValueError(
-                "[LLM客户端] 配置缺失：请在.env中配置OPENAI_API_KEY（大模型API密钥）"
+                f"[LLM客户端] 配置缺失：模型【{target_model}】缺少可用 API Key"
             )
-        if not lm_config.base_url:
+        if not base_url:
             raise ValueError(
-                "[LLM客户端] 配置缺失：请在.env中配置OPENAI_API_BASE（API接口基础地址）"
+                f"[LLM客户端] 配置缺失：模型【{target_model}】缺少可用 Base URL"
             )
         logger.info(
-            f"[LLM客户端] 开始初始化新实例：模型={target_model}，JSON模式={json_mode}"
+            f"[LLM客户端] 开始初始化新实例：模型={target_model}，JSON模式={json_mode}，base_url={base_url}"
         )
 
         # 4. 配置参数组装：区分「国产模型私有参数」和「OpenAI通用参数」
         # extra_body：千问/即梦等国产模型专属私有参数（LangChain透传至API）
-        extra_body = {
-            "enable_thinking": False
-        }  # 千问专属：关闭思考链输出，减少冗余内容
+        extra_body = {}
+        if _is_qwen_family_model(target_model):
+            # 千问专属：关闭思考链输出，减少冗余内容
+            extra_body["enable_thinking"] = False
         # model_kwargs：OpenAI通用参数，所有兼容API均支持
         model_kwargs = {}
         if json_mode:
@@ -105,8 +151,8 @@ def get_llm_client(model: Optional[str] = None, json_mode: bool = False) -> Chat
                 model=target_model,  # 目标模型名
                 temperature=lm_config.llm_temperature
                 or 0.1,  # 低温度保证输出确定性（0~1）
-                api_key=lm_config.api_key,  # API密钥
-                base_url=lm_config.base_url,  # API基础地址（适配国产模型代理地址）
+                api_key=api_key,  # API密钥
+                base_url=base_url,  # API基础地址（适配 provider 路由）
                 extra_body=extra_body,  # 国产模型私有参数透传
                 model_kwargs=model_kwargs,  # OpenAI通用参数
             )

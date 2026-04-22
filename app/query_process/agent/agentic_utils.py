@@ -60,6 +60,18 @@ def _extract_terms(text: str) -> List[str]:
     return tokens[:8]
 
 
+def _question_has_explicit_product_reference(question: str) -> bool:
+    normalized = _clean_text(question)
+    if not normalized:
+        return False
+    explicit_patterns = (
+        r"\b[A-Za-z]{1,10}[A-Za-z0-9]*[-_][A-Za-z0-9._/-]+\b",
+        r"\b[A-Za-z]+[A-Za-z0-9]*\d+[A-Za-z0-9._/-]*\b",
+        r"[\u4e00-\u9fff]{2,12}[A-Za-z0-9]+[-_][A-Za-z0-9._/-]+",
+    )
+    return any(re.search(pattern, normalized) for pattern in explicit_patterns)
+
+
 def get_agentic_features(state: Dict[str, Any] | None) -> Dict[str, bool]:
     features = dict(DEFAULT_AGENTIC_FEATURES)
     if not isinstance(state, dict):
@@ -89,11 +101,11 @@ def build_clarification_request(state: Dict[str, Any]) -> Dict[str, Any]:
     item_names = [_clean_text(name) for name in (state.get("item_names") or []) if _clean_text(name)]
     focus_terms = [
         _clean_text(term)
-        for term in (state.get("query_focus_terms") or [])
+        for term in (state.get("query_focus_terms") or _extract_terms(question))
         if _clean_text(term)
     ]
 
-    if query_type == "comparison" and len(item_names) < 2:
+    if query_type == "comparison" and len(item_names) < 2 and len(focus_terms) < 2:
         return {
             "required": True,
             "reason": "missing_comparison_targets",
@@ -101,7 +113,11 @@ def build_clarification_request(state: Dict[str, Any]) -> Dict[str, Any]:
             "options": item_names,
         }
 
-    if query_type == "navigation" and not item_names:
+    if (
+        query_type == "navigation"
+        and not item_names
+        and not _question_has_explicit_product_reference(question)
+    ):
         return {
             "required": True,
             "reason": "missing_navigation_product",
