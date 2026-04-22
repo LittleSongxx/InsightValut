@@ -314,6 +314,20 @@ export interface EvaluationJob {
   variants: string[];
   output_path: string;
   progress_message: string;
+  phase?:
+    | 'pending'
+    | 'loading_dataset'
+    | 'dataset_loaded'
+    | 'variant_started'
+    | 'warmup'
+    | 'evaluation'
+    | 'variant_completed'
+    | 'saving_report'
+    | 'report_saved'
+    | 'cancelling'
+    | 'cancelled'
+    | 'completed'
+    | 'failed';
   current_variant: string;
   completed_variants: number;
   total_variants: number;
@@ -322,12 +336,15 @@ export interface EvaluationJob {
   current_case_query?: string;
   completed_cases?: number;
   current_variant_total_cases?: number;
+  warmup_round?: number;
+  warmup_rounds?: number;
   report_id: string;
   report_path: string;
   error: string;
   created_at: string;
   started_at: string;
   finished_at: string;
+  last_progress_at?: string;
 }
 
 export interface EvaluationReportDeleteResult {

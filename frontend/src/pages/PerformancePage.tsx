@@ -284,6 +284,25 @@ function formatJobStatus(status: EvaluationJob['status']) {
   return mapping[status] || status;
 }
 
+function formatEvaluationPhase(phase?: EvaluationJob['phase']) {
+  const mapping: Record<NonNullable<EvaluationJob['phase']>, string> = {
+    pending: '等待中',
+    loading_dataset: '加载数据集',
+    dataset_loaded: '数据集已加载',
+    variant_started: '初始化变体',
+    warmup: '缓存预热',
+    evaluation: '正式评测',
+    variant_completed: '变体完成',
+    saving_report: '写入报告',
+    report_saved: '报告已生成',
+    cancelling: '停止中',
+    cancelled: '已取消',
+    completed: '已完成',
+    failed: '失败',
+  };
+  return phase ? mapping[phase] || phase : '-';
+}
+
 function resolveTemplateDatasetPath(rawPath?: string | null) {
   const value = rawPath?.trim();
   if (!value) return FRONTEND_EVALUATION_TEMPLATE_PATH;
@@ -1360,9 +1379,20 @@ export default function PerformancePage() {
                               <span>样本数</span>
                               <span className="text-gray-700 dark:text-gray-300">{activeEvaluationJob.case_count || '-'}</span>
                             </div>
+                            {activeEvaluationJob.phase ? (
+                              <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+                                <span>当前阶段</span>
+                                <span className="text-gray-700 dark:text-gray-300">
+                                  {formatEvaluationPhase(activeEvaluationJob.phase)}
+                                  {activeEvaluationJob.phase === 'warmup' && activeEvaluationJob.warmup_rounds
+                                    ? `（${activeEvaluationJob.warmup_round || 0}/${activeEvaluationJob.warmup_rounds}）`
+                                    : ''}
+                                </span>
+                              </div>
+                            ) : null}
                             {activeEvaluationJob.current_variant_total_cases ? (
                               <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
-                                <span>当前变体样本进度</span>
+                                <span>{activeEvaluationJob.phase === 'warmup' ? '缓存预热进度' : '当前变体样本进度'}</span>
                                 <span className="text-gray-700 dark:text-gray-300">
                                   {activeEvaluationJob.completed_cases || 0}/{activeEvaluationJob.current_variant_total_cases}
                                 </span>
@@ -1380,6 +1410,14 @@ export default function PerformancePage() {
                               <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
                                 <span>输出报告</span>
                                 <span className="text-gray-700 dark:text-gray-300">{activeEvaluationJob.report_id}</span>
+                              </div>
+                            ) : null}
+                            {activeEvaluationJob.last_progress_at ? (
+                              <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+                                <span>最后进展</span>
+                                <span className="text-gray-700 dark:text-gray-300">
+                                  {formatReportTimestamp(activeEvaluationJob.last_progress_at)}
+                                </span>
                               </div>
                             ) : null}
                           </>

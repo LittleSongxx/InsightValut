@@ -238,6 +238,33 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
             },
         },
     },
+    "hyde_kg_context_expansion_cached": {
+        "description": "在 Baseline 上开启 HyDE、Neo4j KG、命中上下文扩展、多级缓存和 CRAG 重试，不引入 BM25 / 检索补救 / 结构化回答",
+        "technique": "HyDE + KG + Context Expansion + Cache + CRAG Retry",
+        "compare_to": "baseline_rag",
+        "use_case_query_type": False,
+        "warmup_rounds": 1,
+        "reset_cache_before_run": True,
+        "evaluation_overrides": {
+            "force_need_rag": True,
+            "force_query_type": "general",
+            "force_graph_preferred": False,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": True,
+            "route_reason": "eval_hyde_kg_context_expansion_cached",
+            "agentic_features": _agentic_features(context_expansion=True),
+            "cache_enabled": True,
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_bm25": False,
+                "run_hyde": True,
+                "run_web": False,
+                "bm25_weight_multiplier": 0.0,
+            },
+        },
+    },
     "final_system": {
         "description": "在 Baseline 上统一开启 BM25 / HyDE / Neo4j 与 CRAG 重试，作为 Agentic 消融底盘",
         "technique": "Final Unified RAG",
@@ -1824,9 +1851,55 @@ def evaluate_variants(
                             "total_cases": total_cases,
                         }
                     )
-                for case in cases:
+                for case_index, case in enumerate(cases, start=1):
                     _raise_if_cancelled(cancel_callback)
+                    if progress_callback is not None:
+                        progress_callback(
+                            {
+                                "stage": "warmup_case_started",
+                                "variant_name": variant_name,
+                                "variant_index": index,
+                                "total_variants": total_variants,
+                                "warmup_round": warmup_index,
+                                "warmup_rounds": warmup_rounds,
+                                "case_id": str(
+                                    case.get("case_id") or case.get("id") or ""
+                                ),
+                                "case_index": case_index,
+                                "total_cases": total_cases,
+                                "query": _query(case),
+                            }
+                        )
                     _run_single_case(case, variant_name)
+                    if progress_callback is not None:
+                        progress_callback(
+                            {
+                                "stage": "warmup_case_completed",
+                                "variant_name": variant_name,
+                                "variant_index": index,
+                                "total_variants": total_variants,
+                                "warmup_round": warmup_index,
+                                "warmup_rounds": warmup_rounds,
+                                "case_id": str(
+                                    case.get("case_id") or case.get("id") or ""
+                                ),
+                                "case_index": case_index,
+                                "total_cases": total_cases,
+                                "query": _query(case),
+                            }
+                        )
+                if progress_callback is not None:
+                    progress_callback(
+                        {
+                            "stage": "warmup_completed",
+                            "variant_name": variant_name,
+                            "variant_index": index,
+                            "total_variants": total_variants,
+                            "warmup_round": warmup_index,
+                            "warmup_rounds": warmup_rounds,
+                            "total_cases": total_cases,
+                        }
+                    )
         case_results = []
         for case_index, case in enumerate(cases, start=1):
             _raise_if_cancelled(cancel_callback)

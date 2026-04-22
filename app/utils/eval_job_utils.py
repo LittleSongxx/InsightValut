@@ -73,6 +73,7 @@ def create_evaluation_job(
             str(Path(output_path).expanduser().resolve()) if output_path else ""
         ),
         "progress_message": "等待开始",
+        "phase": "pending",
         "current_variant": "",
         "completed_variants": 0,
         "total_variants": len(normalized_variants or list(DEFAULT_VARIANTS)),
@@ -81,6 +82,8 @@ def create_evaluation_job(
         "current_case_query": "",
         "completed_cases": 0,
         "current_variant_total_cases": 0,
+        "warmup_round": 0,
+        "warmup_rounds": 0,
         "cancel_requested": False,
         "report_id": "",
         "report_path": "",
@@ -88,6 +91,7 @@ def create_evaluation_job(
         "created_at": _now_iso(),
         "started_at": "",
         "finished_at": "",
+        "last_progress_at": _now_iso(),
     }
     with _jobs_lock:
         _jobs[job_id] = job
@@ -100,6 +104,7 @@ def _update_job(job_id: str, **fields: Any) -> None:
         job = _jobs.get(job_id)
         if job is None:
             return
+        fields.setdefault("last_progress_at", _now_iso())
         job.update(fields)
 
 
@@ -145,6 +150,7 @@ def cancel_evaluation_job(job_id: str) -> Optional[Dict[str, Any]]:
             job.update(
                 {
                     "status": JOB_STATUS_CANCELLED,
+                    "phase": "cancelled",
                     "progress_message": "评测已取消",
                     "finished_at": _now_iso(),
                     "current_variant": "",
@@ -156,6 +162,7 @@ def cancel_evaluation_job(job_id: str) -> Optional[Dict[str, Any]]:
             job.update(
                 {
                     "status": JOB_STATUS_CANCELLING,
+                    "phase": "cancelling",
                     "progress_message": "正在停止评测...",
                 }
             )
@@ -184,6 +191,7 @@ def run_evaluation_job(job_id: str) -> None:
         status=JOB_STATUS_RUNNING,
         started_at=_now_iso(),
         progress_message="正在加载数据集",
+        phase="loading_dataset",
         error="",
     )
 
@@ -195,6 +203,7 @@ def run_evaluation_job(job_id: str) -> None:
             _update_job(
                 job_id,
                 progress_message=f"已加载数据集，共 {int(event.get('case_count') or 0)} 条样本",
+                phase="dataset_loaded",
                 case_count=int(event.get("case_count") or 0),
                 total_variants=int(event.get("total_variants") or len(variants)),
             )
@@ -204,6 +213,7 @@ def run_evaluation_job(job_id: str) -> None:
             total = int(event.get("total_variants") or len(variants))
             _update_job(
                 job_id,
+                phase="variant_started",
                 current_variant=current_variant,
                 completed_variants=max(index - 1, 0),
                 total_variants=total,
@@ -211,7 +221,97 @@ def run_evaluation_job(job_id: str) -> None:
                 current_case_query="",
                 completed_cases=0,
                 current_variant_total_cases=int(event.get("total_cases") or 0),
+                warmup_round=0,
+                warmup_rounds=0,
                 progress_message=f"正在评测 {current_variant} ({index}/{total})",
+            )
+        elif stage == "warmup_started":
+            current_variant = str(event.get("variant_name") or "")
+            warmup_round = int(event.get("warmup_round") or 0)
+            warmup_rounds = int(event.get("warmup_rounds") or 0)
+            total_cases = int(event.get("total_cases") or 0)
+            _update_job(
+                job_id,
+                phase="warmup",
+                current_variant=current_variant,
+                current_case_id="",
+                current_case_query="",
+                completed_cases=0,
+                current_variant_total_cases=total_cases,
+                warmup_round=warmup_round,
+                warmup_rounds=warmup_rounds,
+                progress_message=(
+                    f"正在预热缓存 {current_variant} "
+                    f"({warmup_round}/{max(warmup_rounds, 1)})"
+                ),
+            )
+        elif stage == "warmup_case_started":
+            current_variant = str(event.get("variant_name") or "")
+            case_index = int(event.get("case_index") or 0)
+            total_cases = int(event.get("total_cases") or 0)
+            warmup_round = int(event.get("warmup_round") or 0)
+            warmup_rounds = int(event.get("warmup_rounds") or 0)
+            case_id = str(event.get("case_id") or "")
+            case_query = str(event.get("query") or "")
+            _update_job(
+                job_id,
+                phase="warmup",
+                current_variant=current_variant,
+                current_case_id=case_id,
+                current_case_query=case_query,
+                completed_cases=max(case_index - 1, 0),
+                current_variant_total_cases=total_cases,
+                warmup_round=warmup_round,
+                warmup_rounds=warmup_rounds,
+                progress_message=(
+                    f"正在预热缓存 {current_variant} 第 {warmup_round}/{max(warmup_rounds, 1)} 轮 "
+                    f"样本 {case_index}/{total_cases}: {case_id or case_query}"
+                ),
+            )
+        elif stage == "warmup_case_completed":
+            current_variant = str(event.get("variant_name") or "")
+            case_index = int(event.get("case_index") or 0)
+            total_cases = int(event.get("total_cases") or 0)
+            warmup_round = int(event.get("warmup_round") or 0)
+            warmup_rounds = int(event.get("warmup_rounds") or 0)
+            case_id = str(event.get("case_id") or "")
+            case_query = str(event.get("query") or "")
+            _update_job(
+                job_id,
+                phase="warmup",
+                current_variant=current_variant,
+                current_case_id=case_id,
+                current_case_query=case_query,
+                completed_cases=case_index,
+                current_variant_total_cases=total_cases,
+                warmup_round=warmup_round,
+                warmup_rounds=warmup_rounds,
+                progress_message=(
+                    f"已预热 {current_variant} 第 {warmup_round}/{max(warmup_rounds, 1)} 轮 "
+                    f"样本 {case_index}/{total_cases}: {case_id or case_query}"
+                ),
+            )
+        elif stage == "warmup_completed":
+            current_variant = str(event.get("variant_name") or "")
+            warmup_round = int(event.get("warmup_round") or 0)
+            warmup_rounds = int(event.get("warmup_rounds") or 0)
+            total_cases = int(event.get("total_cases") or 0)
+            more_rounds = warmup_round < warmup_rounds
+            _update_job(
+                job_id,
+                phase="warmup" if more_rounds else "evaluation",
+                current_variant=current_variant,
+                current_case_id="",
+                current_case_query="",
+                completed_cases=total_cases if more_rounds else 0,
+                current_variant_total_cases=total_cases,
+                warmup_round=warmup_round,
+                warmup_rounds=warmup_rounds,
+                progress_message=(
+                    f"缓存预热完成，开始正式评测 {current_variant}"
+                    if not more_rounds
+                    else f"第 {warmup_round}/{warmup_rounds} 轮缓存预热完成"
+                ),
             )
         elif stage == "case_started":
             current_variant = str(event.get("variant_name") or "")
@@ -221,6 +321,7 @@ def run_evaluation_job(job_id: str) -> None:
             case_query = str(event.get("query") or "")
             _update_job(
                 job_id,
+                phase="evaluation",
                 current_variant=current_variant,
                 current_case_id=case_id,
                 current_case_query=case_query,
@@ -238,6 +339,7 @@ def run_evaluation_job(job_id: str) -> None:
             suffix = f"（异常: {error}）" if error else ""
             _update_job(
                 job_id,
+                phase="evaluation",
                 current_variant=current_variant,
                 current_case_id=case_id,
                 current_case_query=case_query,
@@ -251,19 +353,27 @@ def run_evaluation_job(job_id: str) -> None:
             total = int(event.get("total_variants") or len(variants))
             _update_job(
                 job_id,
+                phase="variant_completed",
                 current_variant=current_variant,
                 completed_variants=index,
                 total_variants=total,
                 completed_cases=int(event.get("total_cases") or 0),
                 current_variant_total_cases=int(event.get("total_cases") or 0),
+                warmup_round=0,
+                warmup_rounds=0,
                 progress_message=f"已完成 {current_variant} ({index}/{total})",
             )
         elif stage == "report_ready":
-            _update_job(job_id, progress_message="评测完成，正在写入报告")
+            _update_job(
+                job_id,
+                phase="saving_report",
+                progress_message="评测完成，正在写入报告",
+            )
         elif stage == "report_saved":
             report_path = str(event.get("output_path") or "")
             _update_job(
                 job_id,
+                phase="report_saved",
                 progress_message="报告已生成",
                 report_path=report_path,
                 report_id=Path(report_path).name if report_path else "",
@@ -281,12 +391,15 @@ def run_evaluation_job(job_id: str) -> None:
         _update_job(
             job_id,
             status=JOB_STATUS_COMPLETED,
+            phase="completed",
             finished_at=_now_iso(),
             completed_variants=len(variants),
             total_variants=len(variants),
             current_variant="",
             current_case_id="",
             current_case_query="",
+            warmup_round=0,
+            warmup_rounds=0,
             progress_message="评测完成",
             report_path=report_path,
             report_id=Path(report_path).name if report_path else "",
@@ -295,10 +408,13 @@ def run_evaluation_job(job_id: str) -> None:
         _update_job(
             job_id,
             status=JOB_STATUS_CANCELLED,
+            phase="cancelled",
             finished_at=_now_iso(),
             current_variant="",
             current_case_id="",
             current_case_query="",
+            warmup_round=0,
+            warmup_rounds=0,
             progress_message="评测已取消",
             error="",
         )
@@ -306,6 +422,7 @@ def run_evaluation_job(job_id: str) -> None:
         _update_job(
             job_id,
             status=JOB_STATUS_FAILED,
+            phase="failed",
             finished_at=_now_iso(),
             progress_message="评测失败",
             error=str(exc),

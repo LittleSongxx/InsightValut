@@ -16,6 +16,34 @@ _llm_client_cache = {}
 _llm_cache_lock = threading.Lock()
 
 
+def _read_positive_float_env(name: str, default: float) -> float:
+    raw = str(os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except Exception:
+        return default
+    return value if value > 0 else default
+
+
+def _read_nonnegative_int_env(name: str, default: int) -> int:
+    raw = str(os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except Exception:
+        return default
+    return value if value >= 0 else default
+
+
+LLM_REQUEST_TIMEOUT_SECONDS = _read_positive_float_env(
+    "LLM_REQUEST_TIMEOUT_SECONDS", 90.0
+)
+LLM_MAX_RETRIES = _read_nonnegative_int_env("LLM_MAX_RETRIES", 1)
+
+
 def coerce_llm_content(content: Any) -> str:
     """
     将 LangChain/兼容 OpenAI 返回的 content 统一规整为字符串。
@@ -129,7 +157,9 @@ def get_llm_client(model: Optional[str] = None, json_mode: bool = False) -> Chat
                 f"[LLM客户端] 配置缺失：模型【{target_model}】缺少可用 Base URL"
             )
         logger.info(
-            f"[LLM客户端] 开始初始化新实例：模型={target_model}，JSON模式={json_mode}，base_url={base_url}"
+            "[LLM客户端] 开始初始化新实例："
+            f"模型={target_model}，JSON模式={json_mode}，base_url={base_url}，"
+            f"timeout={LLM_REQUEST_TIMEOUT_SECONDS}s，max_retries={LLM_MAX_RETRIES}"
         )
 
         # 4. 配置参数组装：区分「国产模型私有参数」和「OpenAI通用参数」
@@ -153,6 +183,8 @@ def get_llm_client(model: Optional[str] = None, json_mode: bool = False) -> Chat
                 or 0.1,  # 低温度保证输出确定性（0~1）
                 api_key=api_key,  # API密钥
                 base_url=base_url,  # API基础地址（适配 provider 路由）
+                timeout=LLM_REQUEST_TIMEOUT_SECONDS,  # 防止单次请求无限阻塞
+                max_retries=LLM_MAX_RETRIES,  # 限制上游抖动时的自动重试次数
                 extra_body=extra_body,  # 国产模型私有参数透传
                 model_kwargs=model_kwargs,  # OpenAI通用参数
             )
