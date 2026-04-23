@@ -12,6 +12,7 @@ from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.clients.mongo_history_utils import save_chat_message
 from app.conf.query_threshold_config import query_threshold_config
 from app.query_process.agent.agentic_utils import build_agentic_response_metadata
+from app.query_process.agent.graph_query_utils import get_grounded_mode
 from app.utils.query_cache_utils import (
     get_current_request_cache_summary,
     normalize_cache_sequence,
@@ -123,6 +124,16 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
         item_names=item_names_str,
         question=question,
     )
+    grounded_mode = get_grounded_mode(state)
+    if grounded_mode:
+        prompt += (
+            "\n\n【严格 Grounded 回答约束】\n"
+            "1. 你必须严格基于【参考内容】回答，禁止使用外部常识、经验、推测或补全。\n"
+            "2. 如果【参考内容】无法直接支持答案，必须明确回答：抱歉，资料中未提供。\n"
+            "3. 如果问题只有部分内容能被证据支持，只回答被证据支持的部分；其余部分明确写“抱歉，资料中未提供”。\n"
+            "4. 禁止编造任何参数、编号、步骤、因果关系、适用范围或结论。\n"
+            "5. 若【参考内容】为“无参考内容”，只允许回答：抱歉，资料中未提供。\n"
+        )
 
     hallucination_feedback = state.get("hallucination_feedback")
     if hallucination_feedback:
@@ -346,6 +357,7 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
     if state.get("answer") and not state.get("is_stream"):
         set_task_result(state["session_id"], "answer", state.get("answer"))
     response_metadata = build_agentic_response_metadata(state, image_urls=image_urls)
+    state["response_metadata"] = response_metadata
     set_task_result(state["session_id"], "metadata", response_metadata)
 
     # 把答案写入到mongodb的history中

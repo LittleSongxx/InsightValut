@@ -126,13 +126,21 @@ def node_retrieval_grader(state):
     agentic_features = get_agentic_features(state)
     retrieval_grader_enabled = _bool_override(state, "retrieval_grader_enabled", True)
     legacy_retry_enabled = _bool_override(state, "legacy_retry_enabled", True)
+    if bool(state.get("router_deep_search_enabled", False)):
+        retrieval_grader_enabled = bool(
+            state.get("crag_router_enabled", retrieval_grader_enabled)
+        )
 
     if not retrieval_grader_enabled:
         result = {
             "retrieval_grade": "disabled",
             "rescue_plan": {
                 "action": "none",
-                "reason": "retrieval_grader_disabled",
+                "reason": (
+                    "router_skipped_crag"
+                    if bool(state.get("router_deep_search_enabled", False))
+                    else "retrieval_grader_disabled"
+                ),
                 "steps": [],
             },
         }

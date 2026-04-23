@@ -8,10 +8,41 @@ from app.conf.cache_config import query_cache_config
 from app.core.logger import logger
 from app.conf.embedding_config import embedding_config
 from app.utils.query_cache_utils import query_cache_get, query_cache_set
+from app.utils.path_util import PROJECT_ROOT
+
+try:
+    import torch
+except Exception:  # pragma: no cover - torch may be unavailable in minimal envs
+    torch = None
 
 # 模型单例对象，避免重复初始化
 _bge_m3_ef = None
 _bge_m3_lock = threading.Lock()
+
+
+def _resolve_embedding_runtime() -> tuple[str, bool]:
+    requested_device = str(embedding_config.bge_device or "cpu").strip() or "cpu"
+    requested_fp16 = bool(embedding_config.bge_fp16)
+    normalized_device = requested_device.lower()
+
+    if normalized_device.startswith("cuda"):
+        cuda_available = bool(
+            torch is not None
+            and hasattr(torch, "cuda")
+            and callable(getattr(torch.cuda, "is_available", None))
+            and torch.cuda.is_available()
+        )
+        if not cuda_available:
+            logger.warning(
+                f"BGE-M3 请求使用设备 {requested_device}，但当前环境不支持 CUDA，自动回退到 CPU"
+            )
+            return "cpu", False
+
+    if normalized_device == "cpu" and requested_fp16:
+        logger.warning("BGE-M3 在 CPU 模式下禁用 FP16，自动回退到 FP32")
+        requested_fp16 = False
+
+    return requested_device, requested_fp16
 
 
 def get_bge_m3_ef():
@@ -32,10 +63,9 @@ def get_bge_m3_ef():
         raw_path = embedding_config.bge_m3_path
         if raw_path:
             resolved = Path(os.path.expanduser(raw_path))
-            # 相对路径 → 拼接 PROJECT_ROOT（容器内为 /app）
+            # 相对路径统一拼接仓库根目录，兼容容器 / WSL / Windows conda 评测环境
             if not resolved.is_absolute():
-                project_root = os.getenv("PROJECT_ROOT", "/app")
-                resolved = Path(project_root) / resolved
+                resolved = Path(PROJECT_ROOT) / resolved
             if resolved.exists():
                 model_name = str(resolved)
                 logger.info(f"检测到本地模型目录，使用本地路径：{resolved}")
@@ -47,8 +77,7 @@ def get_bge_m3_ef():
         else:
             model_name = embedding_config.bge_m3 or "BAAI/bge-m3"
 
-        device = embedding_config.bge_device or "cpu"
-        use_fp16 = embedding_config.bge_fp16 or False
+        device, use_fp16 = _resolve_embedding_runtime()
 
         logger.info(
             "开始初始化BGE-M3模型",
@@ -83,11 +112,12 @@ def warmup_embeddings(sample_text: str = "InsightVault embedding warmup"):
     logger.info(f"开始执行BGE-M3预热，样本文本长度: {len(text)}")
     generate_embeddings([text])
     elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    resolved_device, _ = _resolve_embedding_runtime()
     logger.success(f"BGE-M3预热完成，耗时: {elapsed_ms} ms")
     return {
         "ok": True,
         "elapsed_ms": elapsed_ms,
-        "device": embedding_config.bge_device or "cpu",
+        "device": resolved_device,
         "model_hint": embedding_config.bge_m3_path or embedding_config.bge_m3 or "",
     }
 

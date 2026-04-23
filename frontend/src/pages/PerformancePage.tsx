@@ -44,7 +44,9 @@ import {
   getStageBreakdown,
   migrateKnowledgeBaseChunkIds,
   syncEvaluationDatasetChunkIds,
+  testEvaluationVariant,
 } from '../services/api';
+import { MarkdownRenderer } from '../components/chat/MarkdownRenderer';
 import type {
   ChunkIdMigrationResult,
   EvaluationConfig,
@@ -54,6 +56,7 @@ import type {
   EvaluationReportDetail,
   EvaluationReportListItem,
   EvaluationSummary,
+  EvaluationVariantTrialResult,
   PerformanceSummary,
   PerformanceTimePoint,
   QueryCacheStats,
@@ -112,6 +115,9 @@ const METRIC_LABELS: Record<string, string> = {
   avg_cache_writes: '平均缓存写入',
   llm_fallback_rate: '模型回退率',
   error_rate: '错误率',
+  router_simple_rate: '简单问题占比',
+  hyde_enabled_rate: 'HyDE 启用率',
+  crag_router_enabled_rate: 'CRAG 启用率',
 };
 
 const CACHE_NAMESPACE_LABELS: Record<string, string> = {
@@ -208,6 +214,16 @@ function formatVariantLabel(variantName: string, technique?: string) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function formatRouterDecision(value?: string | null) {
+  const mapping: Record<string, string> = {
+    default_path: '默认路径',
+    simple_fast_path: '简单快路径',
+    complex_deep_path: '复杂深路径',
+  };
+  if (!value) return '-';
+  return mapping[value] || value;
 }
 
 function formatReportTimestamp(value?: string | null) {
@@ -489,6 +505,11 @@ export default function PerformancePage() {
   const [datasetPath, setDatasetPath] = useState('');
   const [selectedVariants, setSelectedVariants] = useState<string[]>([]);
   const [selectedVariantName, setSelectedVariantName] = useState('');
+  const [trialVariantName, setTrialVariantName] = useState('');
+  const [trialQuery, setTrialQuery] = useState('');
+  const [trialResult, setTrialResult] = useState<EvaluationVariantTrialResult | null>(null);
+  const [trialLoading, setTrialLoading] = useState(false);
+  const [trialError, setTrialError] = useState<string | null>(null);
   const [startingEvaluation, setStartingEvaluation] = useState(false);
   const [evaluationActionError, setEvaluationActionError] = useState<string | null>(null);
   const [evaluationActionMessage, setEvaluationActionMessage] = useState<string | null>(null);
@@ -563,6 +584,16 @@ export default function PerformancePage() {
       setSelectedVariants((prev) =>
         prev.length > 0 ? prev.filter(isVisibleEvaluationVariant) : visibleDefaultVariants,
       );
+      setTrialVariantName((prev) => {
+        if (prev) return prev;
+        const preferredVariant = (configData.variant_catalog || []).find(
+          (variant) => variant.name === 'router_hybrid_grounded_cached',
+        );
+        if (preferredVariant && isVisibleEvaluationVariant(preferredVariant.name)) {
+          return preferredVariant.name;
+        }
+        return visibleDefaultVariants[0] || '';
+      });
       const jobs = jobsData.jobs || [];
       setEvaluationJobs(jobs);
       setActiveEvaluationJob((prev) => {
@@ -662,6 +693,32 @@ export default function PerformancePage() {
       setEvaluationActionError(err instanceof Error && err.message ? err.message : '停止评测失败');
     }
   }, [activeEvaluationJob, loadEvaluationRuntime]);
+
+  const handleRunVariantTrial = useCallback(async () => {
+    const trimmedQuery = trialQuery.trim();
+    if (!trimmedQuery) {
+      setTrialError('请先输入要验证的问题');
+      return;
+    }
+    if (!trialVariantName) {
+      setTrialError('请先选择一个评测变体');
+      return;
+    }
+
+    setTrialLoading(true);
+    setTrialError(null);
+    try {
+      const result = await testEvaluationVariant({
+        query: trimmedQuery,
+        variant_name: trialVariantName,
+      });
+      setTrialResult(result);
+    } catch (err: unknown) {
+      setTrialError(err instanceof Error && err.message ? err.message : '在线试跑失败');
+    } finally {
+      setTrialLoading(false);
+    }
+  }, [trialQuery, trialVariantName]);
 
   const handleDeleteSelectedReport = useCallback(async () => {
     if (!selectedReportId) return;
@@ -982,6 +1039,14 @@ export default function PerformancePage() {
   const queryCacheNamespaceRows = useMemo(
     () => Object.entries(queryCacheStats?.namespaces || {}),
     [queryCacheStats],
+  );
+  const trialVariantLabel = trialVariantName
+    ? formatVariantLabel(trialVariantName, variantTechniqueMap[trialVariantName])
+    : '未选择方案';
+  const trialMetadata = trialResult?.metadata || null;
+  const trialStageRows = useMemo(
+    () => Object.entries(trialResult?.stage_durations_ms || {}),
+    [trialResult?.stage_durations_ms],
   );
   const isEvaluationBusy =
     evaluationLoading ||
@@ -1467,6 +1532,215 @@ export default function PerformancePage() {
                     </div>
                   ) : null}
 
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
+                          <Search className="h-4 w-4 text-violet-500" />
+                          方案在线试跑
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          直接针对某个评测方案输入单条问题，查看回答、时延、Router 判定、检索计划和证据摘要。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[320px_1fr]">
+                      <div className="space-y-4">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">试跑方案</label>
+                          <select
+                            value={trialVariantName}
+                            onChange={(e) => setTrialVariantName(e.target.value)}
+                            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
+                          >
+                            <option value="">请选择方案</option>
+                            {(evaluationConfig?.variant_catalog || [])
+                              .filter((variant) => isVisibleEvaluationVariant(variant.name))
+                              .map((variant) => (
+                                <option key={variant.name} value={variant.name}>
+                                  {variant.technique}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">测试问题</label>
+                          <textarea
+                            value={trialQuery}
+                            onChange={(e) => setTrialQuery(e.target.value)}
+                            placeholder="例如：HAK 180 和 HAK 280 的区别是什么，分别适用于哪些场景？"
+                            rows={5}
+                            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm leading-6 dark:border-gray-700 dark:bg-gray-900"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleRunVariantTrial()}
+                          disabled={trialLoading || !trialVariantName}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {trialLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                          开始试跑
+                        </button>
+
+                        {trialError ? (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+                            {trialError}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                          <StatCard
+                            title="当前方案"
+                            value={trialVariantLabel}
+                            subtitle={trialResult?.technique || '阻塞式单题验证'}
+                            icon={<Target className="h-5 w-5" />}
+                            loading={trialLoading && !trialResult}
+                          />
+                          <StatCard
+                            title="总耗时"
+                            value={formatMs(trialResult?.latency_ms)}
+                            subtitle={trialResult?.first_answer_ms != null ? `首答 ${formatMs(trialResult.first_answer_ms)}` : undefined}
+                            icon={<Clock3 className="h-5 w-5" />}
+                            loading={trialLoading && !trialResult}
+                          />
+                          <StatCard
+                            title="复杂度"
+                            value={trialMetadata?.query_complexity || '-'}
+                            subtitle={trialMetadata?.query_complexity_reason || undefined}
+                            icon={<Sparkles className="h-5 w-5" />}
+                            loading={trialLoading && !trialResult}
+                          />
+                          <StatCard
+                            title="Router 决策"
+                            value={formatRouterDecision(trialMetadata?.router_decision)}
+                            subtitle={trialMetadata?.grounded_mode ? '严格 grounded 已启用' : undefined}
+                            icon={<Activity className="h-5 w-5" />}
+                            loading={trialLoading && !trialResult}
+                          />
+                        </div>
+
+                        {trialResult ? (
+                          <div className="space-y-4">
+                            {trialResult.error ? (
+                              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+                                {trialResult.error}
+                              </div>
+                            ) : null}
+
+                            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                              <div className="mb-3 flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-violet-500" />
+                                <h4 className="text-base font-semibold text-gray-900 dark:text-white">回答预览</h4>
+                              </div>
+                              {trialResult.answer ? (
+                                <MarkdownRenderer content={trialResult.answer} />
+                              ) : (
+                                <p className="text-sm text-gray-500">当前没有返回答案。</p>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                                <div className="mb-3 flex items-center gap-2">
+                                  <Activity className="h-4 w-4 text-violet-500" />
+                                  <h4 className="text-base font-semibold text-gray-900 dark:text-white">执行元数据</h4>
+                                </div>
+                                <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                                  <div>问题类型：{trialMetadata?.query_type || '-'}</div>
+                                  <div>复杂度：{trialMetadata?.query_complexity || '-'}</div>
+                                  <div>Router：{formatRouterDecision(trialMetadata?.router_decision)}</div>
+                                  <div>Grounded：{trialMetadata?.grounded_mode ? '已启用' : '未启用'}</div>
+                                  <div>CRAG：{trialMetadata?.crag_router_enabled ? '已启用' : '未启用'}</div>
+                                  <div>
+                                    焦点词：
+                                    {trialMetadata?.query_focus_terms?.length
+                                      ? ` ${trialMetadata.query_focus_terms.join('、')}`
+                                      : ' -'}
+                                  </div>
+                                  <div>
+                                    检索计划：
+                                    <span className="ml-1 font-mono text-xs text-gray-500 dark:text-gray-400">
+                                      {JSON.stringify(trialMetadata?.retrieval_plan || {}, null, 0)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    证据覆盖：
+                                    {trialMetadata?.evidence_coverage_summary?.coverage_score != null
+                                      ? ` ${(trialMetadata.evidence_coverage_summary.coverage_score * 100).toFixed(1)}%`
+                                      : ' -'}
+                                  </div>
+                                  <div>
+                                    缓存命中：
+                                    {trialMetadata?.cache_summary?.overall
+                                      ? ` ${formatMetricValue('cache_hit_rate', toNumericValue(trialMetadata.cache_summary.overall.hit_rate))}`
+                                      : ' -'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                                <div className="mb-3 flex items-center gap-2">
+                                  <Clock3 className="h-4 w-4 text-violet-500" />
+                                  <h4 className="text-base font-semibold text-gray-900 dark:text-white">阶段耗时</h4>
+                                </div>
+                                {trialStageRows.length > 0 ? (
+                                  <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                                    {trialStageRows.map(([stageName, duration]) => (
+                                      <div key={stageName} className="flex items-center justify-between gap-3">
+                                        <span>{formatStageLabel(stageName)}</span>
+                                        <span className="font-medium text-gray-900 dark:text-white">
+                                          {formatMs(duration)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500">当前没有阶段耗时数据。</p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                              <div className="mb-3 flex items-center gap-2">
+                                <Database className="h-4 w-4 text-violet-500" />
+                                <h4 className="text-base font-semibold text-gray-900 dark:text-white">Top 检索片段预览</h4>
+                              </div>
+                              {trialResult.retrieved_context_preview.length > 0 ? (
+                                <div className="space-y-3">
+                                  {trialResult.retrieved_context_preview.map((preview, index) => (
+                                    <div key={`${trialResult.retrieved_context_ids[index] || 'ctx'}-${index}`} className="rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-950/60">
+                                      <div className="text-xs text-gray-500">
+                                        {(trialResult.retrieved_context_ids[index] || '未提供 chunk_id')}
+                                        {trialResult.retrieved_context_titles[index]
+                                          ? ` · ${trialResult.retrieved_context_titles[index]}`
+                                          : ''}
+                                      </div>
+                                      <div className="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-200">
+                                        {preview}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-500">当前没有检索片段预览。</p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950/40">
+                            选择方案并输入问题后，这里会展示回答、时延、Router 判定和检索片段预览。
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {evaluationJobs.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
@@ -1557,13 +1831,13 @@ export default function PerformancePage() {
                         icon={<Database className="h-5 w-5" />}
                         loading={queryCacheLoading && !queryCacheStats}
                       />
-                      <StatCard
-                        title="全局命中率"
-                        value={formatMetricValue('cache_hit_rate', toNumericValue(queryCacheStats?.overall?.hit_rate))}
-                        subtitle={`Epoch ${queryCacheStats?.epoch ?? '-'}`}
-                        icon={<Activity className="h-5 w-5" />}
-                        loading={queryCacheLoading && !queryCacheStats}
-                      />
+                        <StatCard
+                          title="全局命中率"
+                          value={formatMetricValue('cache_hit_rate', toNumericValue(queryCacheStats?.overall?.hit_rate))}
+                          subtitle={`缓存版本 ${queryCacheStats?.epoch ?? '-'}`}
+                          icon={<Activity className="h-5 w-5" />}
+                          loading={queryCacheLoading && !queryCacheStats}
+                        />
                       <StatCard
                         title="L1 条目数"
                         value={formatNumber(queryCacheStats?.l1_size ?? null, 0)}
@@ -1781,6 +2055,24 @@ export default function PerformancePage() {
                         value={formatMetricValue(metricKey, getSummaryMetric(selectedSummary, metricKey))}
                         subtitle={metricKey === 'cache_hit_rate' ? '来自评测样本级 cache summary 汇总' : undefined}
                         icon={<Database className="h-5 w-5" />}
+                        loading={evaluationLoading && !selectedSummary}
+                      />
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                  <div className="mb-4 flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-violet-500" />
+                    <h3 className="text-lg font-semibold">Router 与深检索开关</h3>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    {['router_simple_rate', 'hyde_enabled_rate', 'crag_router_enabled_rate'].map((metricKey) => (
+                      <StatCard
+                        key={metricKey}
+                        title={formatMetricLabel(metricKey)}
+                        value={formatMetricValue(metricKey, getSummaryMetric(selectedSummary, metricKey))}
+                        icon={<Activity className="h-5 w-5" />}
                         loading={evaluationLoading && !selectedSummary}
                       />
                     ))}

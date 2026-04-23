@@ -475,7 +475,15 @@ def build_agentic_response_metadata(
     context_expansion = state.get("context_expansion_summary") or {}
     return {
         "query_type": state.get("query_type") or "general",
+        "query_complexity": state.get("query_complexity") or "simple",
+        "query_complexity_reason": state.get("query_complexity_reason") or "",
         "graph_preferred": bool(state.get("graph_preferred", False)),
+        "router_decision": state.get("router_decision") or "default_path",
+        "router_deep_search_enabled": bool(
+            state.get("router_deep_search_enabled", False)
+        ),
+        "crag_router_enabled": bool(state.get("crag_router_enabled", False)),
+        "grounded_mode": bool(state.get("grounded_mode", False)),
         "query_focus_terms": state.get("query_focus_terms") or [],
         "query_route_reason": state.get("query_route_reason") or "",
         "retrieval_plan": state.get("retrieval_plan") or {},

@@ -476,7 +476,19 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
             build_query_route(rewritten_query, state.get("item_names", [])), state
         )
         state["query_type"] = route_info.get("query_type", "general")
+        state["query_complexity"] = route_info.get("query_complexity", "simple")
+        state["query_complexity_reason"] = route_info.get(
+            "query_complexity_reason", ""
+        )
         state["graph_preferred"] = False
+        state["router_decision"] = route_info.get("router_decision", "default_path")
+        state["router_deep_search_enabled"] = bool(
+            route_info.get("router_deep_search_enabled", False)
+        )
+        state["crag_router_enabled"] = bool(
+            route_info.get("crag_router_enabled", False)
+        )
+        state["grounded_mode"] = bool(route_info.get("grounded_mode", False))
         state["query_focus_terms"] = route_info.get("focus_terms", [])
         state["query_route_reason"] = route_info.get("reason", "general_chat")
         state["retrieval_plan"] = route_info.get("retrieval_plan", {})
@@ -516,7 +528,17 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
         build_query_route(rewritten_query, state.get("item_names", [])), state
     )
     state["query_type"] = route_info.get("query_type", "general")
+    state["query_complexity"] = route_info.get("query_complexity", "simple")
+    state["query_complexity_reason"] = route_info.get("query_complexity_reason", "")
     state["graph_preferred"] = bool(route_info.get("graph_preferred", False))
+    state["router_decision"] = route_info.get("router_decision", "default_path")
+    state["router_deep_search_enabled"] = bool(
+        route_info.get("router_deep_search_enabled", False)
+    )
+    state["crag_router_enabled"] = bool(
+        route_info.get("crag_router_enabled", False)
+    )
+    state["grounded_mode"] = bool(route_info.get("grounded_mode", False))
     state["query_focus_terms"] = route_info.get("focus_terms", [])
     state["query_route_reason"] = route_info.get("reason", "")
     state["retrieval_plan"] = route_info.get("retrieval_plan", {})

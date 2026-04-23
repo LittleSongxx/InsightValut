@@ -33,7 +33,13 @@ class QueryGraphState(TypedDict):
     need_rag: bool  # 是否需要走RAG检索流程
     route_mode: str  # 路由模式：rag / general_chat
     query_type: str  # 问题类型：general / navigation / comparison / relation / constraint / explain
+    query_complexity: str  # 复杂度：simple / complex
+    query_complexity_reason: str  # 复杂度判定原因
     graph_preferred: bool  # 当前问题是否优先走图谱检索
+    router_decision: str  # 路由决策：default_path / simple_fast_path / complex_deep_path
+    router_deep_search_enabled: bool  # 是否启用 Router 控制深检索
+    crag_router_enabled: bool  # 当前问题是否允许执行 CRAG Retry
+    grounded_mode: bool  # 是否启用严格 grounded 回答约束
     query_focus_terms: list  # 图谱检索时使用的焦点词
     query_route_reason: str  # 问题类型识别原因
     retrieval_plan: dict  # 按题型生成的检索执行计划

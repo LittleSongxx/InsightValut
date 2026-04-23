@@ -13,6 +13,12 @@ import requests
 
 from app.core.logger import logger
 from app.conf.reranker_config import reranker_config
+from app.utils.path_util import PROJECT_ROOT
+
+try:
+    import torch
+except Exception:  # pragma: no cover - torch may be unavailable in minimal envs
+    torch = None
 
 # 双重加载 dotenv，确保环境变量可用
 try:
@@ -43,6 +49,31 @@ _local_reranker = None
 _local_reranker_lock = threading.Lock()
 
 
+def _resolve_reranker_runtime() -> tuple[str, bool]:
+    requested_device = str(reranker_config.bge_reranker_device or "cpu").strip() or "cpu"
+    requested_fp16 = bool(reranker_config.bge_reranker_fp16)
+    normalized_device = requested_device.lower()
+
+    if normalized_device.startswith("cuda"):
+        cuda_available = bool(
+            torch is not None
+            and hasattr(torch, "cuda")
+            and callable(getattr(torch.cuda, "is_available", None))
+            and torch.cuda.is_available()
+        )
+        if not cuda_available:
+            logger.warning(
+                f"Reranker 请求使用设备 {requested_device}，但当前环境不支持 CUDA，自动回退到 CPU"
+            )
+            return "cpu", False
+
+    if normalized_device == "cpu" and requested_fp16:
+        logger.warning("Reranker 在 CPU 模式下禁用 FP16，自动回退到 FP32")
+        requested_fp16 = False
+
+    return requested_device, requested_fp16
+
+
 def _get_local_reranker():
     global _local_reranker
     if _local_reranker is not None:
@@ -57,8 +88,7 @@ def _get_local_reranker():
         if raw_path:
             resolved = os.path.expanduser(raw_path)
             if not os.path.isabs(resolved):
-                project_root = os.getenv("PROJECT_ROOT", "/app")
-                resolved = os.path.join(project_root, resolved)
+                resolved = os.path.join(PROJECT_ROOT, resolved)
             if os.path.exists(resolved):
                 model_path = resolved
                 logger.info(f"使用本地 reranker 模型: {model_path}")
@@ -68,8 +98,7 @@ def _get_local_reranker():
         else:
             model_path = LOCAL_RERANK_MODEL_ID
 
-        device = reranker_config.bge_reranker_device or "cpu"
-        use_fp16 = reranker_config.bge_reranker_fp16 or False
+        device, use_fp16 = _resolve_reranker_runtime()
 
         _local_reranker = FlagReranker(
             model_name_or_path=model_path,

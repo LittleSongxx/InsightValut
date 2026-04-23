@@ -125,6 +125,25 @@ _QUERY_TYPE_PRIORITY = [
     "general",
 ]
 
+_COMPLEXITY_MARKERS = (
+    "并且",
+    "以及",
+    "同时",
+    "分别",
+    "对比",
+    "比较",
+    "区别",
+    "差异",
+    "原因",
+    "为什么",
+    "是否",
+    "如果",
+    "怎么得出",
+    "哪一步",
+    "上一步",
+    "下一步",
+)
+
 
 def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
@@ -303,13 +322,81 @@ def build_retrieval_plan(
     return plan
 
 
+def classify_query_complexity(
+    query: str,
+    item_names: Sequence[str] | None = None,
+    *,
+    query_type: str = "general",
+    focus_terms: Sequence[str] | None = None,
+) -> Dict[str, Any]:
+    normalized_query = _clean_text(query)
+    normalized_item_names = [
+        _clean_text(str(name)) for name in (item_names or []) if _clean_text(str(name))
+    ]
+    resolved_focus_terms = [
+        _clean_text(str(term)) for term in (focus_terms or []) if _clean_text(str(term))
+    ]
+    token_count = len(
+        re.findall(
+            r"[A-Za-z0-9][A-Za-z0-9._/-]*|[\u4e00-\u9fff]{1,16}",
+            normalized_query,
+        )
+    )
+    marker_hits = [
+        marker for marker in _COMPLEXITY_MARKERS if marker in normalized_query
+    ]
+    has_multi_clause = bool(
+        re.search(r"[，；;、]|(并且|以及|同时|分别|如果|是否)", normalized_query)
+    )
+
+    if not normalized_query:
+        return {
+            "query_complexity": "simple",
+            "reason": "empty_query",
+        }
+
+    complexity = "simple"
+    reason = "single_factoid"
+    if query_type in GRAPH_PREFERRED_QUERY_TYPES:
+        complexity = "complex"
+        reason = f"query_type={query_type}"
+    elif len(normalized_item_names) >= 2:
+        complexity = "complex"
+        reason = "multiple_item_targets"
+    elif len(resolved_focus_terms) >= 5:
+        complexity = "complex"
+        reason = "many_focus_terms"
+    elif token_count >= 12:
+        complexity = "complex"
+        reason = "long_query"
+    elif has_multi_clause and marker_hits:
+        complexity = "complex"
+        reason = f"markers={','.join(marker_hits[:3])}"
+    elif has_multi_clause and token_count >= 8:
+        complexity = "complex"
+        reason = "multi_clause_query"
+
+    return {
+        "query_complexity": complexity,
+        "reason": reason,
+    }
+
+
 def build_query_route(
     query: str, item_names: Sequence[str] | None = None
 ) -> Dict[str, Any]:
     route = classify_query_type(query, item_names=item_names)
+    complexity = classify_query_complexity(
+        query,
+        item_names=item_names,
+        query_type=str(route.get("query_type") or "general"),
+        focus_terms=route.get("focus_terms") or [],
+    )
     route["retrieval_plan"] = build_retrieval_plan(
         route["query_type"], route["graph_preferred"]
     )
+    route["query_complexity"] = complexity["query_complexity"]
+    route["query_complexity_reason"] = complexity["reason"]
     return route
 
 
@@ -331,6 +418,20 @@ def get_bm25_enabled(state: Dict[str, Any] | None = None) -> bool:
     if "bm25_enabled" in overrides:
         return bool(overrides.get("bm25_enabled"))
     return bool(query_threshold_config.bm25_enabled)
+
+
+def get_grounded_mode(state: Dict[str, Any] | None = None) -> bool:
+    overrides = _get_evaluation_overrides(state)
+    if "grounded_answer_enabled" in overrides:
+        return bool(overrides.get("grounded_answer_enabled"))
+    return bool((state or {}).get("grounded_mode", False))
+
+
+def is_router_deep_search_enabled(state: Dict[str, Any] | None = None) -> bool:
+    overrides = _get_evaluation_overrides(state)
+    if "router_deep_search_enabled" in overrides:
+        return bool(overrides.get("router_deep_search_enabled"))
+    return bool((state or {}).get("router_deep_search_enabled", False))
 
 
 def apply_route_overrides(
@@ -372,6 +473,40 @@ def apply_route_overrides(
         updated_plan = dict(updated_route.get("retrieval_plan") or {})
         updated_plan.update(retrieval_plan_overrides)
         updated_route["retrieval_plan"] = updated_plan
+
+    query_complexity = str(
+        updated_route.get("query_complexity")
+        or route.get("query_complexity")
+        or "simple"
+    ).strip() or "simple"
+    updated_route["query_complexity"] = query_complexity
+    updated_route["query_complexity_reason"] = str(
+        updated_route.get("query_complexity_reason")
+        or route.get("query_complexity_reason")
+        or "unknown"
+    )
+
+    router_enabled = is_router_deep_search_enabled(state)
+    grounded_mode = get_grounded_mode(state)
+    router_decision = "default_path"
+    crag_router_enabled = bool(overrides.get("retrieval_grader_enabled", True))
+
+    if router_enabled:
+        updated_plan = dict(updated_route.get("retrieval_plan") or {})
+        if query_complexity == "simple":
+            updated_plan["run_hyde"] = False
+            router_decision = "simple_fast_path"
+            crag_router_enabled = False
+        else:
+            router_decision = "complex_deep_path"
+            updated_plan["run_hyde"] = bool(updated_plan.get("run_hyde", True))
+            crag_router_enabled = bool(overrides.get("retrieval_grader_enabled", True))
+        updated_route["retrieval_plan"] = updated_plan
+
+    updated_route["router_deep_search_enabled"] = router_enabled
+    updated_route["router_decision"] = router_decision
+    updated_route["crag_router_enabled"] = crag_router_enabled
+    updated_route["grounded_mode"] = grounded_mode
 
     return updated_route
 

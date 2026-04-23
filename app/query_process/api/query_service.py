@@ -11,6 +11,7 @@ from app.utils.task_utils import (
     TASK_STATUS_PROCESSING,
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
+    clear_task,
 )
 from app.utils.sse_utils import (
     push_to_session,
@@ -41,6 +42,10 @@ from app.utils.eval_job_utils import (
 )
 from app.utils.chunk_id_migration import migrate_collection_chunk_ids
 from app.utils.unified_rag_eval import sync_evaluation_dataset
+from app.utils.unified_rag_eval import (
+    build_variant_runtime_state,
+    get_variant_definition,
+)
 from app.clients.mongo_history_utils import (
     get_recent_messages,
     clear_history,
@@ -53,6 +58,7 @@ from app.utils.query_cache_utils import (
     reset_query_cache,
 )
 from app.lm.embedding_utils import warmup_embeddings
+from app.query_process.agent.agentic_utils import build_agentic_response_metadata
 from app.query_process.agent.main_graph import query_app
 
 # 后续导入启动图对象
@@ -112,6 +118,13 @@ class CacheResetRequest(BaseModel):
     reason: str = Field("manual", description="重置原因")
 
 
+class EvaluationVariantTestRequest(BaseModel):
+    """评测变体在线试跑请求"""
+
+    query: str = Field(..., description="测试问题")
+    variant_name: str = Field(..., description="评测变体名称")
+
+
 # 证明服务器启动即可
 @app.get("/health")
 async def health():
@@ -139,30 +152,64 @@ async def warmup_embedding_model():
 def run_query_graph(session_id: str, user_query: str, is_stream: bool = True):
     print(f"开始流程图处理...{session_id} {user_query} {is_stream}")
 
-    # 性能埋点：开始追踪
-    perf_start(session_id, user_query)
-
     default_state = {
         "original_query": user_query,
         "session_id": session_id,
         "is_stream": is_stream,
     }
-    try:
-        # 后期运行
-        with query_cache_request_context(default_state):
-            result = query_app.invoke(default_state)
-            if isinstance(result, dict):
-                result["cache_summary"] = result.get("cache_summary") or get_current_request_cache_summary()
-        # 整体任务就更新完了！ 接下来就是数据的更新了！
-        update_task_status(session_id, TASK_STATUS_COMPLETED, is_stream)
-    except Exception as e:
-        print(f"流程执行异常: {e}")
+    _, _, error = invoke_query_state(default_state, persist_perf=True)
+    if error:
+        print(f"流程执行异常: {error}")
         update_task_status(session_id, TASK_STATUS_FAILED, is_stream)
         if is_stream:
-            push_to_session(session_id, SSEEvent.ERROR, {"error": str(e)})
+            push_to_session(session_id, SSEEvent.ERROR, {"error": error})
+        return
+    update_task_status(session_id, TASK_STATUS_COMPLETED, is_stream)
+
+
+def invoke_query_state(
+    initial_state: dict,
+    *,
+    persist_perf: bool = True,
+) -> tuple[dict, dict, str]:
+    session_id = str(initial_state.get("session_id") or "")
+    query = str(initial_state.get("original_query") or "")
+    perf_start(session_id, query)
+
+    final_state: dict = {}
+    error = ""
+    try:
+        with query_cache_request_context(initial_state):
+            result = query_app.invoke(initial_state)
+            if isinstance(result, dict):
+                final_state = result
+            if isinstance(final_state, dict):
+                final_state["cache_summary"] = (
+                    final_state.get("cache_summary")
+                    or get_current_request_cache_summary()
+                )
+    except Exception as exc:
+        error = str(exc)
     finally:
-        # 性能埋点：结束追踪并写入 MongoDB
-        perf_finish(session_id)
+        perf_doc = perf_finish(session_id, persist=persist_perf) or {}
+    return final_state, perf_doc, error
+
+
+def _preview_text(text: str, limit: int = 220) -> str:
+    value = str(text or "").strip()
+    if len(value) <= limit:
+        return value
+    return value[:limit].rstrip() + "..."
+
+
+def _stage_duration_map(perf_doc: dict) -> dict[str, float]:
+    mapping: dict[str, float] = {}
+    for item in perf_doc.get("stages") or []:
+        stage_name = str(item.get("stage") or "").strip()
+        duration = item.get("duration_ms")
+        if stage_name and isinstance(duration, (int, float)):
+            mapping[stage_name] = round(float(duration), 2)
+    return mapping
 
 
 @app.post("/query")
@@ -431,6 +478,96 @@ async def sync_evaluation_dataset_api(request: EvaluationDatasetSyncRequest):
         raise HTTPException(
             status_code=500, detail=f"sync evaluation dataset error: {e}"
         )
+
+
+@app.post("/evaluation/variants/test")
+async def test_evaluation_variant(request: EvaluationVariantTestRequest):
+    """阻塞式试跑指定评测变体，供前端直接验证方案效果"""
+    query = str(request.query or "").strip()
+    variant_name = str(request.variant_name or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    if not variant_name:
+        raise HTTPException(status_code=400, detail="variant_name is required")
+
+    try:
+        variant = get_variant_definition(variant_name)
+        session_id = f"variant-test-{uuid.uuid4().hex[:12]}"
+        initial_state = build_variant_runtime_state(query, variant_name, session_id)
+        final_state, perf_doc, error = invoke_query_state(initial_state, persist_perf=False)
+        reranked_docs = final_state.get("reranked_docs") or []
+        metadata = final_state.get("response_metadata") or build_agentic_response_metadata(
+            final_state, image_urls=[]
+        )
+        retrieved_contexts = [
+            str(doc.get("text") or doc.get("content") or "").strip()
+            for doc in reranked_docs
+            if str(doc.get("text") or doc.get("content") or "").strip()
+        ]
+        runtime_state_excerpt = {
+            "query_type": str(final_state.get("query_type") or ""),
+            "retrieval_plan": final_state.get("retrieval_plan") or {},
+            "sub_query_routes": final_state.get("sub_query_routes") or [],
+            "sub_query_results": final_state.get("sub_query_results") or [],
+            "context_expansion_summary": final_state.get("context_expansion_summary") or {},
+            "evidence_coverage_summary": final_state.get("evidence_coverage_summary") or {},
+            "rescue_plan": final_state.get("rescue_plan") or {},
+            "answer_plan": final_state.get("answer_plan") or {},
+            "clarification_reason": str(final_state.get("clarification_reason") or ""),
+            "answer_error": str(final_state.get("answer_error") or ""),
+            "item_name_extract_error": str(final_state.get("item_name_extract_error") or ""),
+            "retrieval_grade": str(final_state.get("retrieval_grade") or ""),
+            "retry_count": int(final_state.get("retry_count") or 0),
+            "hallucination_retry_count": int(
+                final_state.get("hallucination_retry_count") or 0
+            ),
+            "hallucination_check_passed": bool(
+                final_state.get("hallucination_check_passed", True)
+            ),
+            "need_rag": bool(final_state.get("need_rag", True)),
+            "llm_requested_model": str(final_state.get("llm_requested_model") or ""),
+            "llm_model_used": str(final_state.get("llm_model_used") or ""),
+            "llm_base_url_used": str(final_state.get("llm_base_url_used") or ""),
+            "llm_fallback_model": str(final_state.get("llm_fallback_model") or ""),
+            "llm_fallback_used": bool(final_state.get("llm_fallback_used", False)),
+            "llm_fallback_reason": str(final_state.get("llm_fallback_reason") or ""),
+            "cache_summary": final_state.get("cache_summary") or {},
+        }
+        return {
+            "variant_name": variant_name,
+            "technique": str(variant.get("technique") or variant_name),
+            "answer": str(final_state.get("answer") or "").strip(),
+            "latency_ms": perf_doc.get("total_duration_ms"),
+            "first_answer_ms": perf_doc.get("first_answer_ms"),
+            "stage_durations_ms": _stage_duration_map(perf_doc),
+            "metadata": metadata,
+            "runtime_state_excerpt": runtime_state_excerpt,
+            "retrieved_context_ids": [
+                str(doc.get("chunk_id") or doc.get("doc_id") or "")
+                for doc in reranked_docs[:5]
+                if str(doc.get("chunk_id") or doc.get("doc_id") or "").strip()
+            ],
+            "retrieved_context_titles": [
+                str(doc.get("title") or doc.get("file_title") or "").strip()
+                for doc in reranked_docs[:5]
+            ],
+            "retrieved_context_preview": [
+                _preview_text(str(doc.get("text") or doc.get("content") or ""))
+                for doc in reranked_docs[:3]
+                if str(doc.get("text") or doc.get("content") or "").strip()
+            ],
+            "retrieved_contexts": retrieved_contexts,
+            "error": error,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"evaluation variant test error: {e}"
+        )
+    finally:
+        if "session_id" in locals():
+            clear_task(session_id)
 
 
 @app.post("/knowledge-base/chunk-ids/migrate")

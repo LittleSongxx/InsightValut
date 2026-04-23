@@ -190,16 +190,31 @@ class QueryCacheManager:
         digest = hashlib.sha256(payload_text.encode("utf-8")).hexdigest()
         return f"{query_cache_config.namespace_prefix}:{namespace}:{digest}"
 
+    def _clear_redis_cache_keys(self, client: Redis) -> int:
+        deleted_count = 0
+        for namespace in sorted(DEFAULT_CACHE_NAMESPACES):
+            pattern = f"{query_cache_config.namespace_prefix}:{namespace}:*"
+            batch: list[Any] = []
+            for key in client.scan_iter(match=pattern, count=500):
+                batch.append(key)
+                if len(batch) >= 500:
+                    deleted_count += int(client.delete(*batch) or 0)
+                    batch.clear()
+            if batch:
+                deleted_count += int(client.delete(*batch) or 0)
+        return deleted_count
+
     def invalidate_all(self, reason: str = "manual") -> Dict[str, Any]:
+        deleted_count = 0
+        redis_error = ""
         with self._epoch_lock:
-            next_epoch = self._epoch + 1
             client = self._get_redis_client()
             if client is not None:
                 try:
-                    next_epoch = int(client.incr(self._epoch_key))
+                    deleted_count = self._clear_redis_cache_keys(client)
                 except Exception as exc:
-                    logger.warning(f"查询缓存：Redis epoch 自增失败，使用本地 epoch ({exc})")
-            self._epoch = max(1, int(next_epoch))
+                    redis_error = str(exc)
+                    logger.warning(f"查询缓存：Redis 清空失败，仅清空本地缓存 ({exc})")
             self._l1.clear()
         with self._stats_lock:
             self._global_stats.clear()
@@ -207,7 +222,9 @@ class QueryCacheManager:
             "ok": True,
             "reason": reason,
             "epoch": self._epoch,
-            "message": f"查询缓存已失效，当前 epoch={self._epoch}",
+            "deleted_keys": deleted_count,
+            "redis_error": redis_error,
+            "message": "查询缓存已清空",
         }
 
     def summary(self) -> Dict[str, Any]:

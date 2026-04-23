@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+import requests
+
 from app.clients.milvus_schema import extract_chunk_id, normalize_entity_for_business_id
 
 try:
@@ -109,6 +111,28 @@ def _agentic_features(**overrides: bool) -> Dict[str, bool]:
     features = {key: False for key in DEFAULT_AGENTIC_FEATURES.keys()}
     features.update(overrides)
     return features
+
+
+def _evaluation_query_service_base_url() -> str:
+    return str(os.environ.get("EVAL_QUERY_SERVICE_BASE_URL") or "").strip().rstrip("/")
+
+
+def _evaluation_query_service_timeout() -> int:
+    raw = os.environ.get("EVAL_QUERY_SERVICE_TIMEOUT_SEC") or "600"
+    try:
+        return max(30, int(raw))
+    except (TypeError, ValueError):
+        return 600
+
+
+def _forced_warmup_rounds() -> Optional[int]:
+    raw = os.environ.get("EVAL_FORCE_WARMUP_ROUNDS")
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return None
 
 
 def _ensure_ragas_ready() -> None:
@@ -262,6 +286,35 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
                 "run_hyde": True,
                 "run_web": False,
                 "bm25_weight_multiplier": 0.0,
+            },
+        },
+    },
+    "router_hybrid_grounded_cached": {
+        "description": "在 HyDE + KG + Context Expansion + Cache + CRAG Retry 的基础上，引入 BM25 混合检索、Router 控制 HyDE/CRAG 深检索，并启用严格 grounded 回答约束",
+        "technique": "Router Hybrid Grounded Cached",
+        "compare_to": "hyde_kg_context_expansion_cached",
+        "use_case_query_type": False,
+        "warmup_rounds": 1,
+        "reset_cache_before_run": True,
+        "evaluation_overrides": {
+            "force_need_rag": True,
+            "force_query_type": "general",
+            "force_graph_preferred": False,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": True,
+            "router_deep_search_enabled": True,
+            "grounded_answer_enabled": True,
+            "route_reason": "eval_router_hybrid_grounded_cached",
+            "agentic_features": _agentic_features(context_expansion=True),
+            "cache_enabled": True,
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
             },
         },
     },
@@ -420,6 +473,37 @@ def get_variant_catalog() -> List[Dict[str, Any]]:
             }
         )
     return catalog
+
+
+def get_variant_definition(variant_name: str) -> Dict[str, Any]:
+    config = VARIANTS.get(str(variant_name or "").strip())
+    if not config:
+        raise ValueError(f"未知评测变体: {variant_name}")
+    return copy.deepcopy(config)
+
+
+def build_variant_runtime_overrides(variant_name: str) -> Dict[str, Any]:
+    config = get_variant_definition(variant_name)
+    overrides = copy.deepcopy(config.get("evaluation_overrides") or {})
+    overrides.setdefault("cache_enabled", False)
+    if config.get("use_case_query_type"):
+        overrides.pop("force_query_type", None)
+        overrides.pop("force_graph_preferred", None)
+    return overrides
+
+
+def build_variant_runtime_state(
+    query: str,
+    variant_name: str,
+    session_id: str,
+) -> Dict[str, Any]:
+    return {
+        "session_id": session_id,
+        "original_query": str(query or "").strip(),
+        "is_stream": False,
+        "evaluation_mode": True,
+        "evaluation_overrides": build_variant_runtime_overrides(variant_name),
+    }
 
 
 RAGAS_METRICS = [
@@ -998,6 +1082,10 @@ def _stage_map(perf_doc: Dict[str, Any]) -> Dict[str, float]:
 
 
 def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
+    service_base_url = _evaluation_query_service_base_url()
+    if service_base_url:
+        return _run_single_case_via_service(case, variant_name, service_base_url)
+
     case_id = str(case.get("case_id") or case.get("id") or uuid.uuid4().hex[:8])
     session_id = f"eval-{variant_name}-{case_id}-{uuid.uuid4().hex[:8]}"
     query = _query(case)
@@ -1061,6 +1149,16 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         ],
         "retrieval_plan": final_state.get("retrieval_plan") or {},
         "runtime_query_type": str(final_state.get("query_type") or _query_type(case)),
+        "query_complexity": str(final_state.get("query_complexity") or "simple"),
+        "query_complexity_reason": str(
+            final_state.get("query_complexity_reason") or ""
+        ),
+        "router_decision": str(final_state.get("router_decision") or "default_path"),
+        "router_deep_search_enabled": bool(
+            final_state.get("router_deep_search_enabled", False)
+        ),
+        "crag_router_enabled": bool(final_state.get("crag_router_enabled", False)),
+        "grounded_mode": bool(final_state.get("grounded_mode", False)),
         "sub_query_routes": final_state.get("sub_query_routes") or [],
         "sub_query_results": final_state.get("sub_query_results") or [],
         "context_expansion_summary": final_state.get("context_expansion_summary") or {},
@@ -1092,6 +1190,125 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         "latency_ms": _num(perf_doc.get("total_duration_ms")),
         "first_answer_ms": _num(perf_doc.get("first_answer_ms")),
         "stage_durations_ms": _stage_map(perf_doc),
+        "error": runtime_error,
+    }
+
+
+def _run_single_case_via_service(
+    case: Dict[str, Any], variant_name: str, service_base_url: str
+) -> Dict[str, Any]:
+    case_id = str(case.get("case_id") or case.get("id") or uuid.uuid4().hex[:8])
+    query = _query(case)
+    declared_relevant_ids = _relevant_ids(case)
+    resolved_relevant_ids = _resolved_relevant_ids(case)
+
+    response = requests.post(
+        f"{service_base_url}/evaluation/variants/test",
+        json={"query": query, "variant_name": variant_name},
+        timeout=_evaluation_query_service_timeout(),
+    )
+    response.raise_for_status()
+    payload = response.json() if response.content else {}
+    metadata = payload.get("metadata") or {}
+    runtime_fields = payload.get("runtime_state_excerpt") or {}
+    retrieved_contexts = [
+        str(text or "").strip()
+        for text in (payload.get("retrieved_contexts") or payload.get("retrieved_context_preview") or [])
+        if str(text or "").strip()
+    ]
+    answer_error = str(runtime_fields.get("answer_error") or "").strip()
+    item_name_extract_error = str(runtime_fields.get("item_name_extract_error") or "").strip()
+    runtime_error = " | ".join(
+        value
+        for value in [
+            str(payload.get("error") or "").strip(),
+            answer_error,
+            item_name_extract_error,
+        ]
+        if value
+    )
+
+    return {
+        "case_id": case_id,
+        "query": query,
+        "query_type": _query_type(case),
+        "item_names": _item_names(case),
+        "reference_answer": _reference(case),
+        "declared_relevant_chunk_ids": declared_relevant_ids,
+        "relevant_chunk_ids": resolved_relevant_ids,
+        "retrieval_ground_truth": copy.deepcopy(
+            case.get("_evaluation_ground_truth") or {}
+        ),
+        "response": str(payload.get("answer") or "").strip(),
+        "retrieved_contexts": retrieved_contexts,
+        "retrieved_context_ids": payload.get("retrieved_context_ids") or [],
+        "retrieved_context_preview": payload.get("retrieved_context_preview") or [],
+        "retrieved_context_titles": payload.get("retrieved_context_titles") or [],
+        "retrieval_plan": metadata.get("retrieval_plan")
+        or runtime_fields.get("retrieval_plan")
+        or {},
+        "runtime_query_type": str(
+            runtime_fields.get("query_type") or metadata.get("query_type") or _query_type(case)
+        ),
+        "query_complexity": str(
+            metadata.get("query_complexity") or runtime_fields.get("query_complexity") or "simple"
+        ),
+        "query_complexity_reason": str(
+            metadata.get("query_complexity_reason")
+            or runtime_fields.get("query_complexity_reason")
+            or ""
+        ),
+        "router_decision": str(
+            metadata.get("router_decision") or runtime_fields.get("router_decision") or "default_path"
+        ),
+        "router_deep_search_enabled": bool(
+            metadata.get("router_deep_search_enabled", runtime_fields.get("router_deep_search_enabled", False))
+        ),
+        "crag_router_enabled": bool(
+            metadata.get("crag_router_enabled", runtime_fields.get("crag_router_enabled", False))
+        ),
+        "grounded_mode": bool(
+            metadata.get("grounded_mode", runtime_fields.get("grounded_mode", False))
+        ),
+        "sub_query_routes": runtime_fields.get("sub_query_routes") or [],
+        "sub_query_results": runtime_fields.get("sub_query_results") or [],
+        "context_expansion_summary": metadata.get("context_expansion_summary")
+        or runtime_fields.get("context_expansion_summary")
+        or {},
+        "evidence_coverage_summary": metadata.get("evidence_coverage_summary")
+        or runtime_fields.get("evidence_coverage_summary")
+        or {},
+        "rescue_plan": metadata.get("rescue_plan") or runtime_fields.get("rescue_plan") or {},
+        "answer_plan": metadata.get("answer_plan") or runtime_fields.get("answer_plan") or {},
+        "clarification_reason": str(
+            metadata.get("clarification_reason") or runtime_fields.get("clarification_reason") or ""
+        ),
+        "answer_error": answer_error,
+        "item_name_extract_error": item_name_extract_error,
+        "agentic_features": metadata.get("agentic_features")
+        or _build_overrides(variant_name, case).get("agentic_features")
+        or {},
+        "retrieval_grade": str(runtime_fields.get("retrieval_grade") or ""),
+        "retry_count": int(runtime_fields.get("retry_count") or 0),
+        "hallucination_retry_count": int(
+            runtime_fields.get("hallucination_retry_count") or 0
+        ),
+        "hallucination_check_passed": bool(
+            runtime_fields.get("hallucination_check_passed", True)
+        ),
+        "need_rag": bool(runtime_fields.get("need_rag", True)),
+        "llm_requested_model": str(runtime_fields.get("llm_requested_model") or ""),
+        "llm_model_used": str(runtime_fields.get("llm_model_used") or ""),
+        "llm_base_url_used": str(runtime_fields.get("llm_base_url_used") or ""),
+        "llm_fallback_model": str(runtime_fields.get("llm_fallback_model") or ""),
+        "llm_fallback_used": bool(runtime_fields.get("llm_fallback_used", False)),
+        "llm_fallback_reason": str(runtime_fields.get("llm_fallback_reason") or ""),
+        "cache_summary": metadata.get("cache_summary")
+        or runtime_fields.get("cache_summary")
+        or {},
+        "latency_ms": _num(payload.get("latency_ms")),
+        "first_answer_ms": _num(payload.get("first_answer_ms")),
+        "stage_durations_ms": payload.get("stage_durations_ms") or {},
         "error": runtime_error,
     }
 
@@ -1516,6 +1733,31 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             ]
         )
         or 0.0,
+        "router_simple_rate": _avg(
+            [
+                1.0
+                if str(item.get("query_complexity") or "simple") == "simple"
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "hyde_enabled_rate": _avg(
+            [
+                1.0
+                if bool((item.get("retrieval_plan") or {}).get("run_hyde"))
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "crag_router_enabled_rate": _avg(
+            [
+                1.0 if bool(item.get("crag_router_enabled", False)) else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
         "structured_answer_rate": _avg(
             [
                 1.0 if (item.get("answer_plan") or {}).get("structured_output") else 0.0
@@ -1819,12 +2061,28 @@ def evaluate_variants(
         )
 
     total_variants = len(resolved_variants)
+    service_base_url = _evaluation_query_service_base_url()
     for index, variant_name in enumerate(resolved_variants, start=1):
         _raise_if_cancelled(cancel_callback)
         variant_config = VARIANTS.get(variant_name, {})
         if variant_config.get("reset_cache_before_run"):
-            reset_query_cache(reason=f"evaluation:{variant_name}:start")
-        warmup_rounds = max(0, int(variant_config.get("warmup_rounds") or 0))
+            if service_base_url:
+                try:
+                    requests.post(
+                        f"{service_base_url}/cache/reset",
+                        json={"reason": f"evaluation:{variant_name}:start"},
+                        timeout=30,
+                    ).raise_for_status()
+                except Exception:
+                    reset_query_cache(reason=f"evaluation:{variant_name}:start")
+            else:
+                reset_query_cache(reason=f"evaluation:{variant_name}:start")
+        forced_warmup_rounds = _forced_warmup_rounds()
+        warmup_rounds = (
+            forced_warmup_rounds
+            if forced_warmup_rounds is not None
+            else max(0, int(variant_config.get("warmup_rounds") or 0))
+        )
         total_cases = len(cases)
         if progress_callback is not None:
             progress_callback(

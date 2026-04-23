@@ -47,6 +47,12 @@ export interface QueryCacheRequestSummary {
 
 export interface AgenticMetadata {
   query_type?: string;
+  query_complexity?: string;
+  query_complexity_reason?: string;
+  router_decision?: string;
+  router_deep_search_enabled?: boolean;
+  crag_router_enabled?: boolean;
+  grounded_mode?: boolean;
   query_focus_terms?: string[];
   query_route_reason?: string;
   retrieval_plan?: Record<string, unknown>;
@@ -160,6 +166,8 @@ export interface QueryCacheResetResult {
   ok: boolean;
   reason: string;
   epoch: number;
+  deleted_keys?: number;
+  redis_error?: string;
   message: string;
 }
 
@@ -353,4 +361,18 @@ export interface EvaluationReportDeleteResult {
   deleted_paths: string[];
   deleted_count: number;
   meta?: EvaluationReportListItem | Record<string, unknown>;
+}
+
+export interface EvaluationVariantTrialResult {
+  variant_name: string;
+  technique: string;
+  answer: string;
+  latency_ms: number | null;
+  first_answer_ms: number | null;
+  stage_durations_ms: Record<string, number>;
+  metadata: AgenticMetadata | null;
+  retrieved_context_ids: string[];
+  retrieved_context_titles: string[];
+  retrieved_context_preview: string[];
+  error: string;
 }

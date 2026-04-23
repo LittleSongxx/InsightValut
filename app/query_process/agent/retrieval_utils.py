@@ -103,6 +103,8 @@ def _bm25_document_text(doc: Dict[str, Any]) -> str:
         str(doc.get("item_name") or "").strip(),
         str(doc.get("title") or "").strip(),
         str(doc.get("parent_title") or "").strip(),
+        str(doc.get("part") or "").strip(),
+        str(doc.get("file_title") or "").strip(),
         str(doc.get("content") or "").strip(),
     ]
     return "\n".join(part for part in parts if part)
@@ -118,9 +120,6 @@ def run_bm25_search(
     output_fields: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     if not query_text:
-        return []
-    if not item_names:
-        logger.info("BM25 检索跳过：item_names 为空")
         return []
 
     target_collection = _get_chunks_collection_name(collection_name)

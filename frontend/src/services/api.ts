@@ -6,6 +6,7 @@ import type {
   EvaluationReportDetail,
   EvaluationReportDeleteResult,
   EvaluationReportListItem,
+  EvaluationVariantTrialResult,
   HistoryItem,
   ImportTask,
   PerformanceSummary,
@@ -292,6 +293,28 @@ export async function createEvaluationJob(payload: {
   });
   if (!res.ok) {
     let message = `Create evaluation job failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export async function testEvaluationVariant(payload: {
+  query: string;
+  variant_name: string;
+}): Promise<EvaluationVariantTrialResult> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/variants/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let message = `Evaluation variant test failed: ${res.status}`;
     try {
       const data = await res.json();
       if (data?.detail) message = data.detail;
