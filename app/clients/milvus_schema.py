@@ -24,6 +24,11 @@ FIELD_PART = "part"
 FIELD_FILE_TITLE = "file_title"
 FIELD_ITEM_NAME = "item_name"
 FIELD_IMAGE_URLS = "image_urls"
+FIELD_SECTION_PATH = "section_path"
+FIELD_CHUNK_CONTEXT = "chunk_context"
+FIELD_EMBEDDING_TEXT = "embedding_text"
+FIELD_BM25_TEXT = "bm25_text"
+FIELD_ANCHOR_TERMS = "anchor_terms"
 FIELD_SPARSE_VECTOR = "sparse_vector"
 FIELD_DENSE_VECTOR = "dense_vector"
 
@@ -41,6 +46,11 @@ CHUNKS_OUTPUT_FIELDS = [
     FIELD_FILE_TITLE,
     FIELD_ITEM_NAME,
     FIELD_IMAGE_URLS,
+    FIELD_SECTION_PATH,
+    FIELD_CHUNK_CONTEXT,
+    FIELD_EMBEDDING_TEXT,
+    FIELD_BM25_TEXT,
+    FIELD_ANCHOR_TERMS,
 ]
 
 # ==================== ITEM_NAME_COLLECTION 字段定义 ====================
@@ -111,6 +121,10 @@ def entity_to_doc(entity: dict, source: str = "local") -> dict:
         "content": get_entity_field(entity, FIELD_CONTENT),
         "title": get_entity_field(entity, FIELD_TITLE),
         "parent_title": get_entity_field(entity, FIELD_PARENT_TITLE),
+        "section_path": get_entity_field(entity, FIELD_SECTION_PATH),
+        "chunk_context": get_entity_field(entity, FIELD_CHUNK_CONTEXT),
+        "bm25_text": get_entity_field(entity, FIELD_BM25_TEXT),
+        "anchor_terms": get_entity_field(entity, FIELD_ANCHOR_TERMS) or [],
         "item_name": get_entity_field(entity, FIELD_ITEM_NAME),
         "image_urls": get_entity_field(entity, FIELD_IMAGE_URLS) or [],
         "source": source,

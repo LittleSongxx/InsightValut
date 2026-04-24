@@ -1,5 +1,6 @@
 import sys
 import json
+import re
 
 from app.utils.task_utils import add_running_task, add_done_task
 from app.lm.lm_utils import coerce_llm_content, get_llm_client
@@ -9,6 +10,45 @@ from app.conf.query_threshold_config import query_threshold_config
 
 cfg = query_threshold_config
 HALLUCINATION_MAX_RETRIES = cfg.hallucination_max_retries
+
+
+def _bool_from_state(state: dict, key: str, default: bool = False) -> bool:
+    value = default
+    for container in (
+        state,
+        state.get("route_overrides") or {},
+        state.get("evaluation_overrides") or {},
+    ):
+        if isinstance(container, dict) and key in container:
+            value = bool(container.get(key))
+    return value
+
+
+def _needs_llm_hallucination_check(state: dict, answer: str, reranked_docs: list) -> bool:
+    if not _bool_from_state(state, "anchor_context_enabled", False):
+        return True
+    if not bool(state.get("grounded_mode", False)):
+        return True
+
+    reference_blob = "\n".join(str(doc.get("text") or "") for doc in reranked_docs)
+    if not reranked_docs:
+        return "抱歉，资料中未提供" not in answer
+
+    target_coverage = state.get("target_coverage") or {}
+    missing_targets = target_coverage.get("missing_targets") or []
+    if missing_targets and "抱歉，资料中未提供" not in answer:
+        return True
+
+    answer_numbers = set(re.findall(r"\d+(?:\.\d+)?%?|[A-Za-z]{1,8}\d[A-Za-z0-9._/-]*", answer))
+    if answer_numbers:
+        reference_numbers = set(
+            re.findall(r"\d+(?:\.\d+)?%?|[A-Za-z]{1,8}\d[A-Za-z0-9._/-]*", reference_blob)
+        )
+        unsupported = [value for value in answer_numbers if value not in reference_numbers]
+        if unsupported:
+            return True
+
+    return False
 
 
 def step_1_check_hallucination(question: str, answer: str, reranked_docs: list) -> dict:
@@ -117,6 +157,16 @@ def node_hallucination_check(state):
             state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
         )
         return {"hallucination_check_passed": True}
+
+    if not _needs_llm_hallucination_check(state, answer, reranked_docs):
+        logger.info("幻觉检查轻量规则通过，跳过 LLM 检查")
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        return {
+            "hallucination_check_passed": True,
+            "hallucination_feedback": "",
+        }
 
     # 阶段1：执行幻觉检查
     check_result = step_1_check_hallucination(question, answer, reranked_docs)

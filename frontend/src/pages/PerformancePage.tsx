@@ -56,6 +56,7 @@ import type {
   EvaluationReportDetail,
   EvaluationReportListItem,
   EvaluationSummary,
+  EvaluationVariantOption,
   EvaluationVariantTrialResult,
   PerformanceSummary,
   PerformanceTimePoint,
@@ -95,10 +96,13 @@ const METRIC_LABELS: Record<string, string> = {
   llm_context_recall: '上下文召回',
   id_based_context_precision: '上下文精确率(ID)',
   id_based_context_recall: '上下文召回率(ID)',
-  'hit@1': 'Hit@1',
-  'hit@3': 'Hit@3',
+  'hit@1': 'HIT@1',
+  'hit@3': 'HIT@3',
+  'hit@5': 'HIT@5',
   'recall@3': 'Recall@3',
+  'recall@5': 'Recall@5',
   'mrr@3': 'MRR@3',
+  'mrr@5': 'MRR@5',
   avg_total_duration_ms: '平均总耗时',
   p95_total_duration_ms: 'P95 总耗时',
   empty_retrieval_rate: '空检索率',
@@ -106,7 +110,7 @@ const METRIC_LABELS: Record<string, string> = {
   crag_retry_rate: 'CRAG 重试率',
   hallucination_retry_rate: '幻觉重试率',
   need_rag_rate: 'RAG 使用率',
-  cache_hit_rate: '缓存命中率',
+  cache_hit_rate: '全链路缓存命中率',
   l0_cache_hit_rate: 'L0 命中率',
   l1_cache_hit_rate: 'L1 命中率',
   l2_cache_hit_rate: 'L2 命中率',
@@ -118,6 +122,9 @@ const METRIC_LABELS: Record<string, string> = {
   router_simple_rate: '简单问题占比',
   hyde_enabled_rate: 'HyDE 启用率',
   crag_router_enabled_rate: 'CRAG 启用率',
+  anchor_enabled_rate: 'Anchor 启用率',
+  avg_target_coverage_rate: '目标覆盖率',
+  target_coverage_case_rate: '目标覆盖样本率',
 };
 
 const CACHE_NAMESPACE_LABELS: Record<string, string> = {
@@ -150,22 +157,26 @@ const GROUND_TRUTH_REASON_LABELS: Record<string, string> = {
 const HEADLINE_METRIC_KEYS = [
   'factual_correctness',
   'faithfulness',
-  'response_relevancy',
-  'llm_context_recall',
+  'recall@5',
+  'mrr@5',
+  'hit@5',
   'recall@3',
   'mrr@3',
-  'cache_hit_rate',
+  'hit@3',
   'retrieval_cache_rate',
+  'avg_total_duration_ms',
 ] as const;
 
 const VARIANT_METRIC_KEYS = [
   'factual_correctness',
   'faithfulness',
+  'recall@5',
+  'mrr@5',
+  'hit@5',
   'recall@3',
   'mrr@3',
-  'cache_hit_rate',
+  'hit@3',
   'retrieval_cache_rate',
-  'answer_cache_rate',
   'avg_total_duration_ms',
 ] as const;
 
@@ -181,9 +192,27 @@ const CACHE_METRIC_KEYS = [
 
 const FRONTEND_EVALUATION_TEMPLATE_PATH = '/app/docs/graph_eval_cases.docs.json';
 const HIDDEN_EVALUATION_VARIANTS = new Set(['neo4j_graph_first']);
+const VARIANT_CATEGORY_ORDER = ['base', 'agentic', 'router'];
+const VARIANT_CATEGORY_LABELS: Record<string, string> = {
+  base: '纯 Base',
+  agentic: 'Agentic 增强',
+  router: 'Router 版',
+};
+const VARIANT_CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  base: '基础检索与传统组合对照，用来判断每个基础组件的单独收益。',
+  agentic: '在基础检索上加入上下文扩展、检索补救、结构化回答或缓存。',
+  router: '由 Router 控制 HyDE、CRAG、Anchor 等路径，验证质量与耗时权衡。',
+};
 
 function isVisibleEvaluationVariant(variantName?: string | null) {
   return Boolean(variantName) && !HIDDEN_EVALUATION_VARIANTS.has(String(variantName));
+}
+
+function inferVariantCategory(variant: EvaluationVariantOption) {
+  const name = variant.name || '';
+  if (name.startsWith('router_')) return 'router';
+  if (name.startsWith('agentic_') || name === 'final_system') return 'agentic';
+  return 'base';
 }
 
 function upsertJob(list: EvaluationJob[], nextJob: EvaluationJob) {
@@ -221,6 +250,7 @@ function formatRouterDecision(value?: string | null) {
     default_path: '默认路径',
     simple_fast_path: '简单快路径',
     complex_deep_path: '复杂深路径',
+    anchor_grounded_path: 'Anchor 证据路径',
   };
   if (!value) return '-';
   return mapping[value] || value;
@@ -587,7 +617,7 @@ export default function PerformancePage() {
       setTrialVariantName((prev) => {
         if (prev) return prev;
         const preferredVariant = (configData.variant_catalog || []).find(
-          (variant) => variant.name === 'router_hybrid_grounded_cached',
+          (variant) => variant.name === 'router_anchor_rescue_structured_cached',
         );
         if (preferredVariant && isVisibleEvaluationVariant(preferredVariant.name)) {
           return preferredVariant.name;
@@ -1036,6 +1066,28 @@ export default function PerformancePage() {
       ),
     [evaluationConfig?.variant_catalog],
   );
+  const groupedEvaluationVariants = useMemo(() => {
+    const groups = new Map<string, EvaluationVariantOption[]>();
+    (evaluationConfig?.variant_catalog || [])
+      .filter((variant) => isVisibleEvaluationVariant(variant.name))
+      .forEach((variant) => {
+        const category = inferVariantCategory(variant);
+        groups.set(category, [...(groups.get(category) || []), variant]);
+      });
+
+    const orderedCategories = [
+      ...VARIANT_CATEGORY_ORDER,
+      ...Array.from(groups.keys()).filter((category) => !VARIANT_CATEGORY_ORDER.includes(category)),
+    ];
+    return orderedCategories
+      .filter((category) => (groups.get(category) || []).length > 0)
+      .map((category) => ({
+        category,
+        label: VARIANT_CATEGORY_LABELS[category] || category,
+        description: VARIANT_CATEGORY_DESCRIPTIONS[category] || '',
+        variants: groups.get(category) || [],
+      }));
+  }, [evaluationConfig?.variant_catalog]);
   const queryCacheNamespaceRows = useMemo(
     () => Object.entries(queryCacheStats?.namespaces || {}),
     [queryCacheStats],
@@ -1369,30 +1421,53 @@ export default function PerformancePage() {
                             恢复默认
                           </button>
                         </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                          {(evaluationConfig?.variant_catalog || [])
-                            .filter((variant) => isVisibleEvaluationVariant(variant.name))
-                            .map((variant) => {
-                            const checked = selectedVariants.includes(variant.name);
+                        <div className="space-y-4">
+                          {groupedEvaluationVariants.map((group) => {
+                            const selectedCount = group.variants.filter((variant) =>
+                              selectedVariants.includes(variant.name),
+                            ).length;
                             return (
-                              <label
-                                key={variant.name}
-                                className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${checked
-                                    ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/20'
-                                    : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900'
-                                  }`}
+                              <section
+                                key={group.category}
+                                className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900/70"
                               >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => handleToggleVariant(variant.name)}
-                                  className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600"
-                                />
-                                <div className="min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 dark:text-white">{variant.technique}</div>
-                                  <div className="mt-1 text-xs text-gray-500">{variant.description}</div>
+                                <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                  <div>
+                                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{group.label}</h4>
+                                    <p className="mt-1 text-xs text-gray-500">{group.description}</p>
+                                  </div>
+                                  <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                    已选 {selectedCount}/{group.variants.length}
+                                  </span>
                                 </div>
-                              </label>
+                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                  {group.variants.map((variant) => {
+                                    const checked = selectedVariants.includes(variant.name);
+                                    return (
+                                      <label
+                                        key={variant.name}
+                                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${checked
+                                            ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/20'
+                                            : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950/40'
+                                          }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => handleToggleVariant(variant.name)}
+                                          className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600"
+                                        />
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                            {variant.technique}
+                                          </div>
+                                          <div className="mt-1 text-xs text-gray-500">{variant.description}</div>
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </section>
                             );
                           })}
                         </div>
@@ -1555,13 +1630,15 @@ export default function PerformancePage() {
                             className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                           >
                             <option value="">请选择方案</option>
-                            {(evaluationConfig?.variant_catalog || [])
-                              .filter((variant) => isVisibleEvaluationVariant(variant.name))
-                              .map((variant) => (
-                                <option key={variant.name} value={variant.name}>
-                                  {variant.technique}
-                                </option>
-                              ))}
+                            {groupedEvaluationVariants.map((group) => (
+                              <optgroup key={group.category} label={group.label}>
+                                {group.variants.map((variant) => (
+                                  <option key={variant.name} value={variant.name}>
+                                    {variant.technique}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
                           </select>
                         </div>
 
@@ -1653,10 +1730,17 @@ export default function PerformancePage() {
                                 </div>
                                 <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                                   <div>问题类型：{trialMetadata?.query_type || '-'}</div>
+                                  <div>问题族：{trialMetadata?.router_query_family || '-'}</div>
                                   <div>复杂度：{trialMetadata?.query_complexity || '-'}</div>
                                   <div>Router：{formatRouterDecision(trialMetadata?.router_decision)}</div>
                                   <div>Grounded：{trialMetadata?.grounded_mode ? '已启用' : '未启用'}</div>
                                   <div>CRAG：{trialMetadata?.crag_router_enabled ? '已启用' : '未启用'}</div>
+                                  <div>
+                                    Anchor 目标：
+                                    {trialMetadata?.query_anchor_targets?.length
+                                      ? ` ${trialMetadata.query_anchor_targets.join('、')}`
+                                      : ' -'}
+                                  </div>
                                   <div>
                                     焦点词：
                                     {trialMetadata?.query_focus_terms?.length
@@ -1673,6 +1757,18 @@ export default function PerformancePage() {
                                     证据覆盖：
                                     {trialMetadata?.evidence_coverage_summary?.coverage_score != null
                                       ? ` ${(trialMetadata.evidence_coverage_summary.coverage_score * 100).toFixed(1)}%`
+                                      : ' -'}
+                                  </div>
+                                  <div>
+                                    目标覆盖：
+                                    {toNumericValue(trialMetadata?.target_coverage?.coverage_rate) != null
+                                      ? ` ${((toNumericValue(trialMetadata?.target_coverage?.coverage_rate) || 0) * 100).toFixed(1)}%`
+                                      : ' -'}
+                                  </div>
+                                  <div>
+                                    Evidence Pack：
+                                    {trialMetadata?.evidence_pack_summary
+                                      ? ` ${JSON.stringify(trialMetadata.evidence_pack_summary)}`
                                       : ' -'}
                                   </div>
                                   <div>
@@ -1986,8 +2082,12 @@ export default function PerformancePage() {
                             {[
                               'factual_correctness',
                               'faithfulness',
+                              'recall@5',
                               'recall@3',
-                              'cache_hit_rate',
+                              'hit@5',
+                              'hit@3',
+                              'mrr@5',
+                              'mrr@3',
                               'retrieval_cache_rate',
                               'avg_total_duration_ms',
                             ].map((metricKey) => (
@@ -2067,7 +2167,14 @@ export default function PerformancePage() {
                     <h3 className="text-lg font-semibold">Router 与深检索开关</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    {['router_simple_rate', 'hyde_enabled_rate', 'crag_router_enabled_rate'].map((metricKey) => (
+                    {[
+                      'router_simple_rate',
+                      'hyde_enabled_rate',
+                      'anchor_enabled_rate',
+                      'crag_router_enabled_rate',
+                      'avg_target_coverage_rate',
+                      'target_coverage_case_rate',
+                    ].map((metricKey) => (
                       <StatCard
                         key={metricKey}
                         title={formatMetricLabel(metricKey)}

@@ -9,10 +9,18 @@ from app.core.logger import logger
 from app.core.load_prompt import load_prompt
 from app.conf.lm_config import lm_config
 from app.lm.lm_utils import coerce_llm_content, get_llm_client
+from app.clients.milvus_schema import extract_chunk_id
 from app.clients.mongo_history_utils import save_chat_message
 from app.conf.query_threshold_config import query_threshold_config
 from app.query_process.agent.agentic_utils import build_agentic_response_metadata
 from app.query_process.agent.graph_query_utils import get_grounded_mode
+from app.utils.anchor_context_utils import (
+    FALLBACK_MESSAGE,
+    build_evidence_pack,
+    extract_query_anchor_targets,
+    reorder_docs_for_target_coverage,
+    summarize_evidence_pack,
+)
 from app.utils.query_cache_utils import (
     get_current_request_cache_summary,
     normalize_cache_sequence,
@@ -24,6 +32,28 @@ _IMAGE_BLOCK_MARKER = "【图片】"
 cfg = query_threshold_config
 MAX_CONTEXT_CHARS = cfg.max_context_chars
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg")
+
+
+def _anchor_context_enabled(state: QueryGraphState) -> bool:
+    for container in (
+        state,
+        state.get("route_overrides") or {},
+        state.get("evaluation_overrides") or {},
+    ):
+        if isinstance(container, dict) and "anchor_context_enabled" in container:
+            return bool(container.get("anchor_context_enabled"))
+    return False
+
+
+def _context_budget_for_state(state: QueryGraphState) -> int:
+    query_type = str(state.get("query_type") or "general")
+    complexity = str(state.get("query_complexity") or "simple")
+    family = str(state.get("router_query_family") or "")
+    if query_type == "comparison" or family == "comparison":
+        return 7000
+    if complexity == "complex":
+        return 9000
+    return 4500
 
 
 def _is_probably_image_url(url: str) -> bool:
@@ -69,36 +99,59 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
     history = state.get("history", [])
     item_names = state.get("item_names", [])
     reranked_docs = state.get("reranked_docs") or []
+    anchor_enabled = _anchor_context_enabled(state)
+    anchor_targets = state.get("query_anchor_targets") or extract_query_anchor_targets(
+        question,
+        item_names=item_names,
+    )
+    if anchor_enabled and anchor_targets:
+        reranked_docs = reorder_docs_for_target_coverage(reranked_docs, anchor_targets)
+        state["reranked_docs"] = reranked_docs
 
     docs = []
     used = 0
-    for i, doc in enumerate(reranked_docs, start=1):
-        text = (doc.get("text") or "").strip()
-        if not text:
-            continue
-        source = doc.get("source") or ""
-        chunk_id = doc.get("chunk_id")
-        url = (doc.get("url") or "").strip()
-        title = doc.get("title") or ""
-        score = doc.get("score")
+    if anchor_enabled:
+        context_budget = min(_context_budget_for_state(state), MAX_CONTEXT_CHARS)
+        evidence_pack = build_evidence_pack(
+            question,
+            reranked_docs,
+            query_type=str(state.get("query_type") or "general"),
+            targets=anchor_targets,
+            max_chars=context_budget,
+        )
+        context_str = evidence_pack["text"]
+        state["target_coverage"] = evidence_pack.get("target_coverage") or {}
+        state["evidence_pack_summary"] = summarize_evidence_pack(evidence_pack)
+        state["context_budget_chars"] = context_budget
+    else:
+        for i, doc in enumerate(reranked_docs, start=1):
+            text = (doc.get("text") or "").strip()
+            if not text:
+                continue
+            source = doc.get("source") or ""
+            chunk_id = doc.get("chunk_id")
+            url = (doc.get("url") or "").strip()
+            title = doc.get("section_path") or doc.get("title") or ""
+            score = doc.get("score")
 
-        meta_parts = [f"[{i}]"]
-        if source:
-            meta_parts.append(f"[{source}]")
-        if chunk_id:
-            meta_parts.append(f"[chunk_id={chunk_id}]")
-        if url:
-            meta_parts.append(f"[url={url}]")
-        if score is not None:
-            meta_parts.append(f"[score={float(score):.4f}]")
-        if title:
-            meta_parts.append(f"[title={title}]")
-        doc_str = " ".join(meta_parts) + "\n" + text
-        if used + len(doc_str) > MAX_CONTEXT_CHARS:
-            break
-        docs.append(doc_str)
-        used += len(doc_str) + 2
-    context_str = "\n\n".join(docs) if docs else "无参考内容"
+            meta_parts = [f"[{i}]"]
+            if source:
+                meta_parts.append(f"[{source}]")
+            if chunk_id:
+                meta_parts.append(f"[chunk_id={chunk_id}]")
+            if url:
+                meta_parts.append(f"[url={url}]")
+            if score is not None:
+                meta_parts.append(f"[score={float(score):.4f}]")
+            if title:
+                meta_parts.append(f"[title={title}]")
+            doc_str = " ".join(meta_parts) + "\n" + text
+            if used + len(doc_str) > MAX_CONTEXT_CHARS:
+                break
+            docs.append(doc_str)
+            used += len(doc_str) + 2
+        context_str = "\n\n".join(docs) if docs else "无参考内容"
+        state["context_budget_chars"] = MAX_CONTEXT_CHARS
 
     history_str = ""
     if history:
@@ -129,11 +182,27 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
         prompt += (
             "\n\n【严格 Grounded 回答约束】\n"
             "1. 你必须严格基于【参考内容】回答，禁止使用外部常识、经验、推测或补全。\n"
-            "2. 如果【参考内容】无法直接支持答案，必须明确回答：抱歉，资料中未提供。\n"
+            f"2. 如果【参考内容】无法直接支持答案，必须明确回答：{FALLBACK_MESSAGE}。\n"
             "3. 如果问题只有部分内容能被证据支持，只回答被证据支持的部分；其余部分明确写“抱歉，资料中未提供”。\n"
             "4. 禁止编造任何参数、编号、步骤、因果关系、适用范围或结论。\n"
-            "5. 若【参考内容】为“无参考内容”，只允许回答：抱歉，资料中未提供。\n"
+            f"5. 若【参考内容】为“无参考内容”，只允许回答：{FALLBACK_MESSAGE}。\n"
         )
+        if anchor_enabled:
+            missing_targets = (
+                (state.get("target_coverage") or {}).get("missing_targets") or []
+            )
+            prompt += (
+                "\n【Anchor Evidence Pack 约束】\n"
+                "1. 对比较/多目标问题必须逐目标回答；每个目标只能使用对应 chunk 的证据。\n"
+                "2. 如果某个目标缺少证据，不要用其他目标的资料补齐，必须对该目标回答“抱歉，资料中未提供”。\n"
+                "3. 回答中不要输出未在 evidence pack 中出现的标题、参数、步骤或场景。\n"
+            )
+            if missing_targets:
+                prompt += (
+                    "当前缺少直接证据的目标："
+                    + "、".join(str(item) for item in missing_targets[:6])
+                    + "。这些目标必须使用固定兜底语。\n"
+                )
 
     hallucination_feedback = state.get("hallucination_feedback")
     if hallucination_feedback:
@@ -300,18 +369,64 @@ def step_4_write_history(
 
     return state
 
+def _sorted_normalized_strings(values: list[Any] | None) -> list[str]:
+    return sorted(
+        {
+            str(value).strip()
+            for value in (values or [])
+            if str(value).strip()
+        }
+    )
 
-def _answer_cache_descriptor(state: QueryGraphState, prompt: str) -> Dict[str, Any]:
+
+def _stable_evidence_ids(reranked_docs: list[Dict[str, Any]], limit: int = 8) -> list[str]:
+    stable_ids: list[str] = []
+    seen = set()
+    for doc in reranked_docs or []:
+        doc_id = (
+            extract_chunk_id(doc)
+            or doc.get("chunk_id")
+            or doc.get("doc_id")
+            or doc.get("url")
+            or ""
+        )
+        text = str(doc_id).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        stable_ids.append(text)
+        if len(stable_ids) >= limit:
+            break
+    return sorted(stable_ids)
+
+
+def _answer_cache_descriptor(state: QueryGraphState) -> Dict[str, Any]:
     reranked_docs = state.get("reranked_docs") or []
+    answer_plan = state.get("answer_plan") or {}
+    route_overrides = state.get("route_overrides") or {}
+    evaluation_overrides = state.get("evaluation_overrides") or {}
     return {
+        "cache_key_version": str(
+            route_overrides.get("answer_cache_descriptor_version")
+            or evaluation_overrides.get("answer_cache_descriptor_version")
+            or "answer_v2"
+        ),
+        "variant_name": str(state.get("evaluation_variant_name") or "").strip()
+        or str(state.get("router_decision") or "default_path"),
         "model": lm_config.llm_model or "default",
         "question": state.get("rewritten_query") or state.get("original_query") or "",
-        "prompt": prompt,
-        "item_names": normalize_cache_sequence(state.get("item_names") or []),
-        "doc_ids": [
-            doc.get("chunk_id") or doc.get("doc_id") or doc.get("url") or ""
-            for doc in reranked_docs[:10]
-        ],
+        "router_query_family": str(state.get("router_query_family") or "general"),
+        "query_type": str(state.get("query_type") or "general"),
+        "item_names": _sorted_normalized_strings(
+            normalize_cache_sequence(state.get("item_names") or [])
+        ),
+        "query_anchor_targets": _sorted_normalized_strings(
+            normalize_cache_sequence(state.get("query_anchor_targets") or [])
+        ),
+        "grounded_mode": bool(get_grounded_mode(state)),
+        "structured_output": bool(answer_plan.get("structured_output")),
+        "response_format": str(answer_plan.get("response_format") or "paragraph"),
+        "stable_top_evidence_ids": _stable_evidence_ids(reranked_docs),
     }
 
 
@@ -341,7 +456,7 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
     if not answer_exists:
         prompt = step_2_construct_prompt(state)
         state["prompt"] = prompt
-        answer_cache_descriptor = _answer_cache_descriptor(state, prompt)
+        answer_cache_descriptor = _answer_cache_descriptor(state)
         cached_answer = query_cache_get("answer", answer_cache_descriptor)
         if isinstance(cached_answer, str) and cached_answer.strip():
             logger.info("答案缓存命中，跳过 LLM 生成")

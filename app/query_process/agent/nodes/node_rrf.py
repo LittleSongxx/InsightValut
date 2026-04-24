@@ -192,11 +192,13 @@ def node_rrf(state):
     embedding_chunks = _as_entity_list(state.get("embedding_chunks"))
     hyde_embedding_chunks = _as_entity_list(state.get("hyde_embedding_chunks"))
     bm25_chunks = _as_entity_list(state.get("bm25_chunks"))
+    anchor_chunks = _as_entity_list(state.get("anchor_chunks"))
     kg_chunks = _as_entity_list(state.get("kg_chunks"))
 
     logger.info(
         f"RRF 输入统计: Embedding源={len(embedding_chunks)}条, "
-        f"HyDE源={len(hyde_embedding_chunks)}条, BM25源={len(bm25_chunks)}条, KG源={len(kg_chunks)}条"
+        f"HyDE源={len(hyde_embedding_chunks)}条, BM25源={len(bm25_chunks)}条, "
+        f"Anchor源={len(anchor_chunks)}条, KG源={len(kg_chunks)}条"
     )
 
     # Debug 日志：打印部分 ID 以便核对
@@ -212,6 +214,10 @@ def node_rrf(state):
         logger.debug(
             f"BM25源 chunk_ids (前5个): {[c.get('chunk_id') for c in bm25_chunks[:5]]}"
         )
+    if anchor_chunks:
+        logger.debug(
+            f"Anchor源 chunk_ids (前5个): {[c.get('chunk_id') for c in anchor_chunks[:5]]}"
+        )
     if kg_chunks:
         logger.debug(
             f"KG源 chunk_ids (前5个): {[c.get('chunk_id') for c in kg_chunks[:5]]}"
@@ -223,6 +229,7 @@ def node_rrf(state):
         (embedding_chunks, cfg.rrf_weight_embedding * weight_multipliers["embedding"]),
         (hyde_embedding_chunks, cfg.rrf_weight_hyde * weight_multipliers["hyde"]),
         (bm25_chunks, cfg.rrf_weight_bm25 * weight_multipliers["bm25"]),
+        (anchor_chunks, cfg.rrf_weight_anchor * weight_multipliers["anchor"]),
         (kg_chunks, cfg.rrf_weight_kg * weight_multipliers["kg"]),
     ]
 

@@ -4,6 +4,7 @@ from typing import Any, List, Dict
 
 from app.import_process.agent.state import ImportGraphState
 from app.lm.embedding_utils import get_bge_m3_ef, generate_embeddings
+from app.utils.anchor_context_utils import build_contextual_chunk_fields
 from app.utils.task_utils import add_running_task, add_done_task
 from app.core.logger import logger
 
@@ -161,14 +162,15 @@ def step_3_generate_embeddings(
                 content = (doc.get("content") or "").strip()
                 if not content:
                     raise ValueError("切片缺少content字段或内容为空")
-                # 有商品名则拼接（换行分隔提升模型识别效率），无则直接使用内容
-                # 几乎所有的 Embedding 模型（尤其是基于 BERT 架构的），对前 128 个 token 的注意力是最集中的。越往后的词，对最终向量方向的拉扯力越弱。
-                # **“核心词前置”**的原则
-                # 方案 1：用强标点代替换行（最简单、最推荐）
-                # 优化前：苹果手机\n性能很好...
-                # 优化后：苹果手机。性能很好...
-                # 方案2：加一点“微量”的语义胶水（适合属性明确的场景）
-                text = f"商品：{item_name}，介绍：{content}" if item_name else content
+                contextual_fields = build_contextual_chunk_fields(doc)
+                doc.setdefault("section_path", contextual_fields["section_path"])
+                doc.setdefault("chunk_context", contextual_fields["chunk_context"])
+                doc.setdefault("embedding_text", contextual_fields["embedding_text"])
+                doc.setdefault("bm25_text", contextual_fields["bm25_text"])
+                doc.setdefault("anchor_terms", contextual_fields["anchor_terms"])
+                text = str(doc.get("embedding_text") or "").strip()
+                if not text:
+                    text = f"商品：{item_name}，介绍：{content}" if item_name else content
                 # Embedding 模型是个强迫症，你给它喂中文，就用全套中文标点伺候；给它喂英文，就用全套英文标点。保持 语境纯粹 ，生成的向量质量最高！
                 input_texts.append(text)
 
@@ -188,6 +190,12 @@ def step_3_generate_embeddings(
                 item["item_name"] = (
                     item.get("item_name") or fallback_item_name
                 ).strip()
+                contextual_fields = build_contextual_chunk_fields(item)
+                item.setdefault("section_path", contextual_fields["section_path"])
+                item.setdefault("chunk_context", contextual_fields["chunk_context"])
+                item.setdefault("embedding_text", contextual_fields["embedding_text"])
+                item.setdefault("bm25_text", contextual_fields["bm25_text"])
+                item.setdefault("anchor_terms", contextual_fields["anchor_terms"])
                 item["dense_vector"] = docs_embeddings["dense"][j]  # 绑定稠密向量
                 item["sparse_vector"] = docs_embeddings["sparse"][
                     j

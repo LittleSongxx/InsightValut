@@ -16,8 +16,23 @@ from app.conf.query_threshold_config import query_threshold_config
 from app.core.logger import logger
 from app.lm.embedding_utils import generate_embeddings
 from app.utils.bm25_utils import rank_documents_bm25
+from app.utils.anchor_context_utils import (
+    anchor_text_for_doc,
+    extract_query_anchor_targets,
+    score_anchor_doc,
+)
 from app.utils.escape_milvus_string_utils import escape_milvus_string
 from app.utils.query_cache_utils import normalize_cache_sequence, query_cache_get, query_cache_set
+
+
+def _sorted_cache_strings(values: Sequence[Any] | None) -> list[str]:
+    return sorted(
+        {
+            str(value).strip()
+            for value in normalize_cache_sequence(values)
+            if str(value).strip()
+        }
+    )
 
 
 def build_item_name_filter_expr(item_names: Optional[Sequence[str]]) -> str:
@@ -54,7 +69,7 @@ def run_embedding_hybrid_search(
     cache_descriptor = {
         "collection": target_collection,
         "query_text": query_text,
-        "item_names": normalize_cache_sequence(item_names),
+        "item_names": _sorted_cache_strings(item_names),
         "req_limit": req_limit if req_limit is not None else query_threshold_config.embedding_req_limit,
         "top_k": top_k if top_k is not None else query_threshold_config.embedding_top_k,
         "output_fields": normalize_cache_sequence(output_fields or list(CHUNKS_OUTPUT_FIELDS)),
@@ -105,6 +120,9 @@ def _bm25_document_text(doc: Dict[str, Any]) -> str:
         str(doc.get("parent_title") or "").strip(),
         str(doc.get("part") or "").strip(),
         str(doc.get("file_title") or "").strip(),
+        str(doc.get("section_path") or "").strip(),
+        " ".join(str(term or "").strip() for term in (doc.get("anchor_terms") or [])),
+        str(doc.get("bm25_text") or "").strip(),
         str(doc.get("content") or "").strip(),
     ]
     return "\n".join(part for part in parts if part)
@@ -130,7 +148,7 @@ def run_bm25_search(
     cache_descriptor = {
         "collection": target_collection,
         "query_text": query_text,
-        "item_names": normalize_cache_sequence(item_names),
+        "item_names": _sorted_cache_strings(item_names),
         "top_k": top_k if top_k is not None else query_threshold_config.bm25_top_k,
         "candidate_limit": candidate_limit
         if candidate_limit is not None
@@ -177,4 +195,82 @@ def run_bm25_search(
             }
         )
     query_cache_set("retrieval_bm25", cache_descriptor, results)
+    return results
+
+
+def run_anchor_search(
+    query_text: str,
+    item_names: Optional[Sequence[str]] = None,
+    *,
+    collection_name: Optional[str] = None,
+    top_k: Optional[int] = None,
+    candidate_limit: Optional[int] = None,
+    output_fields: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    if not query_text:
+        return []
+
+    targets = extract_query_anchor_targets(query_text, item_names=item_names)
+    if not targets:
+        return []
+
+    target_collection = _get_chunks_collection_name(collection_name)
+    if not target_collection:
+        logger.error("Anchor 检索失败：未配置集合名称")
+        return []
+
+    cache_descriptor = {
+        "collection": target_collection,
+        "query_text": query_text,
+        "item_names": _sorted_cache_strings(item_names),
+        "targets": _sorted_cache_strings(targets),
+        "top_k": top_k if top_k is not None else query_threshold_config.anchor_top_k,
+        "candidate_limit": candidate_limit
+        if candidate_limit is not None
+        else query_threshold_config.anchor_candidate_limit,
+        "output_fields": normalize_cache_sequence(output_fields or list(CHUNKS_OUTPUT_FIELDS)),
+    }
+    cached = query_cache_get("retrieval_anchor", cache_descriptor)
+    if isinstance(cached, list):
+        return cached
+
+    client = get_milvus_client()
+    if not client:
+        logger.error("Anchor 检索失败：Milvus 客户端不可用")
+        return []
+
+    cfg = query_threshold_config
+    docs = query_chunks_by_filter(
+        client=client,
+        collection_name=target_collection,
+        filter_expr=build_item_name_filter_expr(item_names),
+        output_fields=output_fields or list(CHUNKS_OUTPUT_FIELDS),
+        limit=candidate_limit if candidate_limit is not None else cfg.anchor_candidate_limit,
+    )
+    if not docs:
+        return []
+
+    scored_docs: List[tuple[Dict[str, Any], float]] = []
+    for doc in docs:
+        entity = normalize_entity_for_business_id(dict(doc))
+        score = score_anchor_doc(query_text, targets, entity)
+        if score <= 0:
+            continue
+        # Secondary signal: longer exact anchor text match wins over broad content-only hits.
+        if any(target and target in anchor_text_for_doc(entity) for target in targets):
+            score += 0.25
+        scored_docs.append((entity, score))
+
+    scored_docs.sort(key=lambda item: item[1], reverse=True)
+    results: List[Dict[str, Any]] = []
+    for entity, score in scored_docs[: top_k if top_k is not None else cfg.anchor_top_k]:
+        chunk_id = extract_chunk_id(entity)
+        results.append(
+            {
+                "entity": entity,
+                "distance": score,
+                "id": chunk_id,
+            }
+        )
+    query_cache_set("retrieval_anchor", cache_descriptor, results)
     return results

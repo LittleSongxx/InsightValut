@@ -78,6 +78,10 @@ GROUND_TRUTH_OUTPUT_FIELDS = [
     "part",
     "file_title",
     "content",
+    "section_path",
+    "chunk_context",
+    "bm25_text",
+    "anchor_terms",
 ]
 GROUND_TRUTH_SEARCH_LIMIT = int(
     os.environ.get("EVAL_GROUND_TRUTH_SEARCH_LIMIT") or 1000
@@ -87,11 +91,14 @@ DEFAULT_VARIANTS = [
     "bm25_hybrid",
     "hyde_hybrid",
     "kg_hybrid",
+    "bm25_kg_hyde_hybrid",
     "final_system",
     "agentic_context_expansion",
     "agentic_rescue_system",
     "agentic_enhanced_system",
     "agentic_enhanced_system_cached",
+    "router_anchor_contextual_grounded_cached",
+    "router_anchor_rescue_structured_cached",
 ]
 
 ProgressCallback = Optional[Callable[[Dict[str, Any]], None]]
@@ -262,6 +269,34 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
             },
         },
     },
+    "bm25_kg_hyde_hybrid": {
+        "description": "纯 Base 组合：在最原始基线上同时引入 BM25、Neo4j KG 和 HyDE，不启用 Agentic / Router / Context Expansion / CRAG / Cache",
+        "technique": "Baseline + BM25 + KG + HyDE",
+        "compare_to": "baseline_rag",
+        "use_case_query_type": False,
+        "evaluation_overrides": {
+            "force_need_rag": True,
+            "force_query_type": "general",
+            "force_graph_preferred": False,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": False,
+            "legacy_retry_enabled": False,
+            "router_deep_search_enabled": False,
+            "grounded_answer_enabled": False,
+            "anchor_context_enabled": False,
+            "route_reason": "eval_bm25_kg_hyde_hybrid",
+            "agentic_features": _agentic_features(),
+            "cache_enabled": False,
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
+            },
+        },
+    },
     "hyde_kg_context_expansion_cached": {
         "description": "在 Baseline 上开启 HyDE、Neo4j KG、命中上下文扩展、多级缓存和 CRAG 重试，不引入 BM25 / 检索补救 / 结构化回答",
         "technique": "HyDE + KG + Context Expansion + Cache + CRAG Retry",
@@ -315,6 +350,80 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
                 "run_bm25": True,
                 "run_hyde": True,
                 "run_web": False,
+            },
+        },
+    },
+    "router_anchor_contextual_grounded_cached": {
+        "description": "Anchor + Contextual Retrieval + Router + Grounded Prompt 的评测版方案，针对 comparison/relation 的标题目标覆盖和证据包约束优化",
+        "technique": "Router Anchor Contextual Grounded Cached",
+        "compare_to": "router_hybrid_grounded_cached",
+        "use_case_query_type": False,
+        "warmup_rounds": 1,
+        "reset_cache_before_run": True,
+        "evaluation_overrides": {
+            "force_need_rag": True,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": False,
+            "router_deep_search_enabled": True,
+            "grounded_answer_enabled": True,
+            "anchor_context_enabled": True,
+            "route_reason": "eval_router_anchor_contextual_grounded_cached",
+            "agentic_features": _agentic_features(context_expansion=True),
+            "cache_enabled": True,
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_anchor": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
+                "anchor_weight_multiplier": 1.6,
+                "bm25_weight_multiplier": 1.0,
+            },
+        },
+    },
+    "router_anchor_rescue_structured_cached": {
+        "description": "质量优先评测版：常驻 BM25 + Embedding + Anchor + KG + Context Expansion + Grounded，comparison/relation/constraint/explain 进入受控 rescue，并优化结构化回答与缓存键稳定性",
+        "technique": "Router Anchor Rescue Structured Cached",
+        "compare_to": "router_anchor_contextual_grounded_cached",
+        "use_case_query_type": False,
+        "warmup_rounds": 1,
+        "reset_cache_before_run": True,
+        "evaluation_overrides": {
+            "force_need_rag": True,
+            "bm25_enabled": True,
+            "retrieval_grader_enabled": True,
+            "legacy_retry_enabled": False,
+            "router_deep_search_enabled": True,
+            "grounded_answer_enabled": True,
+            "anchor_context_enabled": True,
+            "route_reason": "eval_router_anchor_rescue_structured_cached",
+            "rescue_min_coverage_score": 0.72,
+            "rescue_force_target_coverage": True,
+            "answer_cache_descriptor_version": "answer_v2",
+            "structured_answer_high_risk_only": True,
+            "agentic_features": _agentic_features(
+                subquery_routing=True,
+                context_expansion=True,
+                evidence_coverage=True,
+                retrieval_rescue=True,
+                structured_answer=True,
+                clarification_guard=False,
+            ),
+            "cache_enabled": True,
+            "retrieval_plan_overrides": {
+                "graph_first": False,
+                "run_kg": True,
+                "run_embedding": True,
+                "run_anchor": True,
+                "run_bm25": True,
+                "run_hyde": True,
+                "run_web": False,
+                "anchor_weight_multiplier": 1.8,
+                "bm25_weight_multiplier": 1.1,
+                "kg_weight_multiplier": 1.2,
             },
         },
     },
@@ -502,6 +611,7 @@ def build_variant_runtime_state(
         "original_query": str(query or "").strip(),
         "is_stream": False,
         "evaluation_mode": True,
+        "evaluation_variant_name": str(variant_name or "").strip(),
         "evaluation_overrides": build_variant_runtime_overrides(variant_name),
     }
 
@@ -610,6 +720,50 @@ def _resolved_relevant_ids(case: Dict[str, Any]) -> List[str]:
         or case.get("resolved_relevant_chunk_ids")
         or _relevant_ids(case)
     )
+
+
+def _load_dataset_payload(dataset_path: str) -> Any:
+    path = Path(dataset_path)
+    if path.suffix.lower() == ".jsonl":
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _summarize_dataset_quality(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    query_counts = Counter(_query(case) for case in cases if _query(case))
+    duplicate_query_count = sum(
+        max(count - 1, 0) for count in query_counts.values() if count > 1
+    )
+
+    auto_generated_flags = []
+    answerable_flags = []
+    required_fact_flags = []
+    for case in cases:
+        tags = {
+            str(tag).strip().lower()
+            for tag in (case.get("evaluation_tags") or [])
+            if str(tag).strip()
+        }
+        case_id = str(case.get("case_id") or "").strip().lower()
+        auto_generated_flags.append(
+            1.0 if "auto_generated" in tags or case_id.startswith("auto_") else 0.0
+        )
+        if "answerable" in case:
+            answerable_flags.append(1.0 if bool(case.get("answerable")) else 0.0)
+        if case.get("required_facts"):
+            required_fact_flags.append(1.0)
+        else:
+            required_fact_flags.append(0.0)
+
+    return {
+        "duplicate_query_count": int(duplicate_query_count),
+        "auto_generated_rate": _avg(auto_generated_flags) or 0.0,
+        "answerable_rate": _avg(answerable_flags) if answerable_flags else None,
+        "required_facts_case_rate": _avg(required_fact_flags) or 0.0,
+    }
 
 
 def _ground_truth_doc_text(doc: Dict[str, Any]) -> str:
@@ -1154,6 +1308,12 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
             final_state.get("query_complexity_reason") or ""
         ),
         "router_decision": str(final_state.get("router_decision") or "default_path"),
+        "router_query_family": str(final_state.get("router_query_family") or "general"),
+        "query_anchor_targets": final_state.get("query_anchor_targets") or [],
+        "anchor_hits": final_state.get("anchor_hits") or [],
+        "target_coverage": final_state.get("target_coverage") or {},
+        "evidence_pack_summary": final_state.get("evidence_pack_summary") or {},
+        "context_budget_chars": int(final_state.get("context_budget_chars") or 0),
         "router_deep_search_enabled": bool(
             final_state.get("router_deep_search_enabled", False)
         ),
@@ -1260,6 +1420,28 @@ def _run_single_case_via_service(
         ),
         "router_decision": str(
             metadata.get("router_decision") or runtime_fields.get("router_decision") or "default_path"
+        ),
+        "router_query_family": str(
+            metadata.get("router_query_family")
+            or runtime_fields.get("router_query_family")
+            or "general"
+        ),
+        "query_anchor_targets": metadata.get("query_anchor_targets")
+        or runtime_fields.get("query_anchor_targets")
+        or [],
+        "anchor_hits": metadata.get("anchor_hits")
+        or runtime_fields.get("anchor_hits")
+        or [],
+        "target_coverage": metadata.get("target_coverage")
+        or runtime_fields.get("target_coverage")
+        or {},
+        "evidence_pack_summary": metadata.get("evidence_pack_summary")
+        or runtime_fields.get("evidence_pack_summary")
+        or {},
+        "context_budget_chars": int(
+            metadata.get("context_budget_chars")
+            or runtime_fields.get("context_budget_chars")
+            or 0
         ),
         "router_deep_search_enabled": bool(
             metadata.get("router_deep_search_enabled", runtime_fields.get("router_deep_search_enabled", False))
@@ -1751,6 +1933,32 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             ]
         )
         or 0.0,
+        "anchor_enabled_rate": _avg(
+            [
+                1.0
+                if bool((item.get("retrieval_plan") or {}).get("run_anchor"))
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "avg_target_coverage_rate": _avg(
+            [
+                _num((item.get("target_coverage") or {}).get("coverage_rate"))
+                for item in case_results
+                if (item.get("target_coverage") or {}).get("target_count")
+            ]
+        )
+        or 0.0,
+        "target_coverage_case_rate": _avg(
+            [
+                1.0
+                if (item.get("target_coverage") or {}).get("target_count")
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
         "crag_router_enabled_rate": _avg(
             [
                 1.0 if bool(item.get("crag_router_enabled", False)) else 0.0
@@ -1867,34 +2075,16 @@ def _build_headline_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
     performance_metrics = summary.get("performance_metrics") or {}
     pipeline_metrics = summary.get("pipeline_metrics") or {}
     result: Dict[str, Any] = {}
-    for key in (
-        "factual_correctness",
-        "faithfulness",
-        "response_relevancy",
-        "llm_context_recall",
-        "id_based_context_precision",
-        "id_based_context_recall",
-    ):
+    for key in ("factual_correctness", "faithfulness"):
         if key in ragas_metrics:
             result[key] = ragas_metrics.get(key)
-    for key in ("hit@1", "hit@3", "recall@3", "mrr@3"):
+    for key in ("recall@5", "mrr@5", "hit@5", "recall@3", "mrr@3", "hit@3"):
         if key in retrieval_metrics:
             result[key] = retrieval_metrics.get(key)
-    for key in (
-        "avg_evidence_coverage_score",
-        "rescue_retry_rate",
-        "context_expansion_rate",
-        "structured_answer_rate",
-        "cache_hit_rate",
-        "l1_cache_hit_rate",
-        "l2_cache_hit_rate",
-        "retrieval_cache_rate",
-        "answer_cache_rate",
-        "llm_fallback_rate",
-    ):
+    for key in ("retrieval_cache_rate",):
         if key in pipeline_metrics:
             result[key] = pipeline_metrics.get(key)
-    for key in ("avg_total_duration_ms", "p95_total_duration_ms"):
+    for key in ("avg_total_duration_ms",):
         if key in performance_metrics:
             result[key] = performance_metrics.get(key)
     return result
@@ -2048,6 +2238,8 @@ def evaluate_variants(
 ) -> Dict[str, Any]:
     _raise_if_cancelled(cancel_callback)
     cases = _prepare_cases(load_cases(dataset_path))
+    dataset_payload = _load_dataset_payload(dataset_path)
+    dataset_quality_summary = _summarize_dataset_quality(cases)
     resolved_variants = _resolve_variants(variant_names)
     variants_payload: Dict[str, Any] = {}
     if progress_callback is not None:
@@ -2225,6 +2417,9 @@ def evaluate_variants(
     _raise_if_cancelled(cancel_callback)
     final_variant = resolved_variants[-1]
     for preferred_variant in (
+        "router_anchor_rescue_structured_cached",
+        "router_anchor_contextual_grounded_cached",
+        "router_hybrid_grounded_cached",
         "agentic_enhanced_system_cached",
         "agentic_enhanced_system",
         "final_system",
@@ -2235,7 +2430,13 @@ def evaluate_variants(
     report = {
         "generated_at": datetime.now().isoformat(),
         "dataset_path": str(Path(dataset_path).resolve()),
+        "dataset_name": (
+            str(dataset_payload.get("dataset_name") or "").strip()
+            if isinstance(dataset_payload, dict)
+            else ""
+        ),
         "case_count": len(cases),
+        "dataset_quality_summary": dataset_quality_summary,
         "variants": variants_payload,
         "final_variant": final_variant,
         "final_system_metrics": variants_payload.get(final_variant, {}).get(

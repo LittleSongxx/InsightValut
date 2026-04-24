@@ -192,6 +192,8 @@ def node_retrieval_grader(state):
         result["embedding_chunks"] = []
         result["hyde_embedding_chunks"] = []
         result["bm25_chunks"] = []
+        result["anchor_chunks"] = []
+        result["anchor_hits"] = []
         result["kg_chunks"] = []
         result["rrf_chunks"] = []
         result["reranked_docs"] = []
@@ -200,6 +202,7 @@ def node_retrieval_grader(state):
         result["sub_query_results"] = []
         result["context_expansion_summary"] = {}
         result["evidence_coverage_summary"] = {}
+        result["target_coverage"] = {}
         result["answer_plan"] = {}
         if result["route_overrides"].get("drop_item_names"):
             result["item_names"] = []
@@ -221,6 +224,8 @@ def node_retrieval_grader(state):
         result["embedding_chunks"] = []
         result["hyde_embedding_chunks"] = []
         result["bm25_chunks"] = []
+        result["anchor_chunks"] = []
+        result["anchor_hits"] = []
         result["kg_chunks"] = []
         result["rrf_chunks"] = []
         result["reranked_docs"] = []
@@ -229,6 +234,7 @@ def node_retrieval_grader(state):
         result["sub_query_results"] = []
         result["context_expansion_summary"] = {}
         result["evidence_coverage_summary"] = {}
+        result["target_coverage"] = {}
         result["answer_plan"] = {}
 
     else:

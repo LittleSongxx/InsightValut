@@ -1,0 +1,120 @@
+{
+  "dataset_name": "graph_eval_cases_curated_v2",
+  "generated_at": "2026-04-23T00:00:00+08:00",
+  "description": "面向 Anchor Contextual Grounded v2 的人工校正小样本集，重点覆盖 comparison/relation/section_lookup/abstention 场景。",
+  "notes": [
+    "保留旧评测集做历史可比，本文件用于发现自动生成样本的偏差。",
+    "required_facts 用于原子事实支持度检查，forbidden_facts 用于幻觉/越界回答检查。",
+    "answerable=false 的样本要求系统使用固定兜底语，不应编造。"
+  ],
+  "sources": [
+    "docs/graph_eval_cases.docs.json",
+    "reports/eval/unified_rag_eval_20260423_145628.json"
+  ],
+  "cases": [
+    {
+      "case_id": "curated_v2_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "“安装电池”讲的是 HUAWEI 蓝牙鼠标第二代的电池安装：打开鼠标上壳，按电池仓正负极标志装入一节 AA 电池并合上上壳。“快捷键与功能键切换”讲的是键盘 F1、F2 等按键在热键模式和功能键模式之间切换。两者场景不同：前者是鼠标配件启用前的硬件安装，后者是电脑键盘按键行为设置。",
+      "relevant_chunk_ids": ["stc_v1_d15121110fa6295ce2c24abb", "stc_v1_877cff45508fdf4619d40683"],
+      "expected_source_chunk_ids": ["stc_v1_d15121110fa6295ce2c24abb", "stc_v1_877cff45508fdf4619d40683"],
+      "required_facts": ["安装电池对应蓝牙鼠标第二代", "安装一节 AA 电池", "快捷键与功能键切换对应键盘 F1/F2 等按键模式", "两者分别是鼠标硬件安装和键盘按键设置"],
+      "forbidden_facts": ["MateBook 内置电池需要用户自行安装", "两者都是电池安全注意事项"],
+      "answerable": true,
+      "evaluation_tags": ["curated_v2", "comparison", "target_coverage"]
+    },
+    {
+      "case_id": "curated_v2_matebook_comparison_notice_vs_environment",
+      "query_type": "comparison",
+      "query": "HUAWEIMateBookB7-420中“注意”和“环境保护”分别讲什么，使用场景有什么区别？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "“注意”主要说明手册内容、产品特性与功能可能受当地网络、软件和服务支持影响，手册描述不一定与购买产品完全一致，并声明华为可修改信息。“环境保护”主要说明不要将设备及附件作为普通生活垃圾处理，应按当地法规回收。前者用于理解手册和功能描述限制，后者用于设备废弃或回收处理。",
+      "relevant_chunk_ids": ["stc_v1_e8ebd8c526f11574fe3e047c", "stc_v1_4d65dfc7adcd204a9b88a0e0"],
+      "expected_source_chunk_ids": ["stc_v1_e8ebd8c526f11574fe3e047c", "stc_v1_4d65dfc7adcd204a9b88a0e0"],
+      "required_facts": ["注意章节说明手册描述和产品特性限制", "环境保护章节说明设备及附件回收处理", "两者使用场景分别是阅读手册限制和废弃回收"],
+      "forbidden_facts": ["注意章节是交通安全操作步骤", "环境保护章节是电脑管家设置功能"],
+      "answerable": true,
+      "evaluation_tags": ["curated_v2", "comparison", "target_coverage"]
+    },
+    {
+      "case_id": "curated_v2_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "“获取更多”涉及通过华为电脑管家获取更多精彩功能。用户可点击桌面底部任务栏上的华为电脑管家，再点击玩机技巧查看更多功能说明。",
+      "relevant_chunk_ids": ["stc_v1_9f3b5b2292e0b685e5c684eb"],
+      "expected_source_chunk_ids": ["stc_v1_9f3b5b2292e0b685e5c684eb"],
+      "required_facts": ["点击华为电脑管家", "点击玩机技巧", "用于获取更多精彩功能"],
+      "forbidden_facts": ["概括整本用户指南所有功能", "引入责任限制或电池安全作为主要答案"],
+      "answerable": true,
+      "evaluation_tags": ["curated_v2", "section_summary", "relation_pseudo"]
+    },
+    {
+      "case_id": "curated_v2_matebook_section_touchpad",
+      "query_type": "relation",
+      "query": "HUAWEIMateBookB7-420中更改触摸板设置涉及哪些相关功能或步骤？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "更改触摸板设置涉及进入设置界面并打开触摸板相关设置，可开启或关闭触摸板、设置连接鼠标时是否关闭触摸板、更改触摸滚动方向，以及设置手指动作在触摸板上的功能。",
+      "relevant_chunk_ids": ["stc_v1_e0e99c593e1bce3925014df5"],
+      "expected_source_chunk_ids": ["stc_v1_e0e99c593e1bce3925014df5"],
+      "required_facts": ["进入设置界面", "开启或关闭触摸板", "更改触摸滚动方向", "设置手指动作功能"],
+      "forbidden_facts": ["回答键盘快捷键切换", "回答鼠标安装电池"],
+      "answerable": true,
+      "evaluation_tags": ["curated_v2", "section_summary", "relation_pseudo"]
+    },
+    {
+      "case_id": "curated_v2_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": ["华为平板C7DBY-W09"],
+      "reference_answer": "在新平板上进入平板克隆，或进入设置 > 系统和更新 > 平板克隆，点击这是新设备并选择 iPhone/iPad。按屏幕提示在旧设备下载安装平板克隆；在旧设备上进入平板克隆并点击这是旧设备，通过扫码或手动连接与新平板建立连接；选择要克隆的数据并按提示完成数据克隆。",
+      "relevant_chunk_ids": ["stc_v1_39ab8d1c59d30c999ca99ece"],
+      "expected_source_chunk_ids": ["stc_v1_39ab8d1c59d30c999ca99ece"],
+      "required_facts": ["新平板选择这是新设备", "选择 iPhone/iPad", "旧设备选择这是旧设备", "扫码或手动连接", "选择数据并完成克隆"],
+      "forbidden_facts": ["通过蓝牙配对迁移全部数据", "使用电脑管家迁移"],
+      "answerable": true,
+      "evaluation_tags": ["curated_v2", "navigation"]
+    },
+    {
+      "case_id": "curated_v2_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": ["华为平板C7DBY-W09"],
+      "reference_answer": "将录音文件转换成文本主要解决录音内容需要文字化整理的问题，可把录音文件中的语音内容转换为文字，便于查看、编辑、整理或分享。",
+      "relevant_chunk_ids": ["stc_v1_c7246ccf93bbdb7158dd6487"],
+      "expected_source_chunk_ids": ["stc_v1_c7246ccf93bbdb7158dd6487"],
+      "required_facts": ["录音文件转换为文本", "便于查看或编辑", "用于整理或分享录音内容"],
+      "forbidden_facts": ["实时电话字幕", "翻译外语视频字幕"],
+      "answerable": true,
+      "evaluation_tags": ["curated_v2", "explain"]
+    },
+    {
+      "case_id": "curated_v2_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": ["华为平板C7DBY-W09"],
+      "reference_answer": "“日历”主要用于管理日程、提醒和日期相关信息；“时刻”属于图库/相册中的内容整理与回忆展示功能。两者使用场景不同：日历用于时间计划和日程管理，时刻用于查看、整理或回顾照片视频内容。",
+      "relevant_chunk_ids": ["stc_v1_4f0a03343b610345cf96e02e", "stc_v1_cf95956afe2c4e92109cb7ff"],
+      "expected_source_chunk_ids": ["stc_v1_4f0a03343b610345cf96e02e", "stc_v1_cf95956afe2c4e92109cb7ff"],
+      "required_facts": ["日历用于日程或日期管理", "时刻用于相册内容整理或回忆展示", "两者分别对应时间计划和照片视频回顾"],
+      "forbidden_facts": ["日历是清理垃圾功能", "时刻是智慧语音技能"],
+      "answerable": true,
+      "evaluation_tags": ["curated_v2", "comparison", "target_coverage"]
+    },
+    {
+      "case_id": "curated_v2_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": ["HUAWEIMateBookB7-420"],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": ["stc_v1_4d65dfc7adcd204a9b88a0e0"],
+      "expected_source_chunk_ids": ["stc_v1_4d65dfc7adcd204a9b88a0e0"],
+      "required_facts": ["资料中没有环境保护功能开启步骤"],
+      "forbidden_facts": ["进入设置开启环境保护开关", "打开电脑管家开启环境保护模式"],
+      "answerable": false,
+      "evaluation_tags": ["curated_v2", "abstention", "grounded_fallback"]
+    }
+  ]
+}

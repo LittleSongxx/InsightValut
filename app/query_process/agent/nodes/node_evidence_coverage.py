@@ -33,4 +33,7 @@ def node_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
         f"node_evidence_coverage: 完成，coverage_score={summary.get('coverage_score')}, "
         f"needs_rescue={summary.get('needs_rescue')}"
     )
-    return {"evidence_coverage_summary": summary}
+    return {
+        "evidence_coverage_summary": summary,
+        "target_coverage": summary.get("target_coverage") or {},
+    }

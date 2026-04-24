@@ -16,6 +16,10 @@ OUTPUT_FIELDS = [
     "file_title",
     "item_name",
     "image_urls",
+    "section_path",
+    "chunk_context",
+    "bm25_text",
+    "anchor_terms",
 ]
 
 

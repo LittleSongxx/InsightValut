@@ -3,6 +3,7 @@ from collections import Counter
 from typing import Any, Dict, List, Sequence
 
 from app.conf.query_threshold_config import query_threshold_config
+from app.utils.anchor_context_utils import build_target_coverage
 
 DEFAULT_AGENTIC_FEATURES: Dict[str, bool] = {
     "subquery_routing": True,
@@ -91,6 +92,67 @@ def get_agentic_features(state: Dict[str, Any] | None) -> Dict[str, bool]:
     return features
 
 
+def _state_override(state: Dict[str, Any], key: str, default: Any = None) -> Any:
+    for container in (
+        state,
+        state.get("route_overrides") or {},
+        state.get("evaluation_overrides") or {},
+    ):
+        if isinstance(container, dict) and key in container:
+            return container.get(key)
+    return default
+
+
+def _rescue_min_coverage_score(state: Dict[str, Any]) -> float:
+    value = _state_override(
+        state,
+        "rescue_min_coverage_score",
+        query_threshold_config.evidence_min_coverage_score,
+    )
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return query_threshold_config.evidence_min_coverage_score
+
+
+def _rescue_min_docs(state: Dict[str, Any]) -> int:
+    value = _state_override(
+        state,
+        "rescue_min_docs",
+        query_threshold_config.evidence_min_docs,
+    )
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return query_threshold_config.evidence_min_docs
+
+
+def _structured_answer_high_risk_only(state: Dict[str, Any]) -> bool:
+    return bool(_state_override(state, "structured_answer_high_risk_only", False))
+
+
+def _force_target_coverage(state: Dict[str, Any]) -> bool:
+    return bool(_state_override(state, "rescue_force_target_coverage", False))
+
+
+def _query_family(state: Dict[str, Any]) -> str:
+    return str(state.get("router_query_family") or "general")
+
+
+def _is_fast_section_family(query_family: str) -> bool:
+    return query_family in {"section_summary", "section_lookup", "procedure_lookup"}
+
+
+def _is_quality_rescue_path(query_type: str, query_family: str) -> bool:
+    if query_family == "comparison":
+        return True
+    if query_family == "multi_hop_relation":
+        return True
+    if _is_fast_section_family(query_family):
+        return False
+    return query_type in {"comparison", "relation", "constraint", "explain"}
+
+
 def is_agentic_feature_enabled(state: Dict[str, Any] | None, feature_name: str) -> bool:
     return bool(get_agentic_features(state).get(feature_name, True))
 
@@ -164,6 +226,7 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
     reranked_docs = state.get("reranked_docs") or []
     question = _clean_text(state.get("rewritten_query") or state.get("original_query"))
     query_type = str(state.get("query_type") or "general")
+    query_family = _query_family(state)
     focus_terms = [
         _normalize_term(term)
         for term in (state.get("query_focus_terms") or _extract_terms(question))
@@ -173,6 +236,11 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
         _normalize_term(name) for name in (state.get("item_names") or []) if _normalize_term(name)
     ]
     sub_queries = [_clean_text(item) for item in (state.get("sub_queries") or []) if _clean_text(item)]
+    query_anchor_targets = [
+        _clean_text(target)
+        for target in (state.get("query_anchor_targets") or [])
+        if _clean_text(target)
+    ]
     doc_blobs = [_doc_blob(doc) for doc in reranked_docs if isinstance(doc, dict)]
     source_counts = Counter(
         _clean_text(doc.get("source") or "local") for doc in reranked_docs if isinstance(doc, dict)
@@ -218,28 +286,38 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
     coverage_sub_ratio = (
         len(covered_sub_queries) / len(sub_queries) if sub_queries else 1.0
     )
+    target_coverage = build_target_coverage(reranked_docs, query_anchor_targets)
+    coverage_target_ratio = target_coverage.get("coverage_rate", 1.0)
     doc_ratio = min(
-        doc_count / max(query_threshold_config.evidence_min_docs, 1),
+        doc_count / max(_rescue_min_docs(state), 1),
         1.0,
     )
     coverage_score = round(
-        coverage_terms_ratio * 0.35
-        + coverage_item_ratio * 0.20
-        + coverage_sub_ratio * 0.25
+        coverage_terms_ratio * 0.30
+        + coverage_item_ratio * 0.15
+        + coverage_sub_ratio * 0.20
         + doc_ratio * 0.20,
+        4,
+    )
+    coverage_score = round(
+        coverage_score + float(coverage_target_ratio or 0.0) * 0.15,
         4,
     )
 
     clarification = build_clarification_request(state)
+    target_coverage_required = _force_target_coverage(state) or query_type == "comparison"
+    missing_targets = target_coverage.get("missing_targets") or []
     needs_rescue = (
-        coverage_score < query_threshold_config.evidence_min_coverage_score
-        or doc_count < query_threshold_config.evidence_min_docs
+        coverage_score < _rescue_min_coverage_score(state)
+        or doc_count < _rescue_min_docs(state)
         or bool(missing_sub_queries)
         or bool(missing_items)
+        or (target_coverage_required and bool(missing_targets))
     )
 
     return {
         "query_type": query_type,
+        "router_query_family": query_family,
         "question": question,
         "focus_terms": focus_terms,
         "covered_focus_terms": covered_terms,
@@ -253,6 +331,9 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
         "coverage_terms_ratio": round(coverage_terms_ratio, 4),
         "coverage_item_ratio": round(coverage_item_ratio, 4),
         "coverage_sub_ratio": round(coverage_sub_ratio, 4),
+        "coverage_target_ratio": round(float(coverage_target_ratio or 0.0), 4),
+        "target_coverage": target_coverage,
+        "missing_targets": missing_targets,
         "coverage_score": coverage_score,
         "needs_rescue": needs_rescue,
         "clarification_required": bool(clarification.get("required")),
@@ -268,6 +349,7 @@ def build_retrieval_rescue_plan(
     grade_result = grade_result or {}
     coverage = state.get("evidence_coverage_summary") or {}
     query_type = str(state.get("query_type") or "general")
+    query_family = _query_family(state)
     item_names = [_clean_text(name) for name in (state.get("item_names") or []) if _clean_text(name)]
     retrieval_plan = dict(state.get("retrieval_plan") or {})
     kg_summary = state.get("kg_query_summary") or {}
@@ -305,54 +387,77 @@ def build_retrieval_rescue_plan(
 
     suggested_query = _clean_text(grade_result.get("suggested_query") or "")
     next_query = suggested_query or question
+    target_coverage = coverage.get("target_coverage") or state.get("target_coverage") or {}
+    missing_targets = list(coverage.get("missing_targets") or target_coverage.get("missing_targets") or [])
+    missing_sub_queries = list(coverage.get("missing_sub_queries") or [])
+    coverage_score = float(coverage.get("coverage_score") or 0.0)
+    doc_count = int(coverage.get("doc_count") or 0)
+    rescue_min_score = _rescue_min_coverage_score(state)
+    min_docs = _rescue_min_docs(state)
+    quality_rescue_path = _is_quality_rescue_path(query_type, query_family)
+    severe_shortage = doc_count <= 0 or coverage_score < max(0.45, rescue_min_score - 0.2)
 
-    if query_type in {"navigation", "relation", "constraint", "comparison", "explain"}:
+    if quality_rescue_path:
         route_overrides["force_query_type"] = query_type
-        route_overrides["force_graph_preferred"] = True
-        plan_overrides["run_kg"] = True
-        plan_overrides["graph_limit"] = max(
-            int(retrieval_plan.get("graph_limit", 8) or 8),
-            query_threshold_config.context_expand_top_k + 6,
-        )
-        plan_overrides["kg_weight_multiplier"] = max(
-            float(retrieval_plan.get("kg_weight_multiplier", 1.0) or 1.0),
-            2.2,
-        )
-        steps.append("widen_graph_context")
+        route_overrides["force_graph_preferred"] = query_type in {"relation", "explain"}
 
-    if not coverage.get("doc_count"):
-        plan_overrides["run_embedding"] = True
+    if missing_targets:
+        plan_overrides["run_anchor"] = True
         plan_overrides["run_bm25"] = True
-        plan_overrides["run_hyde"] = True
-        if query_type == "general":
-            plan_overrides["run_web"] = True
+        plan_overrides["run_embedding"] = True
         route_overrides["bm25_enabled"] = True
-        steps.append("enable_multi_retriever")
+        steps.append("cover_missing_targets")
 
-    if coverage.get("missing_sub_queries"):
+    if missing_sub_queries:
+        plan_overrides["run_anchor"] = True
         plan_overrides["run_embedding"] = True
         plan_overrides["run_bm25"] = True
         route_overrides["bm25_enabled"] = True
         steps.append("cover_missing_sub_queries")
+
+    if doc_count < min_docs and "expand_lexical_retrieval" not in steps:
+        plan_overrides["run_anchor"] = True
+        plan_overrides["run_embedding"] = True
+        plan_overrides["run_bm25"] = True
+        route_overrides["bm25_enabled"] = True
+        steps.append("expand_lexical_retrieval")
 
     if item_names and coverage.get("missing_item_names") == [name.lower() for name in item_names]:
         route_overrides["drop_item_names"] = True
         plan_overrides["run_web"] = query_type == "general"
         steps.append("drop_item_filter")
 
-    if kg_summary.get("result_count", 0) <= 1 and query_type in {"navigation", "relation", "explain"}:
+    if (
+        quality_rescue_path
+        and query_type in {"relation", "explain"}
+        and (
+            coverage_score < rescue_min_score
+            or doc_count < min_docs
+            or kg_summary.get("result_count", 0) <= 1
+            or bool(missing_sub_queries)
+            or bool(missing_targets)
+        )
+    ):
+        plan_overrides["run_kg"] = True
         plan_overrides["graph_limit"] = max(
             int(plan_overrides.get("graph_limit") or retrieval_plan.get("graph_limit", 8) or 8),
             12,
         )
-        plan_overrides["run_bm25"] = True
-        route_overrides["bm25_enabled"] = True
-        steps.append("boost_graph_with_bm25")
+        plan_overrides["kg_weight_multiplier"] = max(
+            float(plan_overrides.get("kg_weight_multiplier") or retrieval_plan.get("kg_weight_multiplier", 1.0) or 1.0),
+            2.2,
+        )
+        steps.append("widen_graph_context")
 
-    if coverage.get("coverage_score", 0.0) < 0.35 and not steps:
+    if severe_shortage and quality_rescue_path:
         plan_overrides["run_embedding"] = True
         plan_overrides["run_bm25"] = True
         plan_overrides["run_hyde"] = True
+        route_overrides["bm25_enabled"] = True
+        steps.append("enable_hyde_rescue")
+    elif severe_shortage and not steps:
+        plan_overrides["run_embedding"] = True
+        plan_overrides["run_bm25"] = True
         route_overrides["bm25_enabled"] = True
         steps.append("broad_retry")
 
@@ -365,19 +470,27 @@ def build_retrieval_rescue_plan(
         "question": next_query,
         "route_overrides": route_overrides,
         "steps": steps,
-        "coverage_score": coverage.get("coverage_score"),
+        "coverage_score": coverage_score,
         "missing_focus_terms": coverage.get("missing_focus_terms") or [],
-        "missing_sub_queries": coverage.get("missing_sub_queries") or [],
+        "missing_sub_queries": missing_sub_queries,
+        "missing_targets": missing_targets,
+        "router_query_family": query_family,
     }
 
 
 def build_answer_plan(state: Dict[str, Any]) -> Dict[str, Any]:
     query_type = str(state.get("query_type") or "general")
+    query_family = _query_family(state)
     structured_enabled = is_agentic_feature_enabled(state, "structured_answer")
     item_names = [_clean_text(name) for name in (state.get("item_names") or []) if _clean_text(name)]
     coverage = state.get("evidence_coverage_summary") or {}
     kg_summary = state.get("kg_query_summary") or {}
     reranked_docs = state.get("reranked_docs") or []
+    query_anchor_targets = [
+        _clean_text(target)
+        for target in (state.get("query_anchor_targets") or [])
+        if _clean_text(target)
+    ]
     top_titles = [
         _clean_text(doc.get("title") or "")
         for doc in reranked_docs[:4]
@@ -388,23 +501,42 @@ def build_answer_plan(state: Dict[str, Any]) -> Dict[str, Any]:
         for doc in reranked_docs[:3]
         if _clean_text(doc.get("graph_fact") or "")
     ]
+    high_risk_structured = (
+        query_family in {"comparison", "multi_hop_relation"}
+        or (
+            query_type in {"comparison", "relation", "constraint", "explain"}
+            and not _is_fast_section_family(query_family)
+        )
+    )
+    if not _structured_answer_high_risk_only(state):
+        high_risk_structured = query_type in {
+            "navigation",
+            "comparison",
+            "relation",
+            "constraint",
+            "explain",
+        }
+    must_cover: List[str] = []
+    for value in item_names + query_anchor_targets + list(coverage.get("covered_focus_terms") or [])[:4]:
+        cleaned = _clean_text(value)
+        if cleaned and cleaned not in must_cover:
+            must_cover.append(cleaned)
 
     plan = {
         "query_type": query_type,
-        "structured_output": structured_enabled
-        and query_type
-        in {"navigation", "comparison", "relation", "constraint", "explain"},
+        "router_query_family": query_family,
+        "structured_output": structured_enabled and high_risk_structured,
         "response_format": "paragraph",
         "sections": ["直接回答", "补充说明"],
         "style_instructions": ["优先基于证据给出直接结论。"],
-        "must_cover": item_names + list(coverage.get("covered_focus_terms") or [])[:4],
+        "must_cover": must_cover,
         "top_titles": top_titles,
         "top_graph_facts": top_graph_facts,
         "coverage_score": coverage.get("coverage_score"),
         "graph_summary": kg_summary,
     }
 
-    if not structured_enabled:
+    if not structured_enabled or not high_risk_structured:
         return plan
 
     if query_type == "navigation":
@@ -485,8 +617,14 @@ def build_agentic_response_metadata(
         "crag_router_enabled": bool(state.get("crag_router_enabled", False)),
         "grounded_mode": bool(state.get("grounded_mode", False)),
         "query_focus_terms": state.get("query_focus_terms") or [],
+        "query_anchor_targets": state.get("query_anchor_targets") or [],
+        "router_query_family": state.get("router_query_family") or "general",
         "query_route_reason": state.get("query_route_reason") or "",
         "retrieval_plan": state.get("retrieval_plan") or {},
+        "anchor_hits": state.get("anchor_hits") or [],
+        "target_coverage": state.get("target_coverage") or {},
+        "evidence_pack_summary": state.get("evidence_pack_summary") or {},
+        "context_budget_chars": state.get("context_budget_chars") or 0,
         "kg_query_summary": state.get("kg_query_summary") or {},
         "evidence_coverage_summary": coverage,
         "rescue_plan": rescue_plan,

@@ -5,6 +5,11 @@ from app.conf.milvus_config import milvus_config
 from app.core.logger import logger
 from app.clients.milvus_schema import (
     CHUNKS_OUTPUT_FIELDS,
+    FIELD_ANCHOR_TERMS,
+    FIELD_BM25_TEXT,
+    FIELD_CHUNK_CONTEXT,
+    FIELD_EMBEDDING_TEXT,
+    FIELD_SECTION_PATH,
     FIELD_STABLE_CHUNK_ID,
     extract_chunk_id,
     extract_storage_chunk_id,
@@ -83,6 +88,28 @@ def _supports_stable_field_error(exc: Exception) -> bool:
 
 def _without_stable_field(output_fields):
     return [field for field in (output_fields or []) if field != FIELD_STABLE_CHUNK_ID]
+
+
+_CONTEXTUAL_DYNAMIC_FIELDS = {
+    FIELD_SECTION_PATH,
+    FIELD_CHUNK_CONTEXT,
+    FIELD_EMBEDDING_TEXT,
+    FIELD_BM25_TEXT,
+    FIELD_ANCHOR_TERMS,
+}
+
+
+def _without_contextual_fields(output_fields):
+    return [
+        field
+        for field in (output_fields or [])
+        if field not in _CONTEXTUAL_DYNAMIC_FIELDS
+    ]
+
+
+def _supports_contextual_field_error(exc: Exception) -> bool:
+    message = str(exc)
+    return any(field in message for field in _CONTEXTUAL_DYNAMIC_FIELDS)
 
 
 def _coerce_string_ids(ids):
@@ -315,6 +342,35 @@ def query_chunks_by_filter(
             kwargs["limit"] = limit
         return _normalize_rows(client.query(collection_name=collection_name, **kwargs))
     except Exception as e:
+        if _supports_contextual_field_error(e):
+            fallback_fields = _without_contextual_fields(output_fields)
+            try:
+                results = []
+                if hasattr(client, "query_iterator"):
+                    iterator = client.query_iterator(
+                        collection_name=collection_name,
+                        batch_size=batch_size,
+                        limit=limit,
+                        filter=filter_expr or "",
+                        output_fields=fallback_fields,
+                    )
+                    while True:
+                        batch = iterator.next()
+                        if not batch:
+                            break
+                        results.extend(batch)
+                    return _normalize_rows(results)
+
+                kwargs = {"filter": filter_expr or "", "output_fields": fallback_fields}
+                if limit is not None and limit >= 0:
+                    kwargs["limit"] = limit
+                logger.warning("Milvus 查询检测到旧集合不支持 contextual 动态字段，已回退兼容字段")
+                return _normalize_rows(client.query(collection_name=collection_name, **kwargs))
+            except Exception as retry_exc:
+                logger.error(
+                    f"Milvus 按过滤条件查询移除contextual字段后仍失败，集合[{collection_name}]：{str(retry_exc)}",
+                    exc_info=True,
+                )
         if _supports_stable_field_error(e) and FIELD_STABLE_CHUNK_ID in output_fields:
             fallback_fields = _without_stable_field(output_fields)
             try:
@@ -471,6 +527,40 @@ def hybrid_search(
         )
         return normalized
     except Exception as e:
+        if _supports_contextual_field_error(e):
+            try:
+                res = client.hybrid_search(
+                    collection_name=collection_name,
+                    reqs=reqs,
+                    ranker=rerank,
+                    limit=limit,
+                    output_fields=_without_contextual_fields(output_fields),
+                    search_params=search_params,
+                )
+                normalized = []
+                for result_set in res or []:
+                    normalized_set = []
+                    for hit in result_set or []:
+                        if not isinstance(hit, dict):
+                            normalized_set.append(hit)
+                            continue
+                        hit_copy = dict(hit)
+                        entity = hit_copy.get("entity")
+                        if isinstance(entity, dict):
+                            normalized_entity = normalize_entity_for_business_id(entity)
+                            hit_copy["entity"] = normalized_entity
+                            hit_copy["id"] = normalized_entity.get("chunk_id") or hit_copy.get("id")
+                        normalized_set.append(hit_copy)
+                    normalized.append(normalized_set)
+                logger.warning(
+                    "Milvus混合搜索检测到旧集合不支持 contextual 动态字段，已自动回退到兼容模式"
+                )
+                return normalized
+            except Exception as retry_exc:
+                logger.error(
+                    f"Milvus混合搜索移除contextual字段后仍失败，集合[{collection_name}]：{str(retry_exc)}",
+                    exc_info=True,
+                )
         if _supports_stable_field_error(e) and FIELD_STABLE_CHUNK_ID in output_fields:
             try:
                 res = client.hybrid_search(

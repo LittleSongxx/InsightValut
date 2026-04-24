@@ -1,6 +1,10 @@
 import re
 from typing import Any, Dict, List, Sequence
 from app.conf.query_threshold_config import query_threshold_config
+from app.utils.anchor_context_utils import (
+    classify_router_query_family,
+    extract_query_anchor_targets,
+)
 
 GRAPH_PREFERRED_QUERY_TYPES = {
     "navigation",
@@ -248,12 +252,14 @@ def build_retrieval_plan(
         "graph_first": graph_preferred,
         "run_kg": True,
         "run_embedding": True,
+        "run_anchor": False,
         "run_bm25": resolved_bm25_enabled,
         "run_hyde": not graph_preferred,
         "run_web": not graph_preferred,
         "graph_limit": 6,
         "kg_weight_multiplier": 1.0,
         "embedding_weight_multiplier": 1.0,
+        "anchor_weight_multiplier": 1.0,
         "bm25_weight_multiplier": 1.0,
         "hyde_weight_multiplier": 1.0,
     }
@@ -395,6 +401,25 @@ def build_query_route(
     route["retrieval_plan"] = build_retrieval_plan(
         route["query_type"], route["graph_preferred"]
     )
+    anchor_targets = extract_query_anchor_targets(query, item_names=item_names)
+    route["query_anchor_targets"] = anchor_targets
+    route["router_query_family"] = classify_router_query_family(
+        query,
+        str(route.get("query_type") or "general"),
+        anchor_targets,
+    )
+    if route["router_query_family"] in {
+        "section_summary",
+        "section_lookup",
+        "procedure_lookup",
+    }:
+        route["graph_preferred"] = False
+        route["retrieval_plan"] = build_retrieval_plan(
+            route["query_type"],
+            False,
+        )
+        complexity["query_complexity"] = "simple"
+        complexity["reason"] = route["router_query_family"]
     route["query_complexity"] = complexity["query_complexity"]
     route["query_complexity_reason"] = complexity["reason"]
     return route
@@ -467,6 +492,28 @@ def apply_route_overrides(
         graph_preferred,
         bm25_enabled=get_bm25_enabled(state),
     )
+    state_query_original = str((state or {}).get("original_query") or "")
+    state_query_rewritten = str((state or {}).get("rewritten_query") or "")
+    state_item_names = (state or {}).get("item_names") or []
+    anchor_targets = list(
+        updated_route.get("query_anchor_targets")
+        or route.get("query_anchor_targets")
+        or extract_query_anchor_targets(state_query_original, state_item_names)
+        or extract_query_anchor_targets(state_query_rewritten, state_item_names)
+    )
+    updated_route["query_anchor_targets"] = anchor_targets
+    router_query_family = str(
+        updated_route.get("router_query_family")
+        or route.get("router_query_family")
+        or "general"
+    )
+    if router_query_family == "general" and anchor_targets:
+        router_query_family = classify_router_query_family(
+            state_query_original or state_query_rewritten,
+            query_type,
+            anchor_targets,
+        )
+    updated_route["router_query_family"] = router_query_family
 
     retrieval_plan_overrides = overrides.get("retrieval_plan_overrides") or {}
     if isinstance(retrieval_plan_overrides, dict):
@@ -488,18 +535,38 @@ def apply_route_overrides(
 
     router_enabled = is_router_deep_search_enabled(state)
     grounded_mode = get_grounded_mode(state)
+    anchor_context_enabled = bool(overrides.get("anchor_context_enabled", False))
     router_decision = "default_path"
     crag_router_enabled = bool(overrides.get("retrieval_grader_enabled", True))
 
     if router_enabled:
         updated_plan = dict(updated_route.get("retrieval_plan") or {})
+        if anchor_context_enabled:
+            updated_plan["run_anchor"] = True
+            if router_query_family in {
+                "section_summary",
+                "section_lookup",
+                "procedure_lookup",
+                "comparison",
+            }:
+                updated_plan["run_hyde"] = False
+                crag_router_enabled = False
+                router_decision = "anchor_grounded_path"
         if query_complexity == "simple":
             updated_plan["run_hyde"] = False
-            router_decision = "simple_fast_path"
+            router_decision = (
+                "anchor_grounded_path"
+                if anchor_context_enabled and updated_plan.get("run_anchor")
+                else "simple_fast_path"
+            )
             crag_router_enabled = False
-        else:
+        elif router_decision == "default_path":
             router_decision = "complex_deep_path"
-            updated_plan["run_hyde"] = bool(updated_plan.get("run_hyde", True))
+            updated_plan["run_hyde"] = bool(
+                retrieval_plan_overrides.get("run_hyde", True)
+                if isinstance(retrieval_plan_overrides, dict)
+                else True
+            )
             crag_router_enabled = bool(overrides.get("retrieval_grader_enabled", True))
         updated_route["retrieval_plan"] = updated_plan
 
@@ -518,6 +585,7 @@ def should_run_retriever(state: Dict[str, Any], source: str) -> bool:
     plan = state.get("retrieval_plan") or {}
     key_map = {
         "kg": "run_kg",
+        "anchor": "run_anchor",
         "embedding": "run_embedding",
         "bm25": "run_bm25",
         "hyde": "run_hyde",
@@ -533,6 +601,7 @@ def get_rrf_weight_multipliers(state: Dict[str, Any]) -> Dict[str, float]:
     plan = state.get("retrieval_plan") or {}
     return {
         "embedding": float(plan.get("embedding_weight_multiplier", 1.0) or 1.0),
+        "anchor": float(plan.get("anchor_weight_multiplier", 1.0) or 1.0),
         "hyde": float(plan.get("hyde_weight_multiplier", 1.0) or 1.0),
         "bm25": float(plan.get("bm25_weight_multiplier", 1.0) or 1.0),
         "kg": float(plan.get("kg_weight_multiplier", 1.0) or 1.0),

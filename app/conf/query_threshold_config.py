@@ -36,6 +36,8 @@ class QueryThresholdConfig:
     bm25_candidate_limit: int
     bm25_k1: float
     bm25_b: float
+    anchor_top_k: int
+    anchor_candidate_limit: int
 
     # --- RRF 融合参数 ---
     # RRF 融合的 k 常数（经典值为 60）
@@ -46,6 +48,7 @@ class QueryThresholdConfig:
     rrf_weight_embedding: float
     rrf_weight_hyde: float
     rrf_weight_bm25: float
+    rrf_weight_anchor: float
     rrf_weight_kg: float
 
     # --- Rerank 参数 ---
@@ -141,12 +144,15 @@ query_threshold_config = QueryThresholdConfig(
     bm25_candidate_limit=_int(os.getenv("BM25_CANDIDATE_LIMIT"), 1000),
     bm25_k1=_float(os.getenv("BM25_K1"), 1.5),
     bm25_b=_float(os.getenv("BM25_B"), 0.75),
+    anchor_top_k=_int(os.getenv("ANCHOR_TOP_K"), 6),
+    anchor_candidate_limit=_int(os.getenv("ANCHOR_CANDIDATE_LIMIT"), 1000),
     # RRF 融合参数
     rrf_k=_int(os.getenv("RRF_K"), 60),
     rrf_max_results=_int(os.getenv("RRF_MAX_RESULTS"), 10),
     rrf_weight_embedding=_float(os.getenv("RRF_WEIGHT_EMBEDDING"), 1.0),
     rrf_weight_hyde=_float(os.getenv("RRF_WEIGHT_HYDE"), 1.0),
     rrf_weight_bm25=_float(os.getenv("RRF_WEIGHT_BM25"), 0.7),
+    rrf_weight_anchor=_float(os.getenv("RRF_WEIGHT_ANCHOR"), 1.4),
     rrf_weight_kg=_float(
         os.getenv("RRF_WEIGHT_KG"), 0.8
     ),  # 启用 KG 路，与 Embedding/HyDE 互补

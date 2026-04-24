@@ -94,7 +94,9 @@ def _strip_case_results(report: Dict[str, Any]) -> Dict[str, Any]:
     return _sanitize_for_json({
         "generated_at": report.get("generated_at"),
         "dataset_path": report.get("dataset_path"),
+        "dataset_name": report.get("dataset_name"),
         "case_count": int(report.get("case_count") or 0),
+        "dataset_quality_summary": report.get("dataset_quality_summary") or {},
         "final_variant": report.get("final_variant"),
         "final_system_metrics": report.get("final_system_metrics") or {},
         "variants": variants_payload,

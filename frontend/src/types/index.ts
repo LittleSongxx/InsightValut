@@ -54,8 +54,14 @@ export interface AgenticMetadata {
   crag_router_enabled?: boolean;
   grounded_mode?: boolean;
   query_focus_terms?: string[];
+  query_anchor_targets?: string[];
+  router_query_family?: string;
   query_route_reason?: string;
   retrieval_plan?: Record<string, unknown>;
+  anchor_hits?: Array<Record<string, unknown>>;
+  target_coverage?: Record<string, unknown>;
+  evidence_pack_summary?: Record<string, unknown>;
+  context_budget_chars?: number;
   kg_query_summary?: Record<string, unknown>;
   evidence_coverage_summary?: AgenticEvidenceCoverageSummary;
   rescue_plan?: AgenticRescuePlan;

@@ -77,8 +77,16 @@ def step_2_search_by_query_and_hyde(
             "chunk_id",
             "stable_chunk_id",
             "content",
+            "title",
+            "parent_title",
+            "part",
+            "file_title",
             "item_name",
             "image_urls",
+            "section_path",
+            "chunk_context",
+            "bm25_text",
+            "anchor_terms",
         ]
 
     if not rewritten_query:

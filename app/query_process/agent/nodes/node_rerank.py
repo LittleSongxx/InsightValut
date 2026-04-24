@@ -7,6 +7,22 @@ import sys
 import hashlib
 
 from app.utils.query_cache_utils import query_cache_get, query_cache_set
+from app.utils.anchor_context_utils import reorder_docs_for_target_coverage
+
+
+def _contextual_rerank_text(entity, content):
+    prefix_parts = [
+        get_entity_field(entity, "section_path"),
+        get_entity_field(entity, "chunk_context"),
+        get_entity_field(entity, "title"),
+        get_entity_field(entity, "parent_title"),
+        get_entity_field(entity, "file_title"),
+    ]
+    prefix = "\n".join(str(part).strip() for part in prefix_parts if str(part or "").strip())
+    body = str(content or "").strip()
+    if prefix and prefix not in body[:500]:
+        return f"{prefix}\n\n{body}"
+    return body
 
 
 def step_1_merge_docs(state):
@@ -49,7 +65,7 @@ def step_1_merge_docs(state):
 
         doc_items.append(
             {
-                "text": content,
+                "text": _contextual_rerank_text(entity, content),
                 "doc_id": chunk_id,
                 "chunk_id": chunk_id,
                 "title": title,
@@ -59,6 +75,9 @@ def step_1_merge_docs(state):
                 "graph_fact": get_entity_field(entity, "graph_fact") or "",
                 "graph_entities": get_entity_field(entity, "graph_entities") or [],
                 "section_title": get_entity_field(entity, "section_title") or "",
+                "section_path": get_entity_field(entity, "section_path") or "",
+                "chunk_context": get_entity_field(entity, "chunk_context") or "",
+                "anchor_terms": get_entity_field(entity, "anchor_terms") or [],
                 "document_title": get_entity_field(entity, "document_title") or "",
                 "expanded_chunk_ids": get_entity_field(entity, "expanded_chunk_ids")
                 or [],
@@ -155,6 +174,9 @@ def step_2_rerank_docs(state, doc_items):
                     "graph_fact": item.get("graph_fact") or "",
                     "graph_entities": item.get("graph_entities") or [],
                     "section_title": item.get("section_title") or "",
+                    "section_path": item.get("section_path") or "",
+                    "chunk_context": item.get("chunk_context") or "",
+                    "anchor_terms": item.get("anchor_terms") or [],
                     "document_title": item.get("document_title") or "",
                     "expanded_chunk_ids": item.get("expanded_chunk_ids") or [],
                     "context_expanded": bool(item.get("context_expanded", False)),
@@ -180,6 +202,9 @@ def step_2_rerank_docs(state, doc_items):
                 "graph_fact": x.get("graph_fact") or "",
                 "graph_entities": x.get("graph_entities") or [],
                 "section_title": x.get("section_title") or "",
+                "section_path": x.get("section_path") or "",
+                "chunk_context": x.get("chunk_context") or "",
+                "anchor_terms": x.get("anchor_terms") or [],
                 "document_title": x.get("document_title") or "",
                 "expanded_chunk_ids": x.get("expanded_chunk_ids") or [],
                 "context_expanded": bool(x.get("context_expanded", False)),
@@ -191,7 +216,12 @@ def step_2_rerank_docs(state, doc_items):
         return fallback_docs
 
 
-def step_3_topk(scored_docs):
+def step_3_topk(
+    scored_docs,
+    query_anchor_targets=None,
+    query_type: str = "general",
+    query_family: str = "general",
+):
     """
     阶段三：动态 TopK
     基于 scored_docs（已按 score 降序排序）进行智能截断，
@@ -200,6 +230,11 @@ def step_3_topk(scored_docs):
     cfg = query_threshold_config
     max_topk = min(cfg.rerank_max_topk, len(scored_docs))
     min_topk = cfg.rerank_min_topk
+    if query_family in {"comparison", "multi_hop_relation"} or (
+        query_type in {"comparison", "relation", "constraint", "explain"}
+        and query_family not in {"section_summary", "section_lookup", "procedure_lookup"}
+    ):
+        min_topk = min(max_topk, max(min_topk, 4))
     gap_ratio = cfg.rerank_gap_ratio
     gap_abs = cfg.rerank_gap_abs
 
@@ -217,7 +252,15 @@ def step_3_topk(scored_docs):
                 topk = i + 1
                 break
 
-    topk_docs = scored_docs[:topk]
+    target_count = len([target for target in query_anchor_targets or [] if str(target or "").strip()])
+    if target_count:
+        topk = max(topk, min(len(scored_docs), target_count))
+
+    coverage_ordered_docs = reorder_docs_for_target_coverage(
+        scored_docs,
+        query_anchor_targets or [],
+    )
+    topk_docs = coverage_ordered_docs[:topk]
     logger.info(f"Step 3: 截断完成，保留前 {len(topk_docs)} 条文档 (TopK={topk})")
 
     if topk_docs:
@@ -244,7 +287,12 @@ def node_rerank(state):
 
     doc_items = step_1_merge_docs(state)
     scored_docs = step_2_rerank_docs(state, doc_items)
-    topk_docs = step_3_topk(scored_docs)
+    topk_docs = step_3_topk(
+        scored_docs,
+        state.get("query_anchor_targets") or [],
+        query_type=str(state.get("query_type") or "general"),
+        query_family=str(state.get("router_query_family") or "general"),
+    )
 
     logger.info(f"Rerank 节点处理结束, 最终输出 {len(topk_docs)} 条文档")
 

@@ -28,6 +28,7 @@ from app.query_process.agent.nodes.node_search_embedding_hyde import (
 )
 from app.query_process.agent.nodes.node_web_search_mcp import mcp_call
 from app.query_process.agent.retrieval_utils import (
+    run_anchor_search,
     run_bm25_search,
     run_embedding_hybrid_search,
 )
@@ -47,6 +48,10 @@ OUTPUT_FIELDS = [
     "file_title",
     "item_name",
     "image_urls",
+    "section_path",
+    "chunk_context",
+    "bm25_text",
+    "anchor_terms",
 ]
 
 
@@ -169,12 +174,14 @@ def step_2_search_sub_queries(
                 "graph_first": False,
                 "run_kg": False,
                 "run_embedding": True,
+                "run_anchor": False,
                 "run_bm25": get_bm25_enabled(state),
                 "run_hyde": False,
                 "run_web": False,
                 "graph_limit": 0,
                 "kg_weight_multiplier": 0.0,
                 "embedding_weight_multiplier": 1.0,
+                "anchor_weight_multiplier": 1.0,
                 "bm25_weight_multiplier": 1.0,
                 "hyde_weight_multiplier": 0.0,
             }
@@ -196,6 +203,7 @@ def step_2_search_sub_queries(
             "query_type": route_info.get("query_type", "general"),
             "graph_preferred": bool(route_info.get("graph_preferred", False)),
             "embedding_hits": 0,
+            "anchor_hits": 0,
             "bm25_hits": 0,
             "hyde_hits": 0,
             "kg_hits": 0,
@@ -228,6 +236,32 @@ def step_2_search_sub_queries(
         except Exception as exc:
             summary["errors"].append(f"embedding:{exc}")
             logger.exception(f"Step 2: 子查询 [{index}] Embedding 检索失败")
+
+        try:
+            if should_run_retriever(temp_state, "anchor"):
+                anchor_results = run_anchor_search(
+                    query_text=sub_query,
+                    item_names=item_names,
+                    top_k=cfg.anchor_top_k,
+                    candidate_limit=cfg.anchor_candidate_limit,
+                    output_fields=list(OUTPUT_FIELDS),
+                )
+                anchor_entities = _as_entity_list(anchor_results)
+                summary["anchor_hits"] = len(anchor_entities)
+                if anchor_entities:
+                    all_source_weights.append(
+                        (
+                            anchor_entities,
+                            cfg.rrf_weight_anchor
+                            * float(
+                                retrieval_plan.get("anchor_weight_multiplier", 1.0)
+                                or 1.0
+                            ),
+                        )
+                    )
+        except Exception as exc:
+            summary["errors"].append(f"anchor:{exc}")
+            logger.exception(f"Step 2: 子查询 [{index}] Anchor 检索失败")
 
         try:
             if should_run_retriever(temp_state, "bm25"):

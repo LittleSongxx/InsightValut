@@ -490,6 +490,8 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
         )
         state["grounded_mode"] = bool(route_info.get("grounded_mode", False))
         state["query_focus_terms"] = route_info.get("focus_terms", [])
+        state["query_anchor_targets"] = route_info.get("query_anchor_targets", [])
+        state["router_query_family"] = route_info.get("router_query_family", "general")
         state["query_route_reason"] = route_info.get("reason", "general_chat")
         state["retrieval_plan"] = route_info.get("retrieval_plan", {})
         state["kg_query_summary"] = {}
@@ -540,6 +542,8 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     )
     state["grounded_mode"] = bool(route_info.get("grounded_mode", False))
     state["query_focus_terms"] = route_info.get("focus_terms", [])
+    state["query_anchor_targets"] = route_info.get("query_anchor_targets", [])
+    state["router_query_family"] = route_info.get("router_query_family", "general")
     state["query_route_reason"] = route_info.get("reason", "")
     state["retrieval_plan"] = route_info.get("retrieval_plan", {})
     if not state.get("kg_query_summary"):

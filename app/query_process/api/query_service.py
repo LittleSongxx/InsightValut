@@ -507,6 +507,12 @@ async def test_evaluation_variant(request: EvaluationVariantTestRequest):
         runtime_state_excerpt = {
             "query_type": str(final_state.get("query_type") or ""),
             "retrieval_plan": final_state.get("retrieval_plan") or {},
+            "query_anchor_targets": final_state.get("query_anchor_targets") or [],
+            "router_query_family": str(final_state.get("router_query_family") or ""),
+            "anchor_hits": final_state.get("anchor_hits") or [],
+            "target_coverage": final_state.get("target_coverage") or {},
+            "evidence_pack_summary": final_state.get("evidence_pack_summary") or {},
+            "context_budget_chars": int(final_state.get("context_budget_chars") or 0),
             "sub_query_routes": final_state.get("sub_query_routes") or [],
             "sub_query_results": final_state.get("sub_query_results") or [],
             "context_expansion_summary": final_state.get("context_expansion_summary") or {},
