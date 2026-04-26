@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import sys
 from typing import Any, Dict, List, Tuple
 
@@ -53,6 +54,74 @@ OUTPUT_FIELDS = [
     "bm25_text",
     "anchor_terms",
 ]
+
+COMPOUND_QUERY_TYPES = {"comparison", "relation", "multi_hop_relation"}
+COMPOUND_SIGNAL_TERMS = {
+    "分别",
+    "各自",
+    "区别",
+    "对比",
+    "比较",
+    "差异",
+    "关系",
+    "同时",
+    "以及",
+    "并且",
+}
+
+
+def _forced_query_type(state: Dict[str, Any]) -> str:
+    for container in (
+        state.get("route_overrides") or {},
+        state.get("evaluation_overrides") or {},
+    ):
+        if isinstance(container, dict) and container.get("force_query_type"):
+            return str(container.get("force_query_type") or "").strip()
+    return str(state.get("query_type") or "").strip()
+
+
+def _question_segment_count(question: str) -> int:
+    segments = [
+        part.strip()
+        for part in re.split(r"[？?；;\n]+", str(question or ""))
+        if part.strip()
+    ]
+    return len(segments)
+
+
+def _has_compound_signal(question: str, item_names: List[str], query_type: str) -> bool:
+    text = str(question or "")
+    if _question_segment_count(text) >= 2:
+        return True
+    has_signal_term = any(term in text for term in COMPOUND_SIGNAL_TERMS)
+    if len([name for name in item_names or [] if str(name).strip()]) > 1 and has_signal_term:
+        return True
+    if query_type in COMPOUND_QUERY_TYPES and has_signal_term:
+        return True
+    quoted_targets = re.findall(r"[“\"]([^”\"]{2,40})[”\"]", text)
+    return len(quoted_targets) >= 3 and has_signal_term
+
+
+def _fast_detect_compound(state: Dict[str, Any], question: str, item_names: List[str]) -> Dict[str, Any] | None:
+    if bool((state.get("evaluation_overrides") or {}).get("force_query_decompose_llm")):
+        return None
+
+    if not is_agentic_feature_enabled(state, "subquery_routing"):
+        return {
+            "is_compound": False,
+            "sub_queries": [],
+            "reason": "deterministic_skip: subquery_routing_disabled",
+        }
+
+    query_type = _forced_query_type(state)
+    if not _has_compound_signal(question, item_names, query_type):
+        return {
+            "is_compound": False,
+            "sub_queries": [],
+            "reason": "deterministic_skip: no_compound_signal",
+        }
+
+    return None
 
 
 def step_1_detect_compound(question: str, item_names: List[str]) -> Dict[str, Any]:
@@ -421,7 +490,12 @@ def node_query_decompose(state: Dict[str, Any]) -> Dict[str, Any]:
     question = state.get("rewritten_query") or state.get("original_query", "")
     item_names = state.get("item_names", [])
 
-    detect_result = step_1_detect_compound(question, item_names)
+    detect_result = _fast_detect_compound(state, question, item_names)
+    if detect_result is None:
+        detect_result = step_1_detect_compound(question, item_names)
+        detect_result["strategy"] = "llm"
+    else:
+        detect_result["strategy"] = "deterministic"
     is_compound = detect_result.get("is_compound", False)
     sub_queries = detect_result.get("sub_queries", [])
 
@@ -430,6 +504,8 @@ def node_query_decompose(state: Dict[str, Any]) -> Dict[str, Any]:
         "sub_queries": sub_queries,
         "sub_query_routes": [],
         "sub_query_results": [],
+        "query_decompose_strategy": detect_result.get("strategy") or "",
+        "query_decompose_reason": detect_result.get("reason") or "",
     }
 
     if is_compound and sub_queries:

@@ -34,6 +34,7 @@ from app.utils.eval_report_utils import (
 )
 from app.utils.eval_job_utils import (
     cancel_evaluation_job,
+    create_append_evaluation_job,
     create_evaluation_job,
     get_evaluation_config,
     get_evaluation_job,
@@ -45,6 +46,7 @@ from app.utils.unified_rag_eval import sync_evaluation_dataset
 from app.utils.unified_rag_eval import (
     build_variant_runtime_state,
     get_variant_definition,
+    register_feature_variant,
 )
 from app.clients.mongo_history_utils import (
     get_recent_messages,
@@ -90,6 +92,18 @@ class EvaluationRunRequest(BaseModel):
 
     dataset_path: str = Field(..., description="评测数据集路径")
     variants: list[str] = Field(default_factory=list, description="评测变体列表")
+    feature_variants: list[dict] = Field(
+        default_factory=list, description="动态功能组合评测列表"
+    )
+    output_path: str | None = Field(None, description="可选输出报告路径")
+
+
+class EvaluationAppendRequest(BaseModel):
+    """基于已有报告追加动态功能组合评测"""
+
+    feature_variants: list[dict] = Field(
+        default_factory=list, description="要追加的动态功能组合评测列表"
+    )
     output_path: str | None = Field(None, description="可选输出报告路径")
 
 
@@ -122,7 +136,9 @@ class EvaluationVariantTestRequest(BaseModel):
     """评测变体在线试跑请求"""
 
     query: str = Field(..., description="测试问题")
-    variant_name: str = Field(..., description="评测变体名称")
+    variant_name: str = Field("", description="评测变体名称")
+    variant_spec: dict | None = Field(None, description="动态功能组合评测配置")
+    streaming: bool = Field(True, description="是否使用流式 LLM 路径采集首 token")
 
 
 # 证明服务器启动即可
@@ -457,12 +473,34 @@ async def create_and_run_evaluation_job(
         job = create_evaluation_job(
             dataset_path=request.dataset_path,
             variants=request.variants,
+            feature_variants=request.feature_variants,
             output_path=request.output_path,
         )
         background_tasks.add_task(run_evaluation_job, job["job_id"])
         return job
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"create evaluation job error: {e}")
+
+
+@app.post("/evaluation/reports/{report_id}/append")
+async def append_and_run_evaluation_job(
+    report_id: str, background_tasks: BackgroundTasks, request: EvaluationAppendRequest
+):
+    """基于已有统一评测报告追加动态功能组合评测，生成新版报告"""
+    try:
+        job = create_append_evaluation_job(
+            report_id=report_id,
+            feature_variants=request.feature_variants,
+            output_path=request.output_path,
+        )
+        background_tasks.add_task(run_evaluation_job, job["job_id"])
+        return job
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"append evaluation job error: {e}")
 
 
 @app.post("/evaluation/dataset/sync")
@@ -485,8 +523,15 @@ async def test_evaluation_variant(request: EvaluationVariantTestRequest):
     """阻塞式试跑指定评测变体，供前端直接验证方案效果"""
     query = str(request.query or "").strip()
     variant_name = str(request.variant_name or "").strip()
+    variant_spec = request.variant_spec or None
     if not query:
         raise HTTPException(status_code=400, detail="query is required")
+    if variant_spec:
+        try:
+            registered = register_feature_variant(variant_spec)
+            variant_name = str(registered.get("name") or "").strip()
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     if not variant_name:
         raise HTTPException(status_code=400, detail="variant_name is required")
 
@@ -494,6 +539,7 @@ async def test_evaluation_variant(request: EvaluationVariantTestRequest):
         variant = get_variant_definition(variant_name)
         session_id = f"variant-test-{uuid.uuid4().hex[:12]}"
         initial_state = build_variant_runtime_state(query, variant_name, session_id)
+        initial_state["evaluation_streaming_llm"] = bool(request.streaming)
         final_state, perf_doc, error = invoke_query_state(initial_state, persist_perf=False)
         reranked_docs = final_state.get("reranked_docs") or []
         metadata = final_state.get("response_metadata") or build_agentic_response_metadata(
@@ -516,10 +562,29 @@ async def test_evaluation_variant(request: EvaluationVariantTestRequest):
             "sub_query_routes": final_state.get("sub_query_routes") or [],
             "sub_query_results": final_state.get("sub_query_results") or [],
             "context_expansion_summary": final_state.get("context_expansion_summary") or {},
+            "final_context_summary": final_state.get("final_context_summary") or {},
+            "final_context_ids": final_state.get("final_context_ids") or [],
+            "final_context_titles": final_state.get("final_context_titles") or [],
+            "final_context_chars": int(final_state.get("final_context_chars") or 0),
+            "final_context_doc_count": int(final_state.get("final_context_doc_count") or 0),
+            "rerank_diagnostics": final_state.get("rerank_diagnostics") or {},
             "evidence_coverage_summary": final_state.get("evidence_coverage_summary") or {},
             "rescue_plan": final_state.get("rescue_plan") or {},
             "answer_plan": final_state.get("answer_plan") or {},
             "clarification_reason": str(final_state.get("clarification_reason") or ""),
+            "judge_skipped_reason": str(final_state.get("judge_skipped_reason") or ""),
+            "retrieval_judge_skipped_reason": str(
+                final_state.get("retrieval_judge_skipped_reason") or ""
+            ),
+            "hallucination_judge_skipped_reason": str(
+                final_state.get("hallucination_judge_skipped_reason") or ""
+            ),
+            "retrieval_grader_strategy": str(
+                final_state.get("retrieval_grader_strategy") or ""
+            ),
+            "hallucination_check_strategy": str(
+                final_state.get("hallucination_check_strategy") or ""
+            ),
             "answer_error": str(final_state.get("answer_error") or ""),
             "item_name_extract_error": str(final_state.get("item_name_extract_error") or ""),
             "retrieval_grade": str(final_state.get("retrieval_grade") or ""),
@@ -544,10 +609,15 @@ async def test_evaluation_variant(request: EvaluationVariantTestRequest):
             "technique": str(variant.get("technique") or variant_name),
             "answer": str(final_state.get("answer") or "").strip(),
             "latency_ms": perf_doc.get("total_duration_ms"),
+            "first_token_ms": perf_doc.get("first_token_ms"),
             "first_answer_ms": perf_doc.get("first_answer_ms"),
             "stage_durations_ms": _stage_duration_map(perf_doc),
             "metadata": metadata,
             "runtime_state_excerpt": runtime_state_excerpt,
+            "final_context_ids": final_state.get("final_context_ids") or [],
+            "final_context_titles": final_state.get("final_context_titles") or [],
+            "final_context_chars": int(final_state.get("final_context_chars") or 0),
+            "final_context_doc_count": int(final_state.get("final_context_doc_count") or 0),
             "retrieved_context_ids": [
                 str(doc.get("chunk_id") or doc.get("doc_id") or "")
                 for doc in reranked_docs[:5]

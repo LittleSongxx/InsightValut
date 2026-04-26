@@ -51,16 +51,19 @@ def step_1_grade_retrieval(question: str, reranked_docs: list) -> dict:
     # 构造文档摘要（限制长度，避免 Prompt 过长）
     doc_summaries = []
     total_len = 0
-    for i, doc in enumerate(reranked_docs, start=1):
+    max_docs = max(1, int(getattr(cfg, "judge_max_docs", 3) or 3))
+    max_total_chars = max(800, int(getattr(cfg, "judge_max_total_chars", 2400) or 2400))
+    for i, doc in enumerate(reranked_docs[:max_docs], start=1):
         text = (doc.get("text") or "").strip()
         score = doc.get("score")
         source = doc.get("source", "unknown")
         summary = f"[{i}] [source={source}]"
         if score is not None:
             summary += f" [score={float(score):.4f}]"
-        summary += f"\n{text[:cfg.grader_doc_max_chars]}"  # 截断过长文本
-        if total_len + len(summary) > 6000:
+        remaining = max_total_chars - total_len - len(summary)
+        if remaining <= 0:
             break
+        summary += f"\n{text[:min(cfg.grader_doc_max_chars, remaining)]}"  # 截断过长文本
         doc_summaries.append(summary)
         total_len += len(summary)
 
@@ -99,6 +102,74 @@ def step_1_grade_retrieval(question: str, reranked_docs: list) -> dict:
             "reason": f"评估失败(降级通过): {e}",
             "suggested_query": "",
         }
+
+
+def _score_values(reranked_docs: list) -> list[float]:
+    values: list[float] = []
+    for doc in reranked_docs or []:
+        try:
+            if doc.get("score") is not None:
+                values.append(float(doc.get("score")))
+        except (TypeError, ValueError):
+            continue
+    return sorted(values, reverse=True)
+
+
+def _rerank_diagnostics_untrusted(diagnostics: dict, selected_count: int = 0) -> bool:
+    status = str(diagnostics.get("status") or "").lower()
+    backend = str(diagnostics.get("backend") or "").lower()
+    if (
+        bool(diagnostics.get("fallback"))
+        or bool(diagnostics.get("heuristic"))
+        or bool(diagnostics.get("error"))
+        or status.startswith("error")
+        or backend in {"input_order_fallback", "strict_error"}
+    ):
+        return True
+    max_score = diagnostics.get("max_score")
+    try:
+        if max_score is not None and float(max_score) <= 0:
+            return True
+    except (TypeError, ValueError):
+        return True
+    if selected_count > int(getattr(cfg, "rerank_complex_max_topk", 8) or 8):
+        return True
+    return False
+
+
+def _retrieval_grader_skip_reason(state: dict, reranked_docs: list) -> str:
+    if bool((state.get("evaluation_overrides") or {}).get("force_retrieval_grader_llm")):
+        return ""
+    if not reranked_docs:
+        return ""
+    if int(state.get("retry_count") or 0) > 0:
+        return ""
+
+    evidence_coverage = state.get("evidence_coverage_summary") or {}
+    if bool(evidence_coverage.get("needs_rescue")):
+        return ""
+    target_coverage = state.get("target_coverage") or {}
+    if target_coverage.get("missing_targets"):
+        return ""
+    rerank_diagnostics = state.get("rerank_diagnostics") or {}
+    if _rerank_diagnostics_untrusted(rerank_diagnostics, len(reranked_docs)):
+        return ""
+
+    scores = _score_values(reranked_docs)
+    if not scores:
+        return ""
+    top1 = scores[0]
+    margin = top1 if len(scores) == 1 else top1 - scores[1]
+    if (
+        top1 >= float(cfg.retrieval_grader_confident_score)
+        and margin >= float(cfg.retrieval_grader_confident_margin)
+        and len(reranked_docs) >= CRAG_MIN_DOCS
+    ):
+        return (
+            "high_confidence_retrieval:"
+            f"top1={top1:.4f},margin={margin:.4f},docs={len(reranked_docs)}"
+        )
+    return ""
 
 
 def node_retrieval_grader(state):
@@ -143,12 +214,41 @@ def node_retrieval_grader(state):
                 ),
                 "steps": [],
             },
+            "judge_skipped_reason": (
+                "router_skipped_crag"
+                if bool(state.get("router_deep_search_enabled", False))
+                else "retrieval_grader_disabled"
+            ),
+            "retrieval_judge_skipped_reason": (
+                "router_skipped_crag"
+                if bool(state.get("router_deep_search_enabled", False))
+                else "retrieval_grader_disabled"
+            ),
+            "retrieval_grader_strategy": "disabled",
         }
         add_done_task(
             state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
         )
         logger.info("---node_retrieval_grader 跳过: retrieval_grader_enabled=False---")
         return result
+
+    skip_reason = _retrieval_grader_skip_reason(state, reranked_docs)
+    if skip_reason:
+        logger.info("CRAG: 规则门控跳过 LLM 检索质量评估: %s", skip_reason)
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        return {
+            "retrieval_grade": "sufficient",
+            "rescue_plan": {
+                "action": "none",
+                "reason": skip_reason,
+                "steps": [],
+            },
+            "judge_skipped_reason": skip_reason,
+            "retrieval_judge_skipped_reason": skip_reason,
+            "retrieval_grader_strategy": "gated",
+        }
 
     # 阶段1：评估检索质量
     grade_result = step_1_grade_retrieval(question, reranked_docs)
@@ -160,6 +260,9 @@ def node_retrieval_grader(state):
 
     result = {
         "rescue_plan": rescue_plan,
+        "judge_skipped_reason": "",
+        "retrieval_judge_skipped_reason": "",
+        "retrieval_grader_strategy": "llm",
     }
 
     if rescue_plan.get("action") == "clarify":

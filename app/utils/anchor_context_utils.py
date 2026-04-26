@@ -380,12 +380,15 @@ def build_evidence_pack(
     resolved_targets = list(targets or extract_query_anchor_targets(question))
     coverage = build_target_coverage(docs, resolved_targets)
     lines: List[str] = []
+    context_ids: List[str] = []
+    context_titles: List[str] = []
+    context_previews: List[str] = []
     used = 0
     for index, doc in enumerate(docs or [], start=1):
         text = clean_anchor_text(doc.get("text") or doc.get("content"), 900)
         if not text:
             continue
-        chunk_id = str(doc.get("chunk_id") or doc.get("doc_id") or "")
+        chunk_id = str(extract_chunk_id(doc) or doc.get("chunk_id") or doc.get("doc_id") or "")
         title = clean_anchor_text(
             doc.get("section_path")
             or doc.get("title")
@@ -396,6 +399,9 @@ def build_evidence_pack(
         if used + len(row) > max_chars:
             break
         lines.append(row)
+        context_ids.append(chunk_id)
+        context_titles.append(title)
+        context_previews.append(text[:240])
         used += len(row) + 2
     return {
         "query_type": query_type,
@@ -405,6 +411,9 @@ def build_evidence_pack(
         "used_chars": used,
         "text": "\n\n".join(lines) if lines else "无参考内容",
         "doc_count": len(lines),
+        "context_ids": context_ids,
+        "context_titles": context_titles,
+        "context_previews": context_previews,
         "fallback_message": FALLBACK_MESSAGE,
     }
 

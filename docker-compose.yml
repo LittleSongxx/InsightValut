@@ -94,7 +94,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-16379}:6379"
+      - "${REDIS_PORT:-16380}:6379"
     volumes:
       - ./.docker-data/redis:/data
 
@@ -268,7 +268,7 @@ services:
       - ./.cache:/app/.cache
       - ./logs:/app/logs
       - ./output:/app/output
-      - ./docs:/app/docs:ro
+      - ./docs:/app/docs
       - ./prompts:/app/prompts:ro
       - ./reports:/app/reports
     depends_on:

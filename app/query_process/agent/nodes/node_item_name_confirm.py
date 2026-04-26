@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -68,8 +69,106 @@ def _fallback_need_rag(query: str, item_names: List[str]) -> bool:
         "零件",
         "保修",
         "售后",
+        "设置",
+        "开启",
+        "关闭",
+        "功能",
+        "位置",
+        "步骤",
     ]
     return any(k in q for k in rag_keywords)
+
+
+_CONTEXT_DEPENDENT_TERMS = {
+    "这个",
+    "这款",
+    "它",
+    "该产品",
+    "上面",
+    "刚才",
+    "之前",
+    "那个",
+    "这些",
+}
+
+
+def _needs_history_rewrite(query: str, history: List[Dict]) -> bool:
+    if not history:
+        return False
+    text = str(query or "")
+    return any(term in text for term in _CONTEXT_DEPENDENT_TERMS)
+
+
+def _extract_deterministic_item_candidates(query: str) -> List[str]:
+    text = str(query or "").strip()
+    if not text:
+        return []
+
+    candidates: List[str] = []
+    patterns = [
+        r"HUAWEI[A-Za-z0-9._/-]+(?:\s*[A-Za-z0-9._/-]+)*",
+        r"[A-Z]{2,}[A-Z0-9._/-]*\s*\d{2,}[A-Za-z0-9._/-]*",
+        r"[A-Za-z]+[A-Za-z0-9._/-]*\d[A-Za-z0-9._/-]*",
+        r"华为平板\s*[A-Za-z0-9._/-]+",
+        r"MateBook\s*[A-Za-z0-9._/-]+",
+    ]
+    for pattern in patterns:
+        for match in re.findall(pattern, text, flags=re.IGNORECASE):
+            value = re.sub(r"\s+", "", str(match)).strip("，。；：:、,.?？!！")
+            if len(value) >= 3 and value not in candidates:
+                candidates.append(value)
+
+    # 常见「品牌 + 型号」写法保留空格，便于 item_name 向量集合召回。
+    for match in re.findall(r"[A-Z]{2,}\s+\d{2,}[A-Za-z0-9._/-]*", text):
+        value = re.sub(r"\s+", " ", match).strip()
+        if value and value not in candidates:
+            candidates.append(value)
+    return candidates[:5]
+
+
+def _is_obvious_general_chat(query: str) -> bool:
+    text = str(query or "").strip().lower()
+    if not text:
+        return True
+    general_phrases = {
+        "你好",
+        "您好",
+        "hello",
+        "hi",
+        "谢谢",
+        "多谢",
+        "你是谁",
+        "你能做什么",
+    }
+    return text in general_phrases or len(text) <= 2
+
+
+def _fast_extract_info(query: str, history: List[Dict], forced_item_names: Any = None) -> Optional[Dict[str, Any]]:
+    if isinstance(forced_item_names, list):
+        item_names = [
+            str(name).strip() for name in forced_item_names if str(name).strip()
+        ]
+        if item_names:
+            return {
+                "item_names": item_names,
+                "rewritten_query": query,
+                "use_rag": True,
+                "strategy": "forced_item_names",
+            }
+
+    if _needs_history_rewrite(query, history):
+        return None
+
+    candidates = _extract_deterministic_item_candidates(query)
+    use_rag = _fallback_need_rag(query, candidates)
+    if candidates or use_rag or _is_obvious_general_chat(query):
+        return {
+            "item_names": candidates,
+            "rewritten_query": query,
+            "use_rag": use_rag,
+            "strategy": "deterministic",
+        }
+    return None
 
 
 def step_3_extract_info(query: str, history: List[Dict]) -> Dict:
@@ -445,8 +544,16 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
         logger.debug(f"Node: 用户消息已初始保存, ID: {message_id}")
         state["message_id"] = message_id
 
-    # 3. 提取信息
-    extract_res = step_3_extract_info(current_query, history)
+    # 3. 提取信息：评测集显式 item_names 和明显独立问题优先走确定性路径，避免简单问题被前置 LLM 阻塞。
+    forced_item_names = state.get("evaluation_overrides", {}).get("force_item_names")
+    extract_res = _fast_extract_info(current_query, history, forced_item_names)
+    if extract_res is None:
+        extract_res = step_3_extract_info(current_query, history)
+        state["item_name_resolution_strategy"] = "llm"
+    else:
+        state["item_name_resolution_strategy"] = str(
+            extract_res.get("strategy") or "deterministic"
+        )
     item_names = extract_res.get("item_names", [])
     rewritten_query = extract_res.get("rewritten_query", current_query)
     use_rag = bool(
@@ -454,7 +561,6 @@ def node_item_name_confirm(state: QueryGraphState) -> QueryGraphState:
     )
     if "force_need_rag" in state.get("evaluation_overrides", {}):
         use_rag = bool(state["evaluation_overrides"].get("force_need_rag"))
-    forced_item_names = state.get("evaluation_overrides", {}).get("force_item_names")
     if isinstance(forced_item_names, list):
         item_names = [
             str(name).strip() for name in forced_item_names if str(name).strip()

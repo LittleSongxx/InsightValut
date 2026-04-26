@@ -121,6 +121,8 @@ export interface PerformanceRecord {
   session_id: string;
   query: string;
   total_duration_ms: number;
+  first_token_ms?: number | null;
+  first_answer_ms?: number | null;
   stages: StageRecord[];
   created_at: string;
 }
@@ -137,7 +139,12 @@ export interface PerformanceSummary {
   avg_total_duration_ms: number;
   p50_total_duration_ms: number;
   p95_total_duration_ms: number;
+  avg_first_token_ms: number | null;
+  p50_first_token_ms: number | null;
+  p95_first_token_ms: number | null;
   avg_first_answer_ms: number | null;
+  p50_first_answer_ms: number | null;
+  p95_first_answer_ms: number | null;
   stages: StageBreakdown[];
 }
 
@@ -145,6 +152,7 @@ export interface StageBreakdown {
   stage: string;
   count: number;
   avg_duration_ms: number;
+  p50_duration_ms?: number;
   p95_duration_ms: number;
   error_rate: number;
 }
@@ -153,7 +161,14 @@ export interface PerformanceTimePoint {
   period: string;
   run_count: number;
   avg_total_duration_ms: number;
+  p50_total_duration_ms?: number;
   p95_total_duration_ms: number;
+  avg_first_token_ms?: number | null;
+  p50_first_token_ms?: number | null;
+  p95_first_token_ms?: number | null;
+  avg_first_answer_ms?: number | null;
+  p50_first_answer_ms?: number | null;
+  p95_first_answer_ms?: number | null;
 }
 
 export interface QueryCacheStats {
@@ -187,6 +202,7 @@ export interface EvaluationMetricDelta {
 export interface EvaluationStageSummary {
   stage: string;
   avg_duration_ms: number | null;
+  p50_duration_ms?: number | null;
   p95_duration_ms: number | null;
   count: number;
 }
@@ -198,6 +214,8 @@ export interface EvaluationRetrievalGroundTruthSummary {
   source_breakdown: Record<string, number>;
   unresolved_reasons: Record<string, number>;
   stale_declared_cases: number;
+  item_name_filter_miss_cases?: number;
+  item_name_filter_miss_resolved_cases?: number;
 }
 
 export interface EvaluationSummary {
@@ -217,9 +235,18 @@ export interface EvaluationSummary {
     avg_total_duration_ms?: number | null;
     p50_total_duration_ms?: number | null;
     p95_total_duration_ms?: number | null;
+    avg_first_token_ms?: number | null;
+    p50_first_token_ms?: number | null;
+    p95_first_token_ms?: number | null;
     avg_first_answer_ms?: number | null;
     p50_first_answer_ms?: number | null;
     p95_first_answer_ms?: number | null;
+    cold_avg_total_duration_ms?: number | null;
+    cold_p50_total_duration_ms?: number | null;
+    cold_p95_total_duration_ms?: number | null;
+    hot_avg_total_duration_ms?: number | null;
+    hot_p50_total_duration_ms?: number | null;
+    hot_p95_total_duration_ms?: number | null;
     stages?: EvaluationStageSummary[];
       [key: string]: number | EvaluationStageSummary[] | null | undefined;
   };
@@ -231,6 +258,7 @@ export interface EvaluationVariantResult {
   description: string;
   technique: string;
   compare_to?: string;
+  feature_variant?: EvaluationFeatureVariantRuntime;
   summary: EvaluationSummary;
   by_query_type: Record<string, EvaluationSummary>;
 }
@@ -260,7 +288,9 @@ export interface EvaluationReportListItem {
 export interface EvaluationReportDetail {
   generated_at: string;
   dataset_path: string;
+  dataset_name?: string;
   case_count: number;
+  evaluation_method?: EvaluationMethod;
   final_variant: string;
   final_system_metrics: EvaluationSummary;
   variants: Record<string, EvaluationVariantResult>;
@@ -275,10 +305,56 @@ export interface EvaluationVariantOption {
   is_default: boolean;
 }
 
+export interface EvaluationFeatureOption {
+  key: string;
+  label: string;
+  category: string;
+  description: string;
+  dependencies?: string[];
+}
+
+export interface EvaluationDatasetOption {
+  key: string;
+  label: string;
+  dataset_name: string;
+  description: string;
+  path: string;
+  case_count: number;
+  is_default: boolean;
+  exists: boolean;
+}
+
+export interface EvaluationFeatureVariantSpec {
+  label?: string;
+  features: string[];
+}
+
+export interface EvaluationFeatureVariantRuntime {
+  name: string;
+  label: string;
+  requested_features: string[];
+  resolved_features: string[];
+  auto_enabled_features: string[];
+  feature_labels: string[];
+  auto_enabled_feature_labels: string[];
+}
+
+export interface EvaluationMethod {
+  mode: string;
+  case_count: number;
+  query_type_source?: string;
+  item_name_source?: string;
+  execution_order?: string[];
+  cache_policy?: string;
+  feature_variants?: EvaluationFeatureVariantRuntime[];
+}
+
 export interface EvaluationConfig {
   template_dataset_path: string;
   default_variants: string[];
   variant_catalog: EvaluationVariantOption[];
+  feature_catalog: EvaluationFeatureOption[];
+  dataset_catalog?: EvaluationDatasetOption[];
 }
 
 export interface EvaluationDatasetSyncResult {
@@ -287,6 +363,7 @@ export interface EvaluationDatasetSyncResult {
   backup_path: string;
   case_count: number;
   updated_cases: number;
+  updated_item_name_cases?: number;
   already_aligned_cases: number;
   unresolved_cases: number;
   unresolved_case_ids: string[];
@@ -326,6 +403,7 @@ export interface EvaluationJob {
   status: 'pending' | 'running' | 'cancelling' | 'cancelled' | 'completed' | 'failed';
   dataset_path: string;
   variants: string[];
+  feature_variants?: EvaluationFeatureVariantRuntime[];
   output_path: string;
   progress_message: string;
   phase?:
@@ -374,6 +452,7 @@ export interface EvaluationVariantTrialResult {
   technique: string;
   answer: string;
   latency_ms: number | null;
+  first_token_ms: number | null;
   first_answer_ms: number | null;
   stage_durations_ms: Record<string, number>;
   metadata: AgenticMetadata | null;

@@ -166,6 +166,22 @@ def build_clarification_request(state: Dict[str, Any]) -> Dict[str, Any]:
         for term in (state.get("query_focus_terms") or _extract_terms(question))
         if _clean_text(term)
     ]
+    answerable = bool(state.get("answerable", True))
+    has_product_reference = bool(item_names) or _question_has_explicit_product_reference(question)
+    constraint_markers = (
+        "限制",
+        "安全",
+        "注意",
+        "条件",
+        "要求",
+        "适配",
+        "不能",
+        "禁止",
+        "必须",
+        "充电",
+        "约束",
+    )
+    has_constraint_marker = any(marker in question for marker in constraint_markers)
 
     if query_type == "comparison" and len(item_names) < 2 and len(focus_terms) < 2:
         return {
@@ -187,7 +203,11 @@ def build_clarification_request(state: Dict[str, Any]) -> Dict[str, Any]:
             "options": focus_terms[:3],
         }
 
-    if query_type == "constraint" and len(focus_terms) < 2:
+    if (
+        query_type == "constraint"
+        and not (answerable and has_product_reference and has_constraint_marker)
+        and (not has_product_reference or not has_constraint_marker or len(focus_terms) < 1)
+    ):
         return {
             "required": True,
             "reason": "missing_constraint_terms",
@@ -203,7 +223,7 @@ def build_clarification_request(state: Dict[str, Any]) -> Dict[str, Any]:
             "options": [],
         }
 
-    if query_type == "explain" and len(focus_terms) < 1:
+    if query_type == "explain" and len(focus_terms) < 1 and not (answerable and has_product_reference and question):
         return {
             "required": True,
             "reason": "missing_explain_target",
@@ -605,6 +625,7 @@ def build_agentic_response_metadata(
     coverage = state.get("evidence_coverage_summary") or {}
     rescue_plan = state.get("rescue_plan") or {}
     context_expansion = state.get("context_expansion_summary") or {}
+    rerank_diagnostics = state.get("rerank_diagnostics") or {}
     return {
         "query_type": state.get("query_type") or "general",
         "query_complexity": state.get("query_complexity") or "simple",
@@ -629,6 +650,21 @@ def build_agentic_response_metadata(
         "evidence_coverage_summary": coverage,
         "rescue_plan": rescue_plan,
         "context_expansion_summary": context_expansion,
+        "final_context_summary": state.get("final_context_summary") or {},
+        "final_context_ids": state.get("final_context_ids") or [],
+        "final_context_titles": state.get("final_context_titles") or [],
+        "final_context_chars": int(state.get("final_context_chars") or 0),
+        "final_context_doc_count": int(state.get("final_context_doc_count") or 0),
+        "rerank_diagnostics": rerank_diagnostics,
+        "judge_skipped_reason": state.get("judge_skipped_reason") or "",
+        "retrieval_judge_skipped_reason": state.get("retrieval_judge_skipped_reason")
+        or "",
+        "hallucination_judge_skipped_reason": state.get(
+            "hallucination_judge_skipped_reason"
+        )
+        or "",
+        "retrieval_grader_strategy": state.get("retrieval_grader_strategy") or "",
+        "hallucination_check_strategy": state.get("hallucination_check_strategy") or "",
         "answer_plan": answer_plan,
         "clarification_reason": coverage.get("clarification_reason") or state.get("clarification_reason") or "",
         "image_urls": list(image_urls or []),

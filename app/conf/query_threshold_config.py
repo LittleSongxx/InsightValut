@@ -56,16 +56,30 @@ class QueryThresholdConfig:
     rerank_max_topk: int
     # Rerank 动态 TopK 硬下限
     rerank_min_topk: int
+    # 简单问题最终送入答案生成的 Rerank TopK 上限
+    rerank_simple_max_topk: int
+    # 复杂/对比问题最终送入答案生成的 Rerank TopK 上限
+    rerank_complex_max_topk: int
     # Rerank 断崖截断 - 绝对阈值（分数差）
     rerank_gap_abs: float
     # Rerank 断崖截断 - 相对阈值（分数比例）
     rerank_gap_ratio: float
+    # Rerank 分数保留比例：best_score > 0 时，低于 best_score * ratio 的文档会被裁掉
+    rerank_keep_min_ratio: float
 
     # --- CRAG 参数 ---
     # CRAG 最大重试次数
     crag_max_retries: int
     # CRAG 最少所需文档数
     crag_min_docs: int
+    # 检索质量评估 LLM gate：top1 score 达到该阈值且分差足够时跳过 LLM
+    retrieval_grader_confident_score: float
+    # 检索质量评估 LLM gate：top1-top2 最小分差
+    retrieval_grader_confident_margin: float
+    # 检索质量/幻觉检查 judge 最多读取的文档数
+    judge_max_docs: int
+    # 检索质量/幻觉检查 judge 文档摘要总字符预算
+    judge_max_total_chars: int
 
     # --- 幻觉检查参数 ---
     # 幻觉检查最大重试次数
@@ -159,11 +173,22 @@ query_threshold_config = QueryThresholdConfig(
     # Rerank 参数
     rerank_max_topk=_int(os.getenv("RERANK_MAX_TOPK"), 10),
     rerank_min_topk=_int(os.getenv("RERANK_MIN_TOPK"), 1),
+    rerank_simple_max_topk=_int(os.getenv("RERANK_SIMPLE_MAX_TOPK"), 3),
+    rerank_complex_max_topk=_int(os.getenv("RERANK_COMPLEX_MAX_TOPK"), 6),
     rerank_gap_abs=_float(os.getenv("RERANK_GAP_ABS"), 0.5),
     rerank_gap_ratio=_float(os.getenv("RERANK_GAP_RATIO"), 0.25),
+    rerank_keep_min_ratio=_float(os.getenv("RERANK_KEEP_MIN_RATIO"), 0.35),
     # CRAG 参数
     crag_max_retries=_int(os.getenv("CRAG_MAX_RETRIES"), 1),
     crag_min_docs=_int(os.getenv("CRAG_MIN_DOCS"), 1),
+    retrieval_grader_confident_score=_float(
+        os.getenv("RETRIEVAL_GRADER_CONFIDENT_SCORE"), 0.65
+    ),
+    retrieval_grader_confident_margin=_float(
+        os.getenv("RETRIEVAL_GRADER_CONFIDENT_MARGIN"), 0.08
+    ),
+    judge_max_docs=_int(os.getenv("JUDGE_MAX_DOCS"), 3),
+    judge_max_total_chars=_int(os.getenv("JUDGE_MAX_TOTAL_CHARS"), 2400),
     # 幻觉检查参数
     hallucination_max_retries=_int(os.getenv("HALLUCINATION_MAX_RETRIES"), 1),
     # HyDE 参数

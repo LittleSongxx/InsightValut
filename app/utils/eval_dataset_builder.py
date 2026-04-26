@@ -8,20 +8,30 @@ from typing import Any, Dict, List, Sequence
 
 from dotenv import load_dotenv
 
-from app.clients.milvus_schema import CHUNKS_OUTPUT_FIELDS, extract_chunk_id
+from app.clients.milvus_schema import extract_chunk_id
 from app.clients.milvus_utils import get_milvus_client, query_chunks_by_filter
 from app.conf.milvus_config import milvus_config
 from app.utils.path_util import PROJECT_ROOT
 
 QUERY_TYPES = [
-    "navigation",
     "constraint",
     "explain",
     "relation",
     "general",
     "comparison",
+    "navigation",
 ]
-DEFAULT_CASE_COUNT = 100
+DEFAULT_CASE_COUNT = 25
+DATASET_OUTPUT_FIELDS = [
+    "chunk_id",
+    "stable_chunk_id",
+    "content",
+    "title",
+    "parent_title",
+    "part",
+    "file_title",
+    "item_name",
+]
 
 
 def _clean_text(text: str, limit: int | None = None) -> str:
@@ -43,6 +53,12 @@ def _title(doc: Dict[str, Any]) -> str:
 def _parent_title(doc: Dict[str, Any]) -> str:
     parent = _clean_text(doc.get("parent_title") or "", 60)
     return parent or _title(doc)
+
+
+def _display_item_name(doc: Dict[str, Any]) -> str:
+    item = _clean_text(str(doc.get("item_name") or ""), 80)
+    item = re.sub(r"\s*用户指南.*$", "", item).strip()
+    return item or "该产品"
 
 
 def _summary(doc: Dict[str, Any], limit: int = 260) -> str:
@@ -78,12 +94,14 @@ def _slug(text: str) -> str:
 def _query_for(
     doc: Dict[str, Any], query_type: str, partner: Dict[str, Any] | None = None
 ) -> str:
-    item = str(doc.get("item_name") or "该产品")
+    item = _display_item_name(doc)
     title = _title(doc)
     parent = _parent_title(doc)
     if query_type == "navigation":
         return f"在{item}中，{title}应该怎么操作？"
     if query_type == "constraint":
+        if title.startswith("使用"):
+            return f"在{item}中，{title}有哪些注意事项或限制？"
         return f"{item}使用{title}时有哪些注意事项或限制？"
     if query_type == "explain":
         return f"{item}的{title}主要解决什么问题？请简要说明。"
@@ -154,7 +172,7 @@ def _fetch_docs() -> List[Dict[str, Any]]:
     docs = query_chunks_by_filter(
         client,
         milvus_config.chunks_collection,
-        output_fields=list(CHUNKS_OUTPUT_FIELDS),
+        output_fields=list(DATASET_OUTPUT_FIELDS),
         limit=-1,
     )
     usable = []
@@ -312,9 +330,12 @@ def build_dataset(
         notes.insert(0, "样本从当前 Milvus chunk 自动构造，便于和当前知识库保持一致。")
 
     payload = {
-        "dataset_name": "insightvault_100_case_eval",
+        "dataset_name": f"insightvault_{len(cases)}_case_eval",
         "generated_at": datetime.now().isoformat(),
-        "description": "基于当前 InsightVault Milvus 知识库生成的 100 条多产品 RAG 消融评测集。",
+        "description": (
+            f"基于当前 InsightVault Milvus 知识库生成的 {len(cases)} 条"
+            "多产品 RAG 受控消融评测集。"
+        ),
         "notes": notes,
         "sources": {
             "chunks_collection": milvus_config.chunks_collection,

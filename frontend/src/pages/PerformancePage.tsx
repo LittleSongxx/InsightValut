@@ -7,7 +7,9 @@ import {
   Database,
   FileText,
   Loader2,
+  Pencil,
   Play,
+  Plus,
   RefreshCcw,
   Search,
   ShieldAlert,
@@ -15,6 +17,7 @@ import {
   Sparkles,
   Target,
   Trash2,
+  X,
 } from 'lucide-react';
 import {
   Bar,
@@ -29,6 +32,7 @@ import {
   YAxis,
 } from 'recharts';
 import {
+  appendEvaluationReport,
   cancelEvaluationJob,
   createEvaluationJob,
   deleteEvaluationReport,
@@ -51,10 +55,13 @@ import type {
   ChunkIdMigrationResult,
   EvaluationConfig,
   EvaluationDatasetSyncResult,
+  EvaluationFeatureOption,
+  EvaluationFeatureVariantSpec,
   EvaluationJob,
   EvaluationMetricDelta,
   EvaluationReportDetail,
   EvaluationReportListItem,
+  EvaluationRetrievalGroundTruthSummary,
   EvaluationSummary,
   EvaluationVariantOption,
   EvaluationVariantTrialResult,
@@ -96,6 +103,9 @@ const METRIC_LABELS: Record<string, string> = {
   llm_context_recall: '上下文召回',
   id_based_context_precision: '上下文精确率(ID)',
   id_based_context_recall: '上下文召回率(ID)',
+  retrieved_context_precision: '召回上下文精确率',
+  prompt_context_precision: 'Prompt 上下文精确率',
+  final_context_precision: '最终上下文精确率',
   'hit@1': 'HIT@1',
   'hit@3': 'HIT@3',
   'hit@5': 'HIT@5',
@@ -104,7 +114,32 @@ const METRIC_LABELS: Record<string, string> = {
   'mrr@3': 'MRR@3',
   'mrr@5': 'MRR@5',
   avg_total_duration_ms: '平均总耗时',
+  p50_total_duration_ms: 'P50 总耗时',
   p95_total_duration_ms: 'P95 总耗时',
+  avg_first_token_ms: '平均首 token 延迟',
+  p50_first_token_ms: 'P50 首 token 延迟',
+  p95_first_token_ms: 'P95 首 token 延迟',
+  avg_first_answer_ms: '平均首答耗时',
+  p50_first_answer_ms: 'P50 首答耗时',
+  p95_first_answer_ms: 'P95 首答耗时',
+  cold_avg_total_duration_ms: '冷缓存平均总耗时',
+  cold_p50_total_duration_ms: '冷缓存 P50 总耗时',
+  cold_p95_total_duration_ms: '冷缓存 P95 总耗时',
+  cold_avg_first_token_ms: '冷缓存平均首 token',
+  cold_p50_first_token_ms: '冷缓存 P50 首 token',
+  cold_p95_first_token_ms: '冷缓存 P95 首 token',
+  cold_avg_first_answer_ms: '冷缓存平均首答',
+  cold_p50_first_answer_ms: '冷缓存 P50 首答',
+  cold_p95_first_answer_ms: '冷缓存 P95 首答',
+  hot_avg_total_duration_ms: '热缓存平均总耗时',
+  hot_p50_total_duration_ms: '热缓存 P50 总耗时',
+  hot_p95_total_duration_ms: '热缓存 P95 总耗时',
+  hot_avg_first_token_ms: '热缓存平均首 token',
+  hot_p50_first_token_ms: '热缓存 P50 首 token',
+  hot_p95_first_token_ms: '热缓存 P95 首 token',
+  hot_avg_first_answer_ms: '热缓存平均首答',
+  hot_p50_first_answer_ms: '热缓存 P50 首答',
+  hot_p95_first_answer_ms: '热缓存 P95 首答',
   empty_retrieval_rate: '空检索率',
   empty_answer_rate: '空回答率',
   crag_retry_rate: 'CRAG 重试率',
@@ -125,6 +160,15 @@ const METRIC_LABELS: Record<string, string> = {
   anchor_enabled_rate: 'Anchor 启用率',
   avg_target_coverage_rate: '目标覆盖率',
   target_coverage_case_rate: '目标覆盖样本率',
+  retrieval_judge_skipped_rate: '检索 Judge 跳过率',
+  hallucination_judge_skipped_rate: '幻觉 Judge 跳过率',
+  rerank_fallback_rate: 'Rerank 回退率',
+  rerank_heuristic_rate: 'Rerank 启发式率',
+  rerank_cache_hit_rate: 'Rerank 缓存命中率',
+  avg_rerank_candidate_count: '平均重排候选数',
+  avg_rerank_selected_count: '平均重排入选数',
+  avg_final_context_docs: '平均最终上下文数',
+  avg_final_context_used_chars: '平均上下文字数',
 };
 
 const CACHE_NAMESPACE_LABELS: Record<string, string> = {
@@ -157,6 +201,7 @@ const GROUND_TRUTH_REASON_LABELS: Record<string, string> = {
 const HEADLINE_METRIC_KEYS = [
   'factual_correctness',
   'faithfulness',
+  'response_relevancy',
   'recall@5',
   'mrr@5',
   'hit@5',
@@ -165,11 +210,14 @@ const HEADLINE_METRIC_KEYS = [
   'hit@3',
   'retrieval_cache_rate',
   'avg_total_duration_ms',
+  'p95_total_duration_ms',
+  'p95_first_token_ms',
 ] as const;
 
 const VARIANT_METRIC_KEYS = [
   'factual_correctness',
   'faithfulness',
+  'response_relevancy',
   'recall@5',
   'mrr@5',
   'hit@5',
@@ -178,6 +226,8 @@ const VARIANT_METRIC_KEYS = [
   'hit@3',
   'retrieval_cache_rate',
   'avg_total_duration_ms',
+  'p95_total_duration_ms',
+  'p95_first_token_ms',
 ] as const;
 
 const CACHE_METRIC_KEYS = [
@@ -186,9 +236,85 @@ const CACHE_METRIC_KEYS = [
   'l1_cache_hit_rate',
   'l2_cache_hit_rate',
   'retrieval_cache_rate',
+  'rerank_cache_hit_rate',
   'answer_cache_rate',
   'avg_cache_writes',
 ] as const;
+
+const EVALUATION_METRIC_GROUPS = [
+  {
+    key: 'quality',
+    label: '质量',
+    metricKeys: [
+      'factual_correctness',
+      'faithfulness',
+      'response_relevancy',
+      'llm_context_recall',
+      'id_based_context_precision',
+      'id_based_context_recall',
+      'final_context_precision',
+    ],
+  },
+  {
+    key: 'retrieval',
+    label: '检索',
+    metricKeys: [
+      'recall@5',
+      'mrr@5',
+      'hit@5',
+      'recall@3',
+      'mrr@3',
+      'hit@3',
+      'retrieved_context_precision',
+      'prompt_context_precision',
+      'final_context_precision',
+      'empty_retrieval_rate',
+      'empty_answer_rate',
+      'router_simple_rate',
+      'hyde_enabled_rate',
+      'anchor_enabled_rate',
+      'crag_router_enabled_rate',
+      'avg_target_coverage_rate',
+      'target_coverage_case_rate',
+      'avg_rerank_candidate_count',
+      'avg_rerank_selected_count',
+      'rerank_fallback_rate',
+      'rerank_heuristic_rate',
+      'retrieval_judge_skipped_rate',
+      'hallucination_judge_skipped_rate',
+      'avg_final_context_docs',
+      'avg_final_context_used_chars',
+    ],
+  },
+  {
+    key: 'latency',
+    label: '时延',
+    metricKeys: [
+      'avg_total_duration_ms',
+      'p50_total_duration_ms',
+      'p95_total_duration_ms',
+      'avg_first_token_ms',
+      'p50_first_token_ms',
+      'p95_first_token_ms',
+      'avg_first_answer_ms',
+      'p50_first_answer_ms',
+      'p95_first_answer_ms',
+      'cold_avg_total_duration_ms',
+      'cold_p50_total_duration_ms',
+      'cold_p95_total_duration_ms',
+      'hot_avg_total_duration_ms',
+      'hot_p50_total_duration_ms',
+      'hot_p95_total_duration_ms',
+    ],
+  },
+  {
+    key: 'cache',
+    label: '缓存',
+    metricKeys: CACHE_METRIC_KEYS,
+  },
+] as const;
+
+type EvaluationMetricGroupKey = (typeof EVALUATION_METRIC_GROUPS)[number]['key'];
 
 const FRONTEND_EVALUATION_TEMPLATE_PATH = '/app/docs/graph_eval_cases.docs.json';
 const HIDDEN_EVALUATION_VARIANTS = new Set(['neo4j_graph_first']);
@@ -203,6 +329,30 @@ const VARIANT_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   agentic: '在基础检索上加入上下文扩展、检索补救、结构化回答或缓存。',
   router: '由 Router 控制 HyDE、CRAG、Anchor 等路径，验证质量与耗时权衡。',
 };
+const FEATURE_CATEGORY_ORDER = ['retrieval', 'agentic', 'quality', 'performance', 'external'];
+const FEATURE_CATEGORY_LABELS: Record<string, string> = {
+  retrieval: '检索增强',
+  agentic: 'Agentic',
+  quality: '质量控制',
+  performance: '性能缓存',
+  external: '外部功能',
+};
+const MAX_FEATURE_COMPARISONS = 6;
+const BASELINE_COMBO_ID = 'baseline';
+
+interface FeatureComboItem {
+  id: string;
+  label: string;
+  features: string[];
+  locked?: boolean;
+}
+
+const BASELINE_COMBO: FeatureComboItem = {
+  id: BASELINE_COMBO_ID,
+  label: 'Baseline',
+  features: [],
+  locked: true,
+};
 
 function isVisibleEvaluationVariant(variantName?: string | null) {
   return Boolean(variantName) && !HIDDEN_EVALUATION_VARIANTS.has(String(variantName));
@@ -213,6 +363,66 @@ function inferVariantCategory(variant: EvaluationVariantOption) {
   if (name.startsWith('router_')) return 'router';
   if (name.startsWith('agentic_') || name === 'final_system') return 'agentic';
   return 'base';
+}
+
+function featureOrderMap(features: EvaluationFeatureOption[]) {
+  return new Map(features.map((feature, index) => [feature.key, index]));
+}
+
+function normalizeFeatureKeys(keys: string[], features: EvaluationFeatureOption[]) {
+  const order = featureOrderMap(features);
+  return Array.from(new Set(keys.filter((key) => order.has(key)))).sort(
+    (left, right) => (order.get(left) ?? 999) - (order.get(right) ?? 999),
+  );
+}
+
+function resolveFeatureKeys(keys: string[], features: EvaluationFeatureOption[]) {
+  const featureMap = new Map(features.map((feature) => [feature.key, feature]));
+  const resolved = new Set(normalizeFeatureKeys(keys, features));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    Array.from(resolved).forEach((key) => {
+      (featureMap.get(key)?.dependencies || []).forEach((dependency) => {
+        if (featureMap.has(dependency) && !resolved.has(dependency)) {
+          resolved.add(dependency);
+          changed = true;
+        }
+      });
+    });
+  }
+  return normalizeFeatureKeys(Array.from(resolved), features);
+}
+
+function featureSignature(keys: string[], features: EvaluationFeatureOption[]) {
+  return resolveFeatureKeys(keys, features).join('|');
+}
+
+function variantFeatureSignature(variant?: { feature_variant?: { resolved_features?: string[]; requested_features?: string[] } } | null) {
+  const featureVariant = variant?.feature_variant;
+  const keys = Array.isArray(featureVariant?.resolved_features)
+    ? featureVariant?.resolved_features
+    : featureVariant?.requested_features;
+  if (!Array.isArray(keys)) return null;
+  return keys.map((key) => String(key).trim()).filter(Boolean).join('|');
+}
+
+function featureLabelMap(features: EvaluationFeatureOption[]) {
+  return new Map(features.map((feature) => [feature.key, feature.label]));
+}
+
+function formatFeatureComboLabel(keys: string[], features: EvaluationFeatureOption[]) {
+  const labels = resolveFeatureKeys(keys, features)
+    .map((key) => featureLabelMap(features).get(key) || key)
+    .filter(Boolean);
+  return labels.length ? `Baseline + ${labels.join(' + ')}` : 'Baseline';
+}
+
+function featureComboToSpec(combo: FeatureComboItem, features: EvaluationFeatureOption[]): EvaluationFeatureVariantSpec {
+  return {
+    label: combo.label || formatFeatureComboLabel(combo.features, features),
+    features: normalizeFeatureKeys(combo.features, features),
+  };
 }
 
 function upsertJob(list: EvaluationJob[], nextJob: EvaluationJob) {
@@ -293,8 +503,22 @@ function isRatioMetric(metricKey: string) {
       'llm_context_recall',
       'id_based_context_precision',
       'id_based_context_recall',
+      'retrieved_context_precision',
+      'prompt_context_precision',
+      'final_context_precision',
     ].includes(metricKey)
   );
+}
+
+function getMetricValueClass(metricKey: string, value: number | null | undefined) {
+  if (
+    ['rerank_fallback_rate', 'rerank_heuristic_rate', 'error_rate', 'empty_retrieval_rate'].includes(metricKey)
+    && typeof value === 'number'
+    && value > 0
+  ) {
+    return 'text-red-600 dark:text-red-300';
+  }
+  return 'text-gray-900 dark:text-white';
 }
 
 function formatNumber(value: number | null | undefined, digits = 3) {
@@ -396,9 +620,19 @@ function formatBreakdown(
     .join(' · ');
 }
 
+function formatGroundTruthSourceBreakdown(summary: EvaluationRetrievalGroundTruthSummary | null | undefined) {
+  const labels = { ...GROUND_TRUTH_SOURCE_LABELS };
+  if (summary && summary.unresolved_cases === 0 && (summary.source_breakdown?.unresolved || 0) > 0) {
+    labels.unresolved = '原始 item 未命中已兜底';
+  }
+  return formatBreakdown(summary?.source_breakdown, labels);
+}
+
 function formatQualityJudgeSummary(metadata: Record<string, unknown> | null | undefined) {
   if (!metadata) return '';
   const qualityMode = typeof metadata.quality_mode === 'string' ? metadata.quality_mode : '';
+  const promptVersion = typeof metadata.judge_prompt_version === 'string' ? metadata.judge_prompt_version : '';
+  const llmErrorCount = typeof metadata.llm_error_count === 'number' ? metadata.llm_error_count : null;
   const methodCounts =
     metadata.method_counts && typeof metadata.method_counts === 'object'
       ? (metadata.method_counts as Record<string, unknown>)
@@ -408,7 +642,14 @@ function formatQualityJudgeSummary(metadata: Record<string, unknown> | null | un
       .map(([key, value]) => `${key}: ${value}`)
       .join(' · ')
     : '';
-  return [qualityMode ? `评估模式 ${qualityMode}` : '', methodText].filter(Boolean).join(' · ');
+  return [
+    qualityMode ? `评估模式 ${qualityMode}` : '',
+    promptVersion ? `Judge ${promptVersion}` : '',
+    methodText,
+    llmErrorCount && llmErrorCount > 0 ? `Judge 失败 ${llmErrorCount} 次` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function formatReportVariantSummary(
@@ -427,6 +668,17 @@ function formatReportVariantSummary(
     : visibleVariants[visibleVariants.length - 1] || visibleVariants[0] || report.final_variant;
   const finalLabel = formatVariantLabel(finalVariantName, techniqueMap[finalVariantName]);
   return `${finalLabel} · ${labels.length} 个方案`;
+}
+
+function formatCompactVariantLabel(
+  variantName?: string | null,
+  variant?: { technique?: string; feature_variant?: { feature_labels?: string[] } } | null,
+) {
+  if (!variantName) return '-';
+  const featureCount = variant?.feature_variant?.feature_labels?.length || 0;
+  if (featureCount > 0) return `Baseline + ${featureCount} 个功能`;
+  const label = formatVariantLabel(variantName, variant?.technique);
+  return label.length > 28 ? `${label.slice(0, 26)}...` : label;
 }
 
 function StatCard({
@@ -461,10 +713,16 @@ function StatCard({
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/60 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-xs uppercase tracking-[0.15em] text-gray-500">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-          {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
+          <p className="mt-2 truncate text-2xl font-bold text-gray-900 dark:text-white" title={value}>
+            {value}
+          </p>
+          {subtitle && (
+            <p className="mt-1 line-clamp-2 text-xs text-gray-500" title={subtitle}>
+              {subtitle}
+            </p>
+          )}
         </div>
         <div className="rounded-xl bg-violet-100 p-2 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
           {icon}
@@ -533,9 +791,20 @@ export default function PerformancePage() {
   const [evaluationJobs, setEvaluationJobs] = useState<EvaluationJob[]>([]);
   const [activeEvaluationJob, setActiveEvaluationJob] = useState<EvaluationJob | null>(null);
   const [datasetPath, setDatasetPath] = useState('');
-  const [selectedVariants, setSelectedVariants] = useState<string[]>([]);
+  const [includeBaseline, setIncludeBaseline] = useState(false);
+  const [featureCombos, setFeatureCombos] = useState<FeatureComboItem[]>([]);
+  const [editingComboId, setEditingComboId] = useState<string | null>(null);
+  const [draftFeatureKeys, setDraftFeatureKeys] = useState<string[]>([]);
+  const [draftComboLabel, setDraftComboLabel] = useState('');
+  const [appendEditingComboId, setAppendEditingComboId] = useState<string | null>(null);
+  const [appendFeatureKeys, setAppendFeatureKeys] = useState<string[]>([]);
+  const [appendComboLabel, setAppendComboLabel] = useState('');
+  const [appendingEvaluation, setAppendingEvaluation] = useState(false);
+  const [activeMetricGroupKey, setActiveMetricGroupKey] = useState<EvaluationMetricGroupKey>('quality');
+  const [evaluationSubTab, setEvaluationSubTab] = useState<'run' | 'report' | 'trial' | 'cache'>('run');
   const [selectedVariantName, setSelectedVariantName] = useState('');
-  const [trialVariantName, setTrialVariantName] = useState('');
+  const [trialFeatureKeys, setTrialFeatureKeys] = useState<string[]>(['hyde', 'bm25']);
+  const [trialComboLabel, setTrialComboLabel] = useState('');
   const [trialQuery, setTrialQuery] = useState('');
   const [trialResult, setTrialResult] = useState<EvaluationVariantTrialResult | null>(null);
   const [trialLoading, setTrialLoading] = useState(false);
@@ -610,20 +879,6 @@ export default function PerformancePage() {
       const [configData, jobsData] = await Promise.all([getEvaluationConfig(), getEvaluationJobs()]);
       setEvaluationConfig(configData);
       setDatasetPath((prev) => prev || resolveTemplateDatasetPath(configData.template_dataset_path));
-      const visibleDefaultVariants = (configData.default_variants || []).filter(isVisibleEvaluationVariant);
-      setSelectedVariants((prev) =>
-        prev.length > 0 ? prev.filter(isVisibleEvaluationVariant) : visibleDefaultVariants,
-      );
-      setTrialVariantName((prev) => {
-        if (prev) return prev;
-        const preferredVariant = (configData.variant_catalog || []).find(
-          (variant) => variant.name === 'router_anchor_rescue_structured_cached',
-        );
-        if (preferredVariant && isVisibleEvaluationVariant(preferredVariant.name)) {
-          return preferredVariant.name;
-        }
-        return visibleDefaultVariants[0] || '';
-      });
       const jobs = jobsData.jobs || [];
       setEvaluationJobs(jobs);
       setActiveEvaluationJob((prev) => {
@@ -666,13 +921,97 @@ export default function PerformancePage() {
     }
   }, []);
 
-  const handleToggleVariant = useCallback((variantName: string) => {
-    setSelectedVariants((prev) =>
-      prev.includes(variantName)
-        ? prev.filter((item) => item !== variantName)
-        : [...prev, variantName],
+  const evaluationFeatures = evaluationConfig?.feature_catalog || [];
+  const runComparisonCount = featureCombos.length + (includeBaseline ? 1 : 0);
+
+  const handleToggleDraftFeature = useCallback((featureKey: string) => {
+    setDraftFeatureKeys((prev) =>
+      prev.includes(featureKey)
+        ? prev.filter((item) => item !== featureKey)
+        : normalizeFeatureKeys([...prev, featureKey], evaluationFeatures),
     );
+  }, [evaluationFeatures]);
+
+  const handleToggleTrialFeature = useCallback((featureKey: string) => {
+    setTrialFeatureKeys((prev) =>
+      prev.includes(featureKey)
+        ? prev.filter((item) => item !== featureKey)
+        : normalizeFeatureKeys([...prev, featureKey], evaluationFeatures),
+    );
+  }, [evaluationFeatures]);
+
+  const handleToggleAppendFeature = useCallback((featureKey: string) => {
+    setAppendFeatureKeys((prev) =>
+      prev.includes(featureKey)
+        ? prev.filter((item) => item !== featureKey)
+        : normalizeFeatureKeys([...prev, featureKey], evaluationFeatures),
+    );
+  }, [evaluationFeatures]);
+
+  const handleStartAddCombo = useCallback(() => {
+    setEditingComboId('new');
+    setDraftFeatureKeys([]);
+    setDraftComboLabel('');
+    setEvaluationActionError(null);
   }, []);
+
+  const handleStartAppendCombo = useCallback(() => {
+    setAppendEditingComboId('new');
+    setAppendFeatureKeys([]);
+    setAppendComboLabel('');
+    setEvaluationActionError(null);
+  }, []);
+
+  const handleEditCombo = useCallback((combo: FeatureComboItem) => {
+    if (combo.locked) return;
+    setEditingComboId(combo.id);
+    setDraftFeatureKeys(combo.features);
+    setDraftComboLabel(combo.label);
+    setEvaluationActionError(null);
+  }, []);
+
+  const handleSaveCombo = useCallback(() => {
+    const resolvedSignature = featureSignature(draftFeatureKeys, evaluationFeatures);
+    if (!resolvedSignature) {
+      setEvaluationActionError('请至少选择一个增强功能；Baseline 可在对比项列表中单独勾选。');
+      return;
+    }
+    const duplicate = featureCombos.some(
+      (combo) => combo.id !== editingComboId && featureSignature(combo.features, evaluationFeatures) === resolvedSignature,
+    );
+    if (duplicate) {
+      setEvaluationActionError('这个功能组合已经存在，请调整后再保存。');
+      return;
+    }
+    const isNew = editingComboId === 'new' || !editingComboId;
+    if (isNew && runComparisonCount >= MAX_FEATURE_COMPARISONS) {
+      setEvaluationActionError(`最多选择 ${MAX_FEATURE_COMPARISONS} 个对比项。`);
+      return;
+    }
+    const nextFeatures = normalizeFeatureKeys(draftFeatureKeys, evaluationFeatures);
+    const nextLabel = draftComboLabel.trim() || formatFeatureComboLabel(nextFeatures, evaluationFeatures);
+    const nextCombo: FeatureComboItem = {
+      id: isNew ? `combo-${Date.now()}` : editingComboId,
+      label: nextLabel,
+      features: nextFeatures,
+    };
+    setFeatureCombos((prev) =>
+      isNew ? [...prev, nextCombo] : prev.map((combo) => (combo.id === editingComboId ? nextCombo : combo)),
+    );
+    setEditingComboId(null);
+    setDraftFeatureKeys([]);
+    setDraftComboLabel('');
+    setEvaluationActionError(null);
+  }, [draftComboLabel, draftFeatureKeys, editingComboId, evaluationFeatures, featureCombos, runComparisonCount]);
+
+  const handleDeleteCombo = useCallback((comboId: string) => {
+    setFeatureCombos((prev) => prev.filter((combo) => combo.id !== comboId));
+    if (editingComboId === comboId) {
+      setEditingComboId(null);
+      setDraftFeatureKeys([]);
+      setDraftComboLabel('');
+    }
+  }, [editingComboId]);
 
   const handleStartEvaluation = useCallback(async () => {
     const trimmedDatasetPath = datasetPath.trim();
@@ -680,8 +1019,12 @@ export default function PerformancePage() {
       setEvaluationActionError('请先填写评测数据集路径');
       return;
     }
-    if (selectedVariants.length === 0) {
-      setEvaluationActionError('请至少选择一个评测变体');
+    const selectedCombos = [
+      ...(includeBaseline ? [BASELINE_COMBO] : []),
+      ...featureCombos,
+    ];
+    if (selectedCombos.length === 0) {
+      setEvaluationActionError('请至少选择一个对比项');
       return;
     }
 
@@ -693,7 +1036,8 @@ export default function PerformancePage() {
     try {
       const job = await createEvaluationJob({
         dataset_path: trimmedDatasetPath,
-        variants: selectedVariants,
+        variants: [],
+        feature_variants: selectedCombos.map((combo) => featureComboToSpec(combo, evaluationFeatures)),
       });
       setActiveEvaluationJob(job);
       setEvaluationJobs((prev) => upsertJob(prev, job));
@@ -703,7 +1047,60 @@ export default function PerformancePage() {
     } finally {
       setStartingEvaluation(false);
     }
-  }, [datasetPath, loadEvaluationRuntime, selectedVariants]);
+  }, [datasetPath, evaluationFeatures, featureCombos, includeBaseline, loadEvaluationRuntime]);
+
+  const handleAppendEvaluation = useCallback(async () => {
+    if (!selectedReportId || !evaluationReport) {
+      setEvaluationActionError('请先选择一个已完成的评测报告');
+      return;
+    }
+    const resolvedFeatures = normalizeFeatureKeys(appendFeatureKeys, evaluationFeatures);
+    const resolvedSignature = featureSignature(resolvedFeatures, evaluationFeatures);
+    if (!resolvedSignature) {
+      setEvaluationActionError('请至少选择一个要追加的增强功能');
+      return;
+    }
+    const existingSignatures = new Set(
+      Object.values(evaluationReport.variants || {})
+        .map((variant) => variantFeatureSignature(variant))
+        .filter((signature): signature is string => signature != null),
+    );
+    if (existingSignatures.has(resolvedSignature)) {
+      setEvaluationActionError('这个功能组合已存在于当前报告，无法重复追加。');
+      return;
+    }
+
+    setAppendingEvaluation(true);
+    setEvaluationActionError(null);
+    setEvaluationActionMessage(null);
+    try {
+      const job = await appendEvaluationReport(selectedReportId, {
+        feature_variants: [
+          {
+            label: appendComboLabel.trim() || formatFeatureComboLabel(resolvedFeatures, evaluationFeatures),
+            features: resolvedFeatures,
+          },
+        ],
+      });
+      setActiveEvaluationJob(job);
+      setEvaluationJobs((prev) => upsertJob(prev, job));
+      setAppendEditingComboId(null);
+      setAppendFeatureKeys([]);
+      setAppendComboLabel('');
+      void loadEvaluationRuntime();
+    } catch (err: unknown) {
+      setEvaluationActionError(err instanceof Error && err.message ? err.message : '追加测评失败');
+    } finally {
+      setAppendingEvaluation(false);
+    }
+  }, [
+    appendComboLabel,
+    appendFeatureKeys,
+    evaluationFeatures,
+    evaluationReport,
+    loadEvaluationRuntime,
+    selectedReportId,
+  ]);
 
   const handleCancelEvaluation = useCallback(async () => {
     if (!activeEvaluationJob) return;
@@ -730,8 +1127,8 @@ export default function PerformancePage() {
       setTrialError('请先输入要验证的问题');
       return;
     }
-    if (!trialVariantName) {
-      setTrialError('请先选择一个评测变体');
+    if (!trialFeatureKeys.length) {
+      setTrialError('请至少选择一个试跑功能');
       return;
     }
 
@@ -740,7 +1137,10 @@ export default function PerformancePage() {
     try {
       const result = await testEvaluationVariant({
         query: trimmedQuery,
-        variant_name: trialVariantName,
+        variant_spec: {
+          label: trialComboLabel.trim() || formatFeatureComboLabel(trialFeatureKeys, evaluationFeatures),
+          features: normalizeFeatureKeys(trialFeatureKeys, evaluationFeatures),
+        },
       });
       setTrialResult(result);
     } catch (err: unknown) {
@@ -748,7 +1148,7 @@ export default function PerformancePage() {
     } finally {
       setTrialLoading(false);
     }
-  }, [trialQuery, trialVariantName]);
+  }, [evaluationFeatures, trialComboLabel, trialFeatureKeys, trialQuery]);
 
   const handleDeleteSelectedReport = useCallback(async () => {
     if (!selectedReportId) return;
@@ -949,6 +1349,7 @@ export default function PerformancePage() {
           ...(granularity === 'hour' ? { hour: '2-digit' as const } : {}),
         }),
         avgDuration: point.avg_total_duration_ms ? Number((point.avg_total_duration_ms / 1000).toFixed(2)) : 0,
+        p50Duration: point.p50_total_duration_ms ? Number((point.p50_total_duration_ms / 1000).toFixed(2)) : 0,
         p95Duration: point.p95_total_duration_ms ? Number((point.p95_total_duration_ms / 1000).toFixed(2)) : 0,
       })),
     [timeSeries, granularity],
@@ -1022,12 +1423,30 @@ export default function PerformancePage() {
     () => resolveTemplateDatasetPath(evaluationConfig?.template_dataset_path),
     [evaluationConfig?.template_dataset_path],
   );
+  const datasetCatalog = useMemo(() => evaluationConfig?.dataset_catalog || [], [evaluationConfig?.dataset_catalog]);
+  const selectedDatasetOption = useMemo(() => {
+    const currentPath = datasetPath.trim();
+    return datasetCatalog.find((item) => item.path === currentPath) || null;
+  }, [datasetCatalog, datasetPath]);
+  const isBusinessBenchmarkReport = Boolean(
+    evaluationReport?.dataset_name === 'business_benchmark_30' ||
+      evaluationReport?.dataset_name === 'business_benchmark_100' ||
+      evaluationReport?.dataset_path?.endsWith('/business_benchmark_30.docs.json') ||
+      evaluationReport?.dataset_path?.endsWith('/business_benchmark_100.docs.json'),
+  );
   const selectedVariantLabel = selectedVariantPayload
     ? formatVariantLabel(activeVariantName, selectedVariantPayload.technique)
+    : '未选择方案';
+  const selectedVariantCompactLabel = selectedVariantPayload
+    ? formatCompactVariantLabel(activeVariantName, selectedVariantPayload)
     : '未选择方案';
   const finalVariantLabel =
     evaluationReport?.final_variant && isVisibleEvaluationVariant(evaluationReport.final_variant)
       ? formatVariantLabel(evaluationReport.final_variant, finalVariantPayload?.technique)
+      : '-';
+  const finalVariantCompactLabel =
+    evaluationReport?.final_variant && isVisibleEvaluationVariant(evaluationReport.final_variant)
+      ? formatCompactVariantLabel(evaluationReport.final_variant, finalVariantPayload)
       : '-';
   const currentEvaluationDatasetPath = (
     evaluationMeta?.dataset_path ||
@@ -1050,11 +1469,14 @@ export default function PerformancePage() {
       ).filter((message) => Boolean(message?.trim())),
     [activeDatasetSyncResult, selectedSummary],
   );
+  const selectedHeadlineMetricKeys = HEADLINE_METRIC_KEYS;
   const selectedGroundTruthSummary =
     activeDatasetSyncResult?.ground_truth_summary || selectedSummary?.retrieval_ground_truth || null;
   const showDatasetSyncButton = Boolean(
     (activeDatasetSyncResult?.stale_declared_cases_before || 0) > 0 ||
-    (selectedSummary?.retrieval_ground_truth?.stale_declared_cases || 0) > 0,
+    (selectedSummary?.retrieval_ground_truth?.stale_declared_cases || 0) > 0 ||
+    (selectedGroundTruthSummary?.item_name_filter_miss_cases || 0) > 0 ||
+    (selectedGroundTruthSummary?.unresolved_cases || 0) > 0,
   );
   const showKnowledgeBaseMigrationButton = Boolean(selectedGroundTruthSummary || currentEvaluationDatasetPath);
   const variantTechniqueMap = useMemo(
@@ -1092,9 +1514,38 @@ export default function PerformancePage() {
     () => Object.entries(queryCacheStats?.namespaces || {}),
     [queryCacheStats],
   );
-  const trialVariantLabel = trialVariantName
-    ? formatVariantLabel(trialVariantName, variantTechniqueMap[trialVariantName])
-    : '未选择方案';
+  const trialVariantLabel =
+    trialComboLabel.trim() || formatFeatureComboLabel(trialFeatureKeys, evaluationFeatures);
+  const groupedEvaluationFeatures = useMemo(() => {
+    const groups = new Map<string, EvaluationFeatureOption[]>();
+    evaluationFeatures.forEach((feature) => {
+      groups.set(feature.category, [...(groups.get(feature.category) || []), feature]);
+    });
+    return [
+      ...FEATURE_CATEGORY_ORDER,
+      ...Array.from(groups.keys()).filter((category) => !FEATURE_CATEGORY_ORDER.includes(category)),
+    ]
+      .filter((category) => (groups.get(category) || []).length > 0)
+      .map((category) => ({
+        category,
+        label: FEATURE_CATEGORY_LABELS[category] || category,
+        features: groups.get(category) || [],
+      }));
+  }, [evaluationFeatures]);
+  const resolvedDraftFeatures = useMemo(
+    () => resolveFeatureKeys(draftFeatureKeys, evaluationFeatures),
+    [draftFeatureKeys, evaluationFeatures],
+  );
+  const autoDraftFeatures = resolvedDraftFeatures.filter((key) => !draftFeatureKeys.includes(key));
+  const resolvedAppendFeatures = useMemo(
+    () => resolveFeatureKeys(appendFeatureKeys, evaluationFeatures),
+    [appendFeatureKeys, evaluationFeatures],
+  );
+  const autoAppendFeatures = resolvedAppendFeatures.filter((key) => !appendFeatureKeys.includes(key));
+  const comboFeatureLabelMap = featureLabelMap(evaluationFeatures);
+  const activeMetricGroup =
+    EVALUATION_METRIC_GROUPS.find((group) => group.key === activeMetricGroupKey) ||
+    EVALUATION_METRIC_GROUPS[0];
   const trialMetadata = trialResult?.metadata || null;
   const trialStageRows = useMemo(
     () => Object.entries(trialResult?.stage_durations_ms || {}),
@@ -1103,6 +1554,7 @@ export default function PerformancePage() {
   const isEvaluationBusy =
     evaluationLoading ||
     startingEvaluation ||
+    appendingEvaluation ||
     syncingEvaluationDataset ||
     migratingKnowledgeBase ||
     ['pending', 'running', 'cancelling'].includes(activeEvaluationJob?.status || '');
@@ -1249,8 +1701,36 @@ export default function PerformancePage() {
               <StatCard
                 title="P95 总耗时"
                 value={formatMs(summary?.p95_total_duration_ms)}
-                subtitle={summary?.avg_first_answer_ms != null ? `首次回答: ${formatMs(summary.avg_first_answer_ms)}` : undefined}
                 icon={<Sparkles className="h-5 w-5" />}
+                loading={performanceLoading && !summary}
+              />
+              <StatCard
+                title="平均首 token"
+                value={formatMs(summary?.avg_first_token_ms)}
+                icon={<Sparkles className="h-5 w-5" />}
+                loading={performanceLoading && !summary}
+              />
+              <StatCard
+                title="P50 首 token"
+                value={formatMs(summary?.p50_first_token_ms)}
+                icon={<Target className="h-5 w-5" />}
+                loading={performanceLoading && !summary}
+              />
+              <StatCard
+                title="P95 首 token"
+                value={formatMs(summary?.p95_first_token_ms)}
+                icon={<ShieldAlert className="h-5 w-5" />}
+                loading={performanceLoading && !summary}
+              />
+              <StatCard
+                title="平均首答耗时"
+                value={formatMs(summary?.avg_first_answer_ms)}
+                subtitle={
+                  summary?.p95_first_answer_ms != null
+                    ? `P95 ${formatMs(summary.p95_first_answer_ms)}`
+                    : undefined
+                }
+                icon={<FileText className="h-5 w-5" />}
                 loading={performanceLoading && !summary}
               />
             </div>
@@ -1280,6 +1760,7 @@ export default function PerformancePage() {
                       <Tooltip />
                       <Legend />
                       <Line type="monotone" dataKey="avgDuration" stroke="#8b5cf6" name="平均总耗时(s)" strokeWidth={2} />
+                      <Line type="monotone" dataKey="p50Duration" stroke="#0f766e" name="P50 总耗时(s)" strokeWidth={2} />
                       <Line type="monotone" dataKey="p95Duration" stroke="#2563eb" name="P95 总耗时(s)" strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
@@ -1304,6 +1785,7 @@ export default function PerformancePage() {
                       <Tooltip />
                       <Legend />
                       <Bar dataKey="avg_duration_ms" fill="#8b5cf6" name="平均耗时(ms)" />
+                      <Bar dataKey="p50_duration_ms" fill="#0f766e" name="P50耗时(ms)" />
                       <Bar dataKey="p95_duration_ms" fill="#2563eb" name="P95耗时(ms)" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -1323,6 +1805,7 @@ export default function PerformancePage() {
                       <th className="px-3 py-2 font-medium">阶段</th>
                       <th className="px-3 py-2 text-right font-medium">次数</th>
                       <th className="px-3 py-2 text-right font-medium">平均耗时</th>
+                      <th className="px-3 py-2 text-right font-medium">P50</th>
                       <th className="px-3 py-2 text-right font-medium">P95</th>
                       <th className="px-3 py-2 text-right font-medium">错误率</th>
                     </tr>
@@ -1330,7 +1813,7 @@ export default function PerformancePage() {
                   <tbody>
                     {performanceLoading && stages.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-500">
+                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-500">
                           正在加载阶段明细...
                         </td>
                       </tr>
@@ -1342,13 +1825,14 @@ export default function PerformancePage() {
                           </td>
                           <td className="px-3 py-3 text-right">{stage.count}</td>
                           <td className="px-3 py-3 text-right">{formatMs(stage.avg_duration_ms)}</td>
+                          <td className="px-3 py-3 text-right">{formatMs(stage.p50_duration_ms)}</td>
                           <td className="px-3 py-3 text-right">{formatMs(stage.p95_duration_ms)}</td>
                           <td className="px-3 py-3 text-right">{(stage.error_rate * 100).toFixed(1)}%</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-500">
+                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-500">
                           暂无阶段数据
                         </td>
                       </tr>
@@ -1373,16 +1857,52 @@ export default function PerformancePage() {
                 </div>
               </div>
 
+              <div className="inline-flex w-full flex-wrap gap-1 rounded-2xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-800 dark:bg-gray-950/50">
+                {[
+                  { key: 'run', label: '运行评测', icon: <Play className="h-4 w-4" /> },
+                  { key: 'report', label: '报告对比', icon: <Target className="h-4 w-4" /> },
+                  { key: 'trial', label: '在线试跑', icon: <Search className="h-4 w-4" /> },
+                  { key: 'cache', label: '缓存维护', icon: <Database className="h-4 w-4" /> },
+                ].map((tab) => {
+                  const isActive = evaluationSubTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setEvaluationSubTab(tab.key as 'run' | 'report' | 'trial' | 'cache')}
+                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${isActive
+                          ? 'bg-white text-violet-700 shadow-sm dark:bg-gray-900 dark:text-violet-300'
+                          : 'text-gray-600 hover:bg-white/70 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900/70 dark:hover:text-gray-100'
+                        }`}
+                    >
+                      {tab.icon}
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {evaluationSubTab !== 'report' ? (
               <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/40">
                 <div className="flex flex-col gap-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                        <Play className="h-4 w-4 text-violet-500" />
-                        运行统一评测
+                        {evaluationSubTab === 'trial' ? (
+                          <Search className="h-4 w-4 text-violet-500" />
+                        ) : evaluationSubTab === 'cache' ? (
+                          <Database className="h-4 w-4 text-violet-500" />
+                        ) : (
+                          <Play className="h-4 w-4 text-violet-500" />
+                        )}
+                        {evaluationSubTab === 'trial' ? '方案在线试跑' : evaluationSubTab === 'cache' ? '缓存维护' : '运行统一评测'}
                       </h3>
                       <p className="mt-1 text-sm text-gray-500">
-                        填写评测数据集路径，勾选要对比的变体，系统会在后台执行并自动生成报告。
+                        {evaluationSubTab === 'trial'
+                          ? '选择功能组合并输入单条问题，检查回答、时延和检索计划。'
+                          : evaluationSubTab === 'cache'
+                            ? '查看缓存命中情况；含 Cache 的组合会先重置并预热一轮再正式统计。'
+                            : '填写评测数据集路径，添加要对比的功能组合，系统会在后台执行并自动生成报告。'}
                       </p>
                     </div>
                     <button
@@ -1394,9 +1914,27 @@ export default function PerformancePage() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_1fr]">
+                  <div className={evaluationSubTab === 'run' ? 'grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_1fr]' : 'hidden'}>
                     <div className="space-y-4">
                       <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">评测集</label>
+                        {datasetCatalog.length > 0 ? (
+                          <select
+                            value={selectedDatasetOption?.key || 'custom'}
+                            onChange={(event) => {
+                              const item = datasetCatalog.find((option) => option.key === event.target.value);
+                              if (item) setDatasetPath(item.path);
+                            }}
+                            className="mb-3 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
+                          >
+                            {datasetCatalog.map((item) => (
+                              <option key={item.key} value={item.key}>
+                                {item.label} · {item.case_count} 条{item.exists ? '' : ' · 文件缺失'}
+                              </option>
+                            ))}
+                            <option value="custom">自定义路径</option>
+                          </select>
+                        ) : null}
                         <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">数据集路径</label>
                         <input
                           type="text"
@@ -1405,71 +1943,182 @@ export default function PerformancePage() {
                           placeholder={preferredTemplateDatasetPath || '请输入 JSON / JSONL 数据集路径'}
                           className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
                         />
-                        <p className="mt-2 text-xs text-gray-500">模板：{preferredTemplateDatasetPath}</p>
+                        <p className="mt-2 text-xs text-gray-500">
+                          {selectedDatasetOption
+                            ? `${selectedDatasetOption.dataset_name}：${selectedDatasetOption.description}`
+                            : `模板：${preferredTemplateDatasetPath}`}
+                        </p>
                       </div>
 
-                      <div>
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">评测变体</label>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setSelectedVariants((evaluationConfig?.default_variants || []).filter(isVisibleEvaluationVariant))
-                            }
-                            className="text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400"
-                          >
-                            恢复默认
-                          </button>
-                        </div>
+                        <div>
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">对比项</label>
+                            <button
+                              type="button"
+                              onClick={handleStartAddCombo}
+                              disabled={runComparisonCount >= MAX_FEATURE_COMPARISONS || evaluationFeatures.length === 0}
+                              className="inline-flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-400"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              添加对比项
+                            </button>
+                          </div>
                         <div className="space-y-4">
-                          {groupedEvaluationVariants.map((group) => {
-                            const selectedCount = group.variants.filter((variant) =>
-                              selectedVariants.includes(variant.name),
-                            ).length;
-                            return (
-                              <section
-                                key={group.category}
-                                className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900/70"
-                              >
-                                <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                  <div>
-                                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{group.label}</h4>
-                                    <p className="mt-1 text-xs text-gray-500">{group.description}</p>
-                                  </div>
-                                  <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                                    已选 {selectedCount}/{group.variants.length}
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                            <label
+                              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${includeBaseline
+                                  ? 'border-violet-300 bg-violet-50/70 dark:border-violet-700 dark:bg-violet-950/20'
+                                  : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900/70'
+                                }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={includeBaseline}
+                                disabled={!includeBaseline && runComparisonCount >= MAX_FEATURE_COMPARISONS}
+                                onChange={(event) => setIncludeBaseline(event.target.checked)}
+                                className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600 disabled:cursor-not-allowed"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white">Baseline</div>
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                    embedding + rerank + answer
                                   </span>
                                 </div>
-                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                  {group.variants.map((variant) => {
-                                    const checked = selectedVariants.includes(variant.name);
-                                    return (
-                                      <label
-                                        key={variant.name}
-                                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${checked
-                                            ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/20'
-                                            : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950/40'
-                                          }`}
+                              </div>
+                            </label>
+                            {featureCombos.map((combo) => {
+                              const resolved = resolveFeatureKeys(combo.features, evaluationFeatures);
+                              const labels = resolved.map((key) => comboFeatureLabelMap.get(key) || key);
+                              return (
+                                <div
+                                  key={combo.id}
+                                  className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 dark:border-violet-900 dark:bg-violet-950/20"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-semibold text-gray-900 dark:text-white">{combo.label}</div>
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        {labels.length ? labels.map((label) => (
+                                          <span key={label} className="rounded-full bg-white px-2 py-0.5 text-[11px] text-violet-700 dark:bg-gray-900 dark:text-violet-300">
+                                            {label}
+                                          </span>
+                                        )) : (
+                                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                            embedding + rerank + answer
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEditCombo(combo)}
+                                        className="rounded-lg p-1.5 text-gray-500 hover:bg-white hover:text-violet-600 dark:hover:bg-gray-900"
+                                        title="编辑对比项"
                                       >
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() => handleToggleVariant(variant.name)}
-                                          className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600"
-                                        />
-                                        <div className="min-w-0">
-                                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                            {variant.technique}
-                                          </div>
-                                          <div className="mt-1 text-xs text-gray-500">{variant.description}</div>
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
+                                        <Pencil className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteCombo(combo.id)}
+                                        className="rounded-lg p-1.5 text-gray-500 hover:bg-white hover:text-red-600 dark:hover:bg-gray-900"
+                                        title="删除对比项"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
-                              </section>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
+
+                          {editingComboId ? (
+                            <section className="rounded-xl border border-violet-200 bg-white p-3 dark:border-violet-900 dark:bg-gray-900/70">
+                              <div className="mb-3 flex items-center justify-between gap-2">
+                                <div>
+                                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    {editingComboId === 'new' ? '添加功能组合' : '编辑功能组合'}
+                                  </h4>
+                                  <p className="mt-1 text-xs text-gray-500">这里只选择增强功能；Baseline 在上方作为独立对比项勾选。</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingComboId(null)}
+                                  className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                  title="关闭"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <input
+                                type="text"
+                                value={draftComboLabel}
+                                onChange={(event) => setDraftComboLabel(event.target.value)}
+                                placeholder={formatFeatureComboLabel(draftFeatureKeys, evaluationFeatures)}
+                                className="mb-3 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
+                              />
+                              <div className="space-y-3">
+                                {groupedEvaluationFeatures.map((group) => (
+                                  <div key={group.category}>
+                                    <div className="mb-2 text-xs font-semibold text-gray-500">{group.label}</div>
+                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                      {group.features.map((feature) => {
+                                        const checked = draftFeatureKeys.includes(feature.key);
+                                        const autoEnabled = autoDraftFeatures.includes(feature.key);
+                                        return (
+                                          <label
+                                            key={feature.key}
+                                            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${checked || autoEnabled
+                                                ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/20'
+                                                : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950/40'
+                                              }`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={() => handleToggleDraftFeature(feature.key)}
+                                              className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600"
+                                            />
+                                            <div className="min-w-0">
+                                              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                                                {feature.label}
+                                                {autoEnabled ? (
+                                                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+                                                    自动启用
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                              <div className="mt-1 text-xs text-gray-500">{feature.description}</div>
+                                            </div>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                <div className="text-xs text-gray-500">
+                                  当前组合：{formatFeatureComboLabel(draftFeatureKeys, evaluationFeatures)}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveCombo}
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"
+                                >
+                                  保存对比项
+                                </button>
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {evaluationFeatures.length === 0 ? (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+                              正在加载功能目录，加载完成后即可添加组合。
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -1568,7 +2217,7 @@ export default function PerformancePage() {
                         <button
                           type="button"
                           onClick={() => void handleStartEvaluation()}
-                          disabled={startingEvaluation || ['pending', 'running', 'cancelling'].includes(activeEvaluationJob?.status || '')}
+                          disabled={startingEvaluation || runComparisonCount === 0 || ['pending', 'running', 'cancelling'].includes(activeEvaluationJob?.status || '')}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {startingEvaluation ? (
@@ -1607,7 +2256,7 @@ export default function PerformancePage() {
                     </div>
                   ) : null}
 
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+                  <div className={evaluationSubTab === 'trial' ? 'rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900' : 'hidden'}>
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div>
                         <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
@@ -1623,23 +2272,43 @@ export default function PerformancePage() {
                     <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[320px_1fr]">
                       <div className="space-y-4">
                         <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">试跑方案</label>
-                          <select
-                            value={trialVariantName}
-                            onChange={(e) => setTrialVariantName(e.target.value)}
-                            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
-                          >
-                            <option value="">请选择方案</option>
-                            {groupedEvaluationVariants.map((group) => (
-                              <optgroup key={group.category} label={group.label}>
-                                {group.variants.map((variant) => (
-                                  <option key={variant.name} value={variant.name}>
-                                    {variant.technique}
-                                  </option>
-                                ))}
-                              </optgroup>
+                          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">试跑功能组合</label>
+                          <input
+                            type="text"
+                            value={trialComboLabel}
+                            onChange={(event) => setTrialComboLabel(event.target.value)}
+                            placeholder={formatFeatureComboLabel(trialFeatureKeys, evaluationFeatures)}
+                            className="mb-3 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
+                          />
+                          <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                            {groupedEvaluationFeatures.map((group) => (
+                              <div key={group.category}>
+                                <div className="mb-2 text-xs font-semibold text-gray-500">{group.label}</div>
+                                <div className="space-y-2">
+                                  {group.features.map((feature) => {
+                                    const checked = trialFeatureKeys.includes(feature.key);
+                                    return (
+                                      <label
+                                        key={feature.key}
+                                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 ${checked
+                                            ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/20'
+                                            : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950/40'
+                                          }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => handleToggleTrialFeature(feature.key)}
+                                          className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600"
+                                        />
+                                        <span className="text-sm font-medium text-gray-900 dark:text-white">{feature.label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             ))}
-                          </select>
+                          </div>
                         </div>
 
                         <div>
@@ -1656,7 +2325,7 @@ export default function PerformancePage() {
                         <button
                           type="button"
                           onClick={() => void handleRunVariantTrial()}
-                          disabled={trialLoading || !trialVariantName}
+                          disabled={trialLoading || trialFeatureKeys.length === 0}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {trialLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -1682,7 +2351,13 @@ export default function PerformancePage() {
                           <StatCard
                             title="总耗时"
                             value={formatMs(trialResult?.latency_ms)}
-                            subtitle={trialResult?.first_answer_ms != null ? `首答 ${formatMs(trialResult.first_answer_ms)}` : undefined}
+                            subtitle={
+                              trialResult?.first_token_ms != null
+                                ? `首 token ${formatMs(trialResult.first_token_ms)}`
+                                : trialResult?.first_answer_ms != null
+                                  ? `首答 ${formatMs(trialResult.first_answer_ms)}`
+                                  : undefined
+                            }
                             icon={<Clock3 className="h-5 w-5" />}
                             loading={trialLoading && !trialResult}
                           />
@@ -1837,7 +2512,7 @@ export default function PerformancePage() {
                     </div>
                   </div>
 
-                  {evaluationJobs.length > 0 ? (
+                  {evaluationSubTab === 'run' && evaluationJobs.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-sm">
                         <thead className="border-b border-gray-200 text-gray-500 dark:border-gray-800 dark:text-gray-400">
@@ -1885,7 +2560,7 @@ export default function PerformancePage() {
                     </div>
                   ) : null}
 
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+                  <div className={evaluationSubTab === 'cache' ? 'rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900' : 'hidden'}>
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div>
                         <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
@@ -2003,9 +2678,11 @@ export default function PerformancePage() {
                   </div>
                 </div>
               </div>
+              ) : null}
             </div>
 
-            {evaluationLoading && !evaluationReport ? (
+            {evaluationSubTab === 'report' ? (
+            evaluationLoading && !evaluationReport ? (
               <div className="mt-6">
                 <LoadingSection title="量化评测概览" icon={<Target className="h-5 w-5 text-violet-500" />} />
               </div>
@@ -2039,7 +2716,18 @@ export default function PerformancePage() {
                       <Activity className="h-5 w-5 text-violet-500" />
                       <h3 className="text-lg font-semibold">方案对比</h3>
                     </div>
-                    <p className="text-xs text-gray-500">点击任一方案，下方所有指标都会切换到对应结果。</p>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <p className="text-xs text-gray-500">点击任一方案，下方所有指标都会切换到对应结果。</p>
+                      <button
+                        type="button"
+                        onClick={handleStartAppendCombo}
+                        disabled={appendingEvaluation || isEvaluationBusy || evaluationFeatures.length === 0}
+                        className="inline-flex items-center gap-1 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900 dark:text-violet-300 dark:hover:bg-violet-950/20"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        追加对比项
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                     {variantRows.map(([variantName, variant]) => {
@@ -2073,118 +2761,229 @@ export default function PerformancePage() {
                                 ) : null}
                               </div>
                               <p className="mt-1 text-sm text-gray-500">{variant.description}</p>
+                              {variant.feature_variant?.feature_labels?.length ? (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {variant.feature_variant.feature_labels.map((label) => (
+                                    <span key={label} className="rounded-full bg-white px-2 py-0.5 text-[11px] text-violet-700 dark:bg-gray-900 dark:text-violet-300">
+                                      {label}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
                             <div className="rounded-xl bg-violet-100 p-2 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
                               <Target className="h-4 w-4" />
                             </div>
                           </div>
-                          <div className="mt-4 grid grid-cols-2 gap-3 text-xs md:grid-cols-3 xl:grid-cols-6">
+                          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
                             {[
                               'factual_correctness',
                               'faithfulness',
                               'recall@5',
-                              'recall@3',
-                              'hit@5',
-                              'hit@3',
                               'mrr@5',
-                              'mrr@3',
-                              'retrieval_cache_rate',
                               'avg_total_duration_ms',
                             ].map((metricKey) => (
-                              <div key={metricKey} className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-950/60">
-                                <div className="text-gray-500">{formatMetricLabel(metricKey)}</div>
-                                <div className="mt-1 font-semibold text-gray-900 dark:text-white">
+                              <div key={metricKey} className="inline-flex items-center gap-1">
+                                <span>{formatMetricLabel(metricKey)}</span>
+                                <span className="font-semibold text-gray-900 dark:text-white">
                                   {formatMetricValue(metricKey, getSummaryMetric(variant.summary, metricKey))}
-                                </div>
+                                </span>
                               </div>
-                            ))}
+                              ))}
                           </div>
                         </button>
                       );
                     })}
                   </div>
+                  {appendEditingComboId ? (
+                    <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-white">追加功能组合</h4>
+                          <p className="mt-1 text-xs text-gray-500">
+                            将只运行新增组合，并生成包含当前报告所有方案的新版报告。
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAppendEditingComboId(null)}
+                          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          title="关闭"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={appendComboLabel}
+                        onChange={(event) => setAppendComboLabel(event.target.value)}
+                        placeholder={appendFeatureKeys.length ? formatFeatureComboLabel(appendFeatureKeys, evaluationFeatures) : '选择增强功能后自动生成名称'}
+                        className="mb-3 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900"
+                      />
+                      <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                        {groupedEvaluationFeatures.map((group) => (
+                          <div key={group.category}>
+                            <div className="mb-2 text-xs font-semibold text-gray-500">{group.label}</div>
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                              {group.features.map((feature) => {
+                                const checked = appendFeatureKeys.includes(feature.key);
+                                const autoEnabled = autoAppendFeatures.includes(feature.key);
+                                return (
+                                  <label
+                                    key={feature.key}
+                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${checked || autoEnabled
+                                        ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/20'
+                                        : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950/40'
+                                      }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => handleToggleAppendFeature(feature.key)}
+                                      className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                                        {feature.label}
+                                        {autoEnabled ? (
+                                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+                                            自动启用
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div className="mt-1 text-xs text-gray-500">{feature.description}</div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-gray-500">
+                          当前追加：{formatFeatureComboLabel(resolvedAppendFeatures, evaluationFeatures)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleAppendEvaluation()}
+                          disabled={appendingEvaluation || resolvedAppendFeatures.length === 0}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {appendingEvaluation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          开始追加测评
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </section>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <StatCard
-                    title="评测样本"
-                    value={`${evaluationReport.case_count}`}
-                    subtitle={evaluationMeta?.dataset_name || '未标注数据集名称'}
-                    icon={<Database className="h-5 w-5" />}
-                    loading={evaluationLoading && !evaluationMeta}
-                  />
-                  <StatCard
-                    title="当前查看"
-                    value={selectedVariantLabel}
-                    subtitle={
-                      evaluationMeta?.generated_at
-                        ? `生成于 ${evaluationMeta.generated_at.replace('T', ' ').slice(0, 19)} · 最终方案 ${finalVariantLabel}`
-                        : `最终方案 ${finalVariantLabel}`
-                    }
-                    icon={<Target className="h-5 w-5" />}
-                    loading={evaluationLoading && !selectedSummary}
-                  />
-                  {HEADLINE_METRIC_KEYS.map((metricKey) => (
-                    <StatCard
-                      key={metricKey}
-                      title={formatMetricLabel(metricKey)}
-                      value={formatMetricValue(metricKey, getSummaryMetric(selectedSummary, metricKey))}
-                      subtitle={formatCoverageLabel(selectedSummary, metricKey)}
-                      icon={<Sparkles className="h-5 w-5" />}
-                      loading={evaluationLoading && !selectedSummary}
-                    />
-                  ))}
-                </div>
+                <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                  <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-violet-500" />
+                        <h3 className="text-lg font-semibold">指标明细</h3>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-500">
+                        当前查看 {selectedVariantCompactLabel} · 样本 {evaluationReport.case_count} · {evaluationMeta?.dataset_name || '未标注数据集名称'}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        最终方案 {finalVariantCompactLabel}
+                        {evaluationMeta?.generated_at
+                          ? ` · 生成于 ${evaluationMeta.generated_at.replace('T', ' ').slice(0, 19)}`
+                          : ''}
+                      </p>
+                    </div>
+                    <div className="inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-800 dark:bg-gray-950/50">
+                      {EVALUATION_METRIC_GROUPS.map((group) => {
+                        const active = group.key === activeMetricGroup.key;
+                        return (
+                          <button
+                            key={group.key}
+                            type="button"
+                            onClick={() => setActiveMetricGroupKey(group.key)}
+                            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${active
+                                ? 'bg-white text-violet-700 shadow-sm dark:bg-gray-900 dark:text-violet-300'
+                                : 'text-gray-600 hover:bg-white/70 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900/70 dark:hover:text-gray-100'
+                              }`}
+                          >
+                            {group.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="border-b border-gray-200 text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">指标</th>
+                          <th className="px-3 py-2 text-right font-medium">当前值</th>
+                          <th className="px-3 py-2 font-medium">覆盖/备注</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeMetricGroup.metricKeys.map((metricKey) => (
+                          <tr key={metricKey} className="border-b border-gray-100 dark:border-gray-800/70">
+                            <td className="px-3 py-3 font-medium text-gray-900 dark:text-white">
+                              {formatMetricLabel(metricKey)}
+                            </td>
+                            <td className="px-3 py-3 text-right font-semibold text-gray-900 dark:text-white">
+                              {formatMetricValue(metricKey, getSummaryMetric(selectedSummary, metricKey))}
+                            </td>
+                            <td className="px-3 py-3 text-gray-500">
+                              {metricKey === 'cache_hit_rate'
+                                ? '来自评测样本级 cache summary 汇总'
+                                : formatCoverageLabel(selectedSummary, metricKey) || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {activeMetricGroup.key === 'latency' && selectedSummary?.performance_metrics?.stages?.length ? (
+                    <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+                      <div className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">阶段耗时</div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead className="border-b border-gray-200 text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                            <tr>
+                              <th className="px-3 py-2 font-medium">阶段</th>
+                              <th className="px-3 py-2 text-right font-medium">平均耗时</th>
+                              <th className="px-3 py-2 text-right font-medium">P50 耗时</th>
+                              <th className="px-3 py-2 text-right font-medium">P95 耗时</th>
+                              <th className="px-3 py-2 text-right font-medium">样本数</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedSummary.performance_metrics.stages.map((stage) => (
+                              <tr key={stage.stage} className="border-b border-gray-100 dark:border-gray-800/70">
+                                <td className="px-3 py-3 font-medium text-gray-900 dark:text-white">{formatStageLabel(stage.stage)}</td>
+                                <td className="px-3 py-3 text-right">{formatMs(stage.avg_duration_ms)}</td>
+                                <td className="px-3 py-3 text-right">{formatMs(stage.p50_duration_ms)}</td>
+                                <td className="px-3 py-3 text-right">{formatMs(stage.p95_duration_ms)}</td>
+                                <td className="px-3 py-3 text-right">{stage.count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+
+                {isBusinessBenchmarkReport ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+                    人工业务基准集：优先结合 LLM Judge 质量、Recall/MRR、时延和缓存口径判断方案表现。
+                  </div>
+                ) : null}
 
                 {formatQualityJudgeSummary(selectedSummary?.ragas_metadata as Record<string, unknown> | undefined) ? (
                   <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-300">
                     {formatQualityJudgeSummary(selectedSummary?.ragas_metadata as Record<string, unknown> | undefined)}
                   </div>
                 ) : null}
-
-                <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
-                  <div className="mb-4 flex items-center gap-2">
-                    <Database className="h-5 w-5 text-violet-500" />
-                    <h3 className="text-lg font-semibold">缓存收益</h3>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {CACHE_METRIC_KEYS.map((metricKey) => (
-                      <StatCard
-                        key={metricKey}
-                        title={formatMetricLabel(metricKey)}
-                        value={formatMetricValue(metricKey, getSummaryMetric(selectedSummary, metricKey))}
-                        subtitle={metricKey === 'cache_hit_rate' ? '来自评测样本级 cache summary 汇总' : undefined}
-                        icon={<Database className="h-5 w-5" />}
-                        loading={evaluationLoading && !selectedSummary}
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
-                  <div className="mb-4 flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-violet-500" />
-                    <h3 className="text-lg font-semibold">Router 与深检索开关</h3>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    {[
-                      'router_simple_rate',
-                      'hyde_enabled_rate',
-                      'anchor_enabled_rate',
-                      'crag_router_enabled_rate',
-                      'avg_target_coverage_rate',
-                      'target_coverage_case_rate',
-                    ].map((metricKey) => (
-                      <StatCard
-                        key={metricKey}
-                        title={formatMetricLabel(metricKey)}
-                        value={formatMetricValue(metricKey, getSummaryMetric(selectedSummary, metricKey))}
-                        icon={<Activity className="h-5 w-5" />}
-                        loading={evaluationLoading && !selectedSummary}
-                      />
-                    ))}
-                  </div>
-                </section>
 
                 {(selectedGroundTruthSummary || selectedWarnings.length > 0) ? (
                   <section
@@ -2218,7 +3017,7 @@ export default function PerformancePage() {
                             className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:bg-gray-950/40 dark:text-amber-300 dark:hover:bg-amber-950/20"
                           >
                             {syncingEvaluationDataset ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                            同步当前 chunk_id
+                            同步评测数据
                           </button>
                         ) : null}
                       </div>
@@ -2232,12 +3031,15 @@ export default function PerformancePage() {
                           </div>
                           <div className="mt-1 text-xs text-gray-500">
                             未对齐 {selectedGroundTruthSummary.unresolved_cases}，历史 chunk 重映射 {selectedGroundTruthSummary.stale_declared_cases}
+                            {(selectedGroundTruthSummary.item_name_filter_miss_cases || 0) > 0
+                              ? `，item 名称修复 ${selectedGroundTruthSummary.item_name_filter_miss_cases}`
+                              : ''}
                           </div>
                         </div>
                         <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-gray-950/40">
                           <div className="text-xs text-gray-500">金标来源</div>
                           <div className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-                            {formatBreakdown(selectedGroundTruthSummary.source_breakdown, GROUND_TRUTH_SOURCE_LABELS)}
+                            {formatGroundTruthSourceBreakdown(selectedGroundTruthSummary)}
                           </div>
                         </div>
                         <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-gray-950/40">
@@ -2379,7 +3181,8 @@ export default function PerformancePage() {
                   </section>
                 ) : null}
               </div>
-            )}
+            )
+            ) : null}
           </section>
         ) : null}
       </div>

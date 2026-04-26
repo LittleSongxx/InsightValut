@@ -27,6 +27,7 @@ from app.utils.query_cache_utils import (
     query_cache_get,
     query_cache_set,
 )
+from app.utils.perf_tracker import perf_mark_first_token
 
 _IMAGE_BLOCK_MARKER = "【图片】"
 cfg = query_threshold_config
@@ -69,6 +70,53 @@ def _is_probably_image_url(url: str) -> bool:
     return path.endswith(IMAGE_SUFFIXES)
 
 
+def _context_doc_id(doc: Dict[str, Any]) -> str:
+    return str(
+        extract_chunk_id(doc)
+        or doc.get("chunk_id")
+        or doc.get("doc_id")
+        or doc.get("url")
+        or ""
+    ).strip()
+
+
+def _context_doc_title(doc: Dict[str, Any]) -> str:
+    return str(
+        doc.get("section_path")
+        or doc.get("title")
+        or doc.get("document_title")
+        or doc.get("file_title")
+        or ""
+    ).strip()
+
+
+def _set_final_context_state(
+    state: QueryGraphState,
+    *,
+    mode: str,
+    context_ids: list[str],
+    context_titles: list[str],
+    context_previews: list[str],
+    used_chars: int,
+    budget_chars: int,
+    included_doc_count: int | None = None,
+) -> None:
+    summary = {
+        "mode": mode,
+        "included_docs": int(included_doc_count if included_doc_count is not None else len(context_ids)),
+        "used_chars": int(used_chars or 0),
+        "budget_chars": int(budget_chars or 0),
+        "context_ids": list(context_ids),
+        "context_titles": list(context_titles),
+        "context_previews": list(context_previews),
+    }
+    state["final_context_summary"] = summary
+    state["final_context_ids"] = list(context_ids)
+    state["final_context_titles"] = list(context_titles)
+    state["final_context_chars"] = int(used_chars or 0)
+    state["final_context_doc_count"] = int(included_doc_count if included_doc_count is not None else len(context_ids))
+
+
 def step_1_check_answer(state) -> bool:
     """
     阶段一：检查 state 中是否已有 answer。
@@ -78,6 +126,7 @@ def step_1_check_answer(state) -> bool:
     answer = state.get("answer", None)
     is_stream = state.get("is_stream")
     if answer:
+        perf_mark_first_token(state["session_id"])
         if is_stream:
             logger.info("---Step 1: 发现已有答案，执行流式推送---")
             push_to_session(state["session_id"], SSEEvent.DELTA, {"delta": answer})
@@ -110,8 +159,8 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
 
     docs = []
     used = 0
+    context_budget = min(_context_budget_for_state(state), MAX_CONTEXT_CHARS)
     if anchor_enabled:
-        context_budget = min(_context_budget_for_state(state), MAX_CONTEXT_CHARS)
         evidence_pack = build_evidence_pack(
             question,
             reranked_docs,
@@ -123,7 +172,32 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
         state["target_coverage"] = evidence_pack.get("target_coverage") or {}
         state["evidence_pack_summary"] = summarize_evidence_pack(evidence_pack)
         state["context_budget_chars"] = context_budget
+        _set_final_context_state(
+            state,
+            mode="anchor_evidence_pack",
+            context_ids=[
+                str(item).strip()
+                for item in (evidence_pack.get("context_ids") or [])
+                if str(item).strip()
+            ],
+            context_titles=[
+                str(item).strip()
+                for item in (evidence_pack.get("context_titles") or [])
+                if str(item).strip()
+            ],
+            context_previews=[
+                str(item).strip()
+                for item in (evidence_pack.get("context_previews") or [])
+                if str(item).strip()
+            ],
+            used_chars=int(evidence_pack.get("used_chars") or len(context_str)),
+            budget_chars=context_budget,
+            included_doc_count=int(evidence_pack.get("doc_count") or 0),
+        )
     else:
+        context_ids = []
+        context_titles = []
+        context_previews = []
         for i, doc in enumerate(reranked_docs, start=1):
             text = (doc.get("text") or "").strip()
             if not text:
@@ -146,12 +220,27 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
             if title:
                 meta_parts.append(f"[title={title}]")
             doc_str = " ".join(meta_parts) + "\n" + text
-            if used + len(doc_str) > MAX_CONTEXT_CHARS:
+            if used + len(doc_str) > context_budget:
                 break
             docs.append(doc_str)
+            doc_id = _context_doc_id(doc)
+            if doc_id:
+                context_ids.append(doc_id)
+            context_titles.append(_context_doc_title(doc))
+            context_previews.append(text[:240])
             used += len(doc_str) + 2
         context_str = "\n\n".join(docs) if docs else "无参考内容"
-        state["context_budget_chars"] = MAX_CONTEXT_CHARS
+        state["context_budget_chars"] = context_budget
+        _set_final_context_state(
+            state,
+            mode="strict_budget",
+            context_ids=context_ids,
+            context_titles=context_titles,
+            context_previews=context_previews,
+            used_chars=used,
+            budget_chars=context_budget,
+            included_doc_count=len(docs),
+        )
 
     history_str = ""
     if history:
@@ -163,7 +252,7 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
             elif role == "assistant" and text:
                 history_str += f"助手: {text}\n"
             used += len(history_str) + 2
-            if used > MAX_CONTEXT_CHARS:
+            if used > context_budget:
                 break
     else:
         history_str = "无历史对话"
@@ -257,20 +346,28 @@ def step_3_generate_response(state: QueryGraphState, prompt: str) -> QueryGraphS
     llm = get_llm_client()
     session_id = state.get("session_id")
     is_stream = state.get("is_stream")
+    should_stream_llm = bool(is_stream or state.get("evaluation_streaming_llm"))
+    emit_sse = bool(is_stream and not state.get("suppress_sse"))
 
-    if is_stream:
+    if should_stream_llm:
         logger.info(f"模式: 流式输出 (Streaming), Session: {session_id}")
         final_text = ""
+        first_token_marked = False
         try:
             for chunk in llm.stream(prompt):
                 delta = getattr(chunk, "content", "") or ""
                 if delta:
+                    if not first_token_marked:
+                        perf_mark_first_token(session_id)
+                        first_token_marked = True
                     final_text += delta
-                    push_to_session(session_id, SSEEvent.DELTA, {"delta": delta})
+                    if emit_sse:
+                        push_to_session(session_id, SSEEvent.DELTA, {"delta": delta})
             logger.info(f"流式输出完成，总长度: {len(final_text)}")
         except Exception as e:
             logger.exception("流式生成出错")
-            push_to_session(session_id, SSEEvent.ERROR, {"error": str(e)})
+            if emit_sse:
+                push_to_session(session_id, SSEEvent.ERROR, {"error": str(e)})
         state["answer"] = final_text
     else:
         logger.info(f"模式: 非流式输出 (Blocking), Session: {session_id}")
@@ -460,6 +557,7 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
         cached_answer = query_cache_get("answer", answer_cache_descriptor)
         if isinstance(cached_answer, str) and cached_answer.strip():
             logger.info("答案缓存命中，跳过 LLM 生成")
+            perf_mark_first_token(state["session_id"])
             state["answer"] = cached_answer
         else:
             step_3_generate_response(state, prompt)

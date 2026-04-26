@@ -6,6 +6,7 @@ import type {
   EvaluationReportDetail,
   EvaluationReportDeleteResult,
   EvaluationReportListItem,
+  EvaluationFeatureVariantSpec,
   EvaluationVariantTrialResult,
   HistoryItem,
   ImportTask,
@@ -284,6 +285,7 @@ export async function cancelEvaluationJob(jobId: string): Promise<EvaluationJob>
 export async function createEvaluationJob(payload: {
   dataset_path: string;
   variants: string[];
+  feature_variants?: EvaluationFeatureVariantSpec[];
   output_path?: string;
 }): Promise<EvaluationJob> {
   const res = await fetch(`${QUERY_BASE}/evaluation/jobs`, {
@@ -304,9 +306,32 @@ export async function createEvaluationJob(payload: {
   return res.json();
 }
 
+export async function appendEvaluationReport(reportId: string, payload: {
+  feature_variants: EvaluationFeatureVariantSpec[];
+  output_path?: string;
+}): Promise<EvaluationJob> {
+  const res = await fetch(`${QUERY_BASE}/evaluation/reports/${encodeURIComponent(reportId)}/append`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let message = `Append evaluation report failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) message = data.detail;
+    } catch {
+      // noop
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
 export async function testEvaluationVariant(payload: {
   query: string;
-  variant_name: string;
+  variant_name?: string;
+  variant_spec?: EvaluationFeatureVariantSpec;
 }): Promise<EvaluationVariantTrialResult> {
   const res = await fetch(`${QUERY_BASE}/evaluation/variants/test`, {
     method: 'POST',

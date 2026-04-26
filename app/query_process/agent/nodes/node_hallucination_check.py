@@ -24,10 +24,26 @@ def _bool_from_state(state: dict, key: str, default: bool = False) -> bool:
     return value
 
 
-def _needs_llm_hallucination_check(state: dict, answer: str, reranked_docs: list) -> bool:
-    if not _bool_from_state(state, "anchor_context_enabled", False):
+def _rerank_diagnostics_untrusted(diagnostics: dict) -> bool:
+    status = str(diagnostics.get("status") or "").lower()
+    backend = str(diagnostics.get("backend") or "").lower()
+    if (
+        bool(diagnostics.get("fallback"))
+        or bool(diagnostics.get("heuristic"))
+        or bool(diagnostics.get("error"))
+        or status.startswith("error")
+        or backend in {"input_order_fallback", "strict_error"}
+    ):
         return True
-    if not bool(state.get("grounded_mode", False)):
+    max_score = diagnostics.get("max_score")
+    try:
+        return max_score is not None and float(max_score) <= 0
+    except (TypeError, ValueError):
+        return True
+
+
+def _needs_llm_hallucination_check(state: dict, answer: str, reranked_docs: list) -> bool:
+    if _bool_from_state(state, "force_hallucination_llm", False):
         return True
 
     reference_blob = "\n".join(str(doc.get("text") or "") for doc in reranked_docs)
@@ -48,6 +64,35 @@ def _needs_llm_hallucination_check(state: dict, answer: str, reranked_docs: list
         if unsupported:
             return True
 
+    grounded = bool(state.get("grounded_mode", False))
+    evidence_pack = state.get("evidence_pack_summary") or {}
+    rerank_diag = state.get("rerank_diagnostics") or {}
+    if _rerank_diagnostics_untrusted(rerank_diag):
+        return True
+    max_score = rerank_diag.get("max_score")
+    try:
+        high_rerank_confidence = max_score is not None and float(max_score) >= 0.65
+    except (TypeError, ValueError):
+        high_rerank_confidence = False
+
+    high_risk_terms = (
+        "金额",
+        "价格",
+        "费用",
+        "保修",
+        "日期",
+        "最高",
+        "最低",
+        "必须",
+        "禁止",
+        "不能",
+        "对比",
+        "区别",
+    )
+    high_risk_answer = any(term in answer for term in high_risk_terms)
+    if high_risk_answer and not (grounded or evidence_pack or high_rerank_confidence):
+        return True
+
     return False
 
 
@@ -64,13 +109,17 @@ def step_1_check_hallucination(question: str, answer: str, reranked_docs: list) 
     # 构造文档摘要（限制长度，避免 Prompt 过长）
     doc_summaries = []
     total_len = 0
-    for i, doc in enumerate(reranked_docs, start=1):
+    max_docs = max(1, int(getattr(cfg, "judge_max_docs", 3) or 3))
+    max_total_chars = max(800, int(getattr(cfg, "judge_max_total_chars", 2400) or 2400))
+    for i, doc in enumerate(reranked_docs[:max_docs], start=1):
         text = (doc.get("text") or "").strip()
         if not text:
             continue
-        summary = f"[{i}] {text[:cfg.grader_doc_max_chars]}"
-        if total_len + len(summary) > 6000:
+        summary = f"[{i}] "
+        remaining = max_total_chars - total_len - len(summary)
+        if remaining <= 0:
             break
+        summary += text[: min(cfg.grader_doc_max_chars, remaining)]
         doc_summaries.append(summary)
         total_len += len(summary)
 
@@ -156,16 +205,25 @@ def node_hallucination_check(state):
         add_done_task(
             state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
         )
-        return {"hallucination_check_passed": True}
+        return {
+            "hallucination_check_passed": True,
+            "judge_skipped_reason": skip_reason,
+            "hallucination_judge_skipped_reason": skip_reason,
+            "hallucination_check_strategy": "skipped",
+        }
 
     if not _needs_llm_hallucination_check(state, answer, reranked_docs):
-        logger.info("幻觉检查轻量规则通过，跳过 LLM 检查")
+        skip_reason = "grounded_evidence_low_risk"
+        logger.info("幻觉检查轻量规则通过，跳过 LLM 检查: %s", skip_reason)
         add_done_task(
             state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
         )
         return {
             "hallucination_check_passed": True,
             "hallucination_feedback": "",
+            "judge_skipped_reason": skip_reason,
+            "hallucination_judge_skipped_reason": skip_reason,
+            "hallucination_check_strategy": "gated",
         }
 
     # 阶段1：执行幻觉检查
@@ -177,6 +235,7 @@ def node_hallucination_check(state):
     if passed:
         logger.info("幻觉检查通过，答案事实一致性合格")
         result["hallucination_check_passed"] = True
+        result["hallucination_check_strategy"] = "llm"
 
     elif is_stream:
         # 流式模式下答案已推送，无法重新生成，仅记录警告
@@ -184,6 +243,7 @@ def node_hallucination_check(state):
             f"幻觉检查未通过(流式模式，无法重试): {check_result.get('hallucinations')}"
         )
         result["hallucination_check_passed"] = True  # 标记为通过以结束流程
+        result["hallucination_check_strategy"] = "llm"
 
     elif hallucination_retry_count >= HALLUCINATION_MAX_RETRIES:
         # 重试耗尽
@@ -191,6 +251,7 @@ def node_hallucination_check(state):
             f"幻觉检查未通过(重试耗尽): {check_result.get('hallucinations')}"
         )
         result["hallucination_check_passed"] = True  # 标记为通过以结束流程
+        result["hallucination_check_strategy"] = "llm"
 
     else:
         # 可重试：清空答案，设置反馈，触发重新生成
@@ -200,6 +261,7 @@ def node_hallucination_check(state):
         result["answer"] = ""  # 清空答案，使 node_answer_output 重新生成
         result["hallucination_feedback"] = feedback
         result["hallucination_retry_count"] = hallucination_retry_count + 1
+        result["hallucination_check_strategy"] = "llm"
 
     add_done_task(
         state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")

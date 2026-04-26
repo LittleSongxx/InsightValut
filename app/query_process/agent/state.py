@@ -21,6 +21,7 @@ class QueryGraphState(TypedDict):
     # 排序过程中的数据
     rrf_chunks: list  # RRF 融合排序后的切片
     reranked_docs: list  # 重排序后的最终 Top-K 文档
+    rerank_diagnostics: dict  # 重排序运行诊断：模式、候选数、fallback、cache 等
 
     # 生成过程中的数据
     prompt: str  # 组装好的 Prompt
@@ -57,6 +58,9 @@ class QueryGraphState(TypedDict):
     context_budget_chars: int  # 回答上下文预算
     anchor_hits: list  # Anchor 命中摘要
     rescue_plan: dict  # 检索补救计划
+    judge_skipped_reason: str  # 检索/幻觉 LLM Judge 被规则跳过的原因
+    retrieval_judge_skipped_reason: str  # 检索质量 LLM Judge 跳过原因
+    hallucination_judge_skipped_reason: str  # 幻觉自检 LLM Judge 跳过原因
     answer_plan: dict  # 结构化回答规划
     clarification_reason: str  # 触发澄清的原因
     evaluation_mode: bool

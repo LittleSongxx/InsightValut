@@ -42,6 +42,33 @@ DASHSCOPE_RERANK_BASE_URL = (
 LOCAL_RERANK_MODEL_ID = (
     reranker_config.bge_reranker_large or "BAAI/bge-reranker-v2-m3"
 ).strip()
+RERANKER_STRICT = os.getenv("RERANKER_STRICT", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+def _diagnostics(
+    *,
+    requested_mode: str,
+    backend: str,
+    model: str = "",
+    fallback: bool = False,
+    heuristic: bool = False,
+    error: str = "",
+    candidate_count: int = 0,
+) -> Dict[str, Any]:
+    return {
+        "requested_mode": requested_mode,
+        "backend": backend,
+        "model": model,
+        "fallback": bool(fallback),
+        "heuristic": bool(heuristic),
+        "error": error,
+        "candidate_count": int(candidate_count or 0),
+    }
 
 # ------------------- 本地 FlagReranker -------------------
 
@@ -131,6 +158,28 @@ def _compute_keyword_overlap_scores(sentence_pairs: List[List[str]]) -> List[flo
     return scores
 
 
+class LocalRerankerAdapter:
+    """FlagReranker 适配器，给本地 Cross-Encoder 路径补充运行诊断。"""
+
+    def __init__(self):
+        self.last_diagnostics: Dict[str, Any] = _diagnostics(
+            requested_mode="local",
+            backend="local",
+            model=LOCAL_RERANK_MODEL_ID,
+        )
+
+    def compute_score(self, sentence_pairs: List[List[str]]) -> List[float]:
+        local_reranker = _get_local_reranker()
+        scores = [float(score) for score in local_reranker.compute_score(sentence_pairs)]
+        self.last_diagnostics = _diagnostics(
+            requested_mode="local",
+            backend="local",
+            model=LOCAL_RERANK_MODEL_ID,
+            candidate_count=len(sentence_pairs),
+        )
+        return scores
+
+
 # ------------------- DashScope API Reranker -------------------
 
 
@@ -141,8 +190,11 @@ class DashScopeReranker:
         self.model = model
         self.api_key = DASHSCOPE_API_KEY
         self.base_url = DASHSCOPE_RERANK_BASE_URL
-        if not self.api_key:
-            raise ValueError("未设置 DASHSCOPE_API_KEY / OPENAI_API_KEY（DashScope API Key）")
+        self.last_diagnostics: Dict[str, Any] = _diagnostics(
+            requested_mode="dashscope",
+            backend="dashscope",
+            model=self.model,
+        )
 
     def _build_payload(self, query: str, docs: List[str]) -> Dict[str, Any]:
         top_n = len(docs)
@@ -178,6 +230,8 @@ class DashScopeReranker:
         return []
 
     def _compute_remote_scores(self, sentence_pairs: List[List[str]]) -> List[float]:
+        if not self.api_key:
+            raise ValueError("未设置 DASHSCOPE_API_KEY / OPENAI_API_KEY（DashScope API Key）")
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -227,18 +281,49 @@ class DashScopeReranker:
             return []
 
         try:
-            return self._compute_remote_scores(sentence_pairs)
-        except Exception:
+            scores = self._compute_remote_scores(sentence_pairs)
+            self.last_diagnostics = _diagnostics(
+                requested_mode="dashscope",
+                backend="dashscope",
+                model=self.model,
+                candidate_count=len(sentence_pairs),
+            )
+            return scores
+        except Exception as exc:
+            remote_error = str(exc)
             logger.exception("DashScope Rerank 不可用，将尝试本地模型回退")
 
         try:
             scores = self._compute_local_scores(sentence_pairs)
             logger.warning("DashScope Rerank 已回退到本地 FlagReranker")
+            self.last_diagnostics = _diagnostics(
+                requested_mode="dashscope",
+                backend="local_fallback",
+                model=LOCAL_RERANK_MODEL_ID,
+                fallback=True,
+                error=remote_error,
+                candidate_count=len(sentence_pairs),
+            )
             return scores
-        except Exception:
+        except Exception as exc:
+            local_error = str(exc)
             logger.exception("本地 Rerank 模型不可用，将回退到启发式重排")
 
+        if RERANKER_STRICT:
+            raise RuntimeError(
+                "Rerank strict mode enabled, but DashScope and local FlagReranker are unavailable: "
+                f"remote={remote_error}; local={local_error}"
+            )
         logger.warning("Rerank 最终降级为关键词重叠启发式排序")
+        self.last_diagnostics = _diagnostics(
+            requested_mode="dashscope",
+            backend="keyword_fallback",
+            model="keyword_overlap",
+            fallback=True,
+            heuristic=True,
+            error=f"remote={remote_error}; local={local_error}",
+            candidate_count=len(sentence_pairs),
+        )
         return _compute_keyword_overlap_scores(sentence_pairs)
 
 
@@ -259,9 +344,21 @@ def get_reranker_model():
 
     if RERANKER_MODE == "local":
         logger.info("Reranker 模式：本地 FlagReranker")
-        _reranker_instance = _get_local_reranker()
+        _reranker_instance = LocalRerankerAdapter()
     else:
         logger.info("Reranker 模式：DashScope API（无需下载模型）")
         _reranker_instance = DashScopeReranker()
 
     return _reranker_instance
+
+
+def get_reranker_last_diagnostics(reranker: Any | None = None) -> Dict[str, Any]:
+    candidate = reranker if reranker is not None else _reranker_instance
+    diagnostics = getattr(candidate, "last_diagnostics", None)
+    if isinstance(diagnostics, dict):
+        return dict(diagnostics)
+    return _diagnostics(
+        requested_mode=RERANKER_MODE,
+        backend=type(candidate).__name__ if candidate is not None else "uninitialized",
+        model=LOCAL_RERANK_MODEL_ID if RERANKER_MODE == "local" else DASHSCOPE_RERANK_MODEL,
+    )

@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import copy
 import json
 import math
@@ -78,10 +79,6 @@ GROUND_TRUTH_OUTPUT_FIELDS = [
     "part",
     "file_title",
     "content",
-    "section_path",
-    "chunk_context",
-    "bm25_text",
-    "anchor_terms",
 ]
 GROUND_TRUTH_SEARCH_LIMIT = int(
     os.environ.get("EVAL_GROUND_TRUTH_SEARCH_LIMIT") or 1000
@@ -120,6 +117,273 @@ def _agentic_features(**overrides: bool) -> Dict[str, bool]:
     return features
 
 
+FEATURE_CATEGORY_LABELS: Dict[str, str] = {
+    "retrieval": "检索增强",
+    "agentic": "Agentic",
+    "quality": "质量控制",
+    "performance": "性能缓存",
+    "external": "外部功能",
+}
+
+EVALUATION_FEATURE_CATALOG: List[Dict[str, Any]] = [
+    {
+        "key": "bm25",
+        "label": "BM25",
+        "category": "retrieval",
+        "description": "启用 BM25 稀疏检索并参与融合排序。",
+    },
+    {
+        "key": "hyde",
+        "label": "HyDE",
+        "category": "retrieval",
+        "description": "生成假设文档辅助向量检索。",
+    },
+    {
+        "key": "kg",
+        "label": "Neo4j KG",
+        "category": "retrieval",
+        "description": "启用 Neo4j 图谱检索作为额外证据源。",
+    },
+    {
+        "key": "anchor",
+        "label": "Anchor",
+        "category": "retrieval",
+        "description": "启用标题锚点与目标覆盖检索。",
+    },
+    {
+        "key": "router",
+        "label": "Router",
+        "category": "quality",
+        "description": "启用 Router 控制复杂问题深检索路径。",
+    },
+    {
+        "key": "crag_retry",
+        "label": "CRAG Retry",
+        "category": "quality",
+        "description": "启用检索质量评估和传统 CRAG 重试。",
+    },
+    {
+        "key": "grounded_answer",
+        "label": "Grounded Answer",
+        "category": "quality",
+        "description": "启用基于证据包的 grounded 回答约束。",
+    },
+    {
+        "key": "subquery_routing",
+        "label": "Subquery Routing",
+        "category": "agentic",
+        "description": "启用复杂问题子问题级路由。",
+    },
+    {
+        "key": "context_expansion",
+        "label": "Context Expansion",
+        "category": "agentic",
+        "description": "命中片段后补充章节或相邻上下文。",
+    },
+    {
+        "key": "evidence_coverage",
+        "label": "Evidence Coverage",
+        "category": "agentic",
+        "description": "计算证据覆盖并为补救提供依据。",
+    },
+    {
+        "key": "retrieval_rescue",
+        "label": "Retrieval Rescue",
+        "category": "agentic",
+        "description": "证据不足时进行受控检索补救。",
+        "dependencies": ["evidence_coverage", "subquery_routing"],
+    },
+    {
+        "key": "structured_answer",
+        "label": "Structured Answer",
+        "category": "agentic",
+        "description": "对高风险问题启用结构化回答规划。",
+        "dependencies": ["grounded_answer"],
+    },
+    {
+        "key": "clarification_guard",
+        "label": "Clarification Guard",
+        "category": "agentic",
+        "description": "证据或问题条件不足时优先澄清。",
+    },
+    {
+        "key": "cache",
+        "label": "Cache",
+        "category": "performance",
+        "description": "启用查询多级缓存，评测前重置并预热一轮。",
+    },
+    {
+        "key": "web_search",
+        "label": "Web Search",
+        "category": "external",
+        "description": "启用外部联网检索，网络波动会计入指标。",
+    },
+]
+
+_FEATURE_MAP = {item["key"]: item for item in EVALUATION_FEATURE_CATALOG}
+_FEATURE_ORDER = {item["key"]: index for index, item in enumerate(EVALUATION_FEATURE_CATALOG)}
+CONTROLLED_BASELINE_VARIANT = "combo_baseline"
+
+
+def get_feature_catalog() -> List[Dict[str, Any]]:
+    return copy.deepcopy(EVALUATION_FEATURE_CATALOG)
+
+
+def _normalize_feature_keys(features: Sequence[Any] | None) -> List[str]:
+    ordered: List[str] = []
+    for raw_key in features or []:
+        key = str(raw_key or "").strip()
+        if not key:
+            continue
+        if key not in _FEATURE_MAP:
+            raise ValueError(f"未知评测功能: {key}")
+        if key not in ordered:
+            ordered.append(key)
+    return sorted(ordered, key=lambda item: _FEATURE_ORDER[item])
+
+
+def _resolve_feature_dependencies(features: Sequence[str]) -> Dict[str, List[str]]:
+    requested = set(features)
+    resolved = set(features)
+    changed = True
+    while changed:
+        changed = False
+        for feature_key in list(resolved):
+            dependencies = _FEATURE_MAP.get(feature_key, {}).get("dependencies") or []
+            for dependency in dependencies:
+                if dependency not in _FEATURE_MAP:
+                    continue
+                if dependency not in resolved:
+                    resolved.add(dependency)
+                    changed = True
+    ordered_resolved = sorted(resolved, key=lambda item: _FEATURE_ORDER[item])
+    ordered_auto = [
+        key for key in ordered_resolved if key not in requested
+    ]
+    return {"resolved": ordered_resolved, "auto_enabled": ordered_auto}
+
+
+def _feature_labels(feature_keys: Sequence[str]) -> List[str]:
+    return [str(_FEATURE_MAP[key].get("label") or key) for key in feature_keys]
+
+
+def _feature_variant_name(feature_keys: Sequence[str]) -> str:
+    if not feature_keys:
+        return CONTROLLED_BASELINE_VARIANT
+    digest = hashlib.sha1(
+        json.dumps(list(feature_keys), ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()[:10]
+    return f"combo_{digest}"
+
+
+def _build_feature_variant_overrides(feature_keys: Sequence[str]) -> Dict[str, Any]:
+    features = set(feature_keys)
+    agentic_features = _agentic_features(
+        subquery_routing="subquery_routing" in features,
+        context_expansion="context_expansion" in features,
+        evidence_coverage="evidence_coverage" in features,
+        retrieval_rescue="retrieval_rescue" in features,
+        structured_answer="structured_answer" in features,
+        clarification_guard="clarification_guard" in features,
+    )
+    overrides: Dict[str, Any] = {
+        "force_need_rag": True,
+        "force_graph_preferred": False,
+        "bm25_enabled": "bm25" in features,
+        "retrieval_grader_enabled": bool(
+            {"router", "crag_retry", "retrieval_rescue"} & features
+        ),
+        "legacy_retry_enabled": "crag_retry" in features,
+        "router_deep_search_enabled": "router" in features,
+        "grounded_answer_enabled": "grounded_answer" in features,
+        "anchor_context_enabled": "anchor" in features,
+        "route_reason": (
+            "eval_controlled_baseline"
+            if not features
+            else f"eval_dynamic_{_feature_variant_name(feature_keys)}"
+        ),
+        "agentic_features": agentic_features,
+        "cache_enabled": "cache" in features,
+        "retrieval_plan_overrides": {
+            "graph_first": False,
+            "run_kg": "kg" in features,
+            "run_embedding": True,
+            "run_anchor": "anchor" in features,
+            "run_bm25": "bm25" in features,
+            "run_hyde": "hyde" in features,
+            "run_web": "web_search" in features,
+            "kg_weight_multiplier": 1.2 if "kg" in features else 0.0,
+            "anchor_weight_multiplier": 1.6 if "anchor" in features else 0.0,
+            "bm25_weight_multiplier": 1.0 if "bm25" in features else 0.0,
+            "hyde_weight_multiplier": 1.0 if "hyde" in features else 0.0,
+        },
+    }
+    if "structured_answer" in features:
+        overrides["structured_answer_high_risk_only"] = True
+    if "retrieval_rescue" in features:
+        overrides["rescue_min_coverage_score"] = 0.72
+        overrides["rescue_force_target_coverage"] = True
+    return overrides
+
+
+def build_feature_variant_definition(spec: Dict[str, Any] | None) -> Dict[str, Any]:
+    raw_spec = dict(spec or {})
+    requested_features = _normalize_feature_keys(raw_spec.get("features") or [])
+    dependency_result = _resolve_feature_dependencies(requested_features)
+    feature_keys = dependency_result["resolved"]
+    auto_enabled = dependency_result["auto_enabled"]
+    variant_name = _feature_variant_name(feature_keys)
+    labels = _feature_labels(feature_keys)
+    default_label = "Baseline" if not labels else "Baseline + " + " + ".join(labels)
+    label = str(raw_spec.get("label") or raw_spec.get("name") or default_label).strip()
+    if not label:
+        label = default_label
+    config: Dict[str, Any] = {
+        "description": (
+            "受控消融基线：embedding 检索 + rerank + answer"
+            if not labels
+            else f"受控消融组合：{default_label}"
+        ),
+        "technique": label,
+        "compare_to": None if not labels else CONTROLLED_BASELINE_VARIANT,
+        "use_case_query_type": True,
+        "is_feature_variant": True,
+        "feature_variant": {
+            "name": variant_name,
+            "label": label,
+            "requested_features": requested_features,
+            "resolved_features": feature_keys,
+            "auto_enabled_features": auto_enabled,
+            "feature_labels": labels,
+            "auto_enabled_feature_labels": _feature_labels(auto_enabled),
+        },
+        "evaluation_overrides": _build_feature_variant_overrides(feature_keys),
+    }
+    if "cache" in feature_keys:
+        config["warmup_rounds"] = 1
+        config["reset_cache_before_run"] = True
+    return {"name": variant_name, "config": config}
+
+
+def register_feature_variant(spec: Dict[str, Any] | None) -> Dict[str, Any]:
+    payload = build_feature_variant_definition(spec)
+    name = payload["name"]
+    VARIANTS[name] = copy.deepcopy(payload["config"])
+    return {
+        "name": name,
+        **copy.deepcopy(payload["config"].get("feature_variant") or {}),
+    }
+
+
+def register_feature_variants(specs: Sequence[Dict[str, Any]] | None) -> List[Dict[str, Any]]:
+    registered: List[Dict[str, Any]] = []
+    for spec in specs or []:
+        registered.append(register_feature_variant(spec))
+    return registered
+
+
 def _evaluation_query_service_base_url() -> str:
     return str(os.environ.get("EVAL_QUERY_SERVICE_BASE_URL") or "").strip().rstrip("/")
 
@@ -142,6 +406,21 @@ def _forced_warmup_rounds() -> Optional[int]:
         return None
 
 
+def _reset_query_cache_for_evaluation(service_base_url: str, reason: str) -> None:
+    if service_base_url:
+        try:
+            requests.post(
+                f"{service_base_url}/cache/reset",
+                json={"reason": reason},
+                timeout=30,
+            ).raise_for_status()
+            return
+        except Exception:
+            reset_query_cache(reason=reason)
+            return
+    reset_query_cache(reason=reason)
+
+
 def _ensure_ragas_ready() -> None:
     if _RAGAS_IMPORT_ERROR is not None:
         raise ImportError(
@@ -159,6 +438,8 @@ ID_CONTEXT_METRIC_KEYS = [
     "id_based_context_precision",
     "id_based_context_recall",
 ]
+QUALITY_JUDGE_PROMPT_VERSION = "llm_judge_v2_strict_rubric"
+QUALITY_JUDGE_SCORE_BUCKETS = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 QUALITY_JUDGE_CONTEXT_CHARS = int(
     os.environ.get("EVAL_JUDGE_CONTEXT_CHARS") or 6000
 )
@@ -572,6 +853,8 @@ VARIANTS: Dict[str, Dict[str, Any]] = {
 def get_variant_catalog() -> List[Dict[str, Any]]:
     catalog: List[Dict[str, Any]] = []
     for name, config in VARIANTS.items():
+        if config.get("is_feature_variant"):
+            continue
         catalog.append(
             {
                 "name": name,
@@ -610,6 +893,8 @@ def build_variant_runtime_state(
         "session_id": session_id,
         "original_query": str(query or "").strip(),
         "is_stream": False,
+        "evaluation_streaming_llm": True,
+        "suppress_sse": True,
         "evaluation_mode": True,
         "evaluation_variant_name": str(variant_name or "").strip(),
         "evaluation_overrides": build_variant_runtime_overrides(variant_name),
@@ -691,6 +976,12 @@ def _reference(case: Dict[str, Any]) -> str:
     ).strip()
 
 
+def _string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
 def _query_type(case: Dict[str, Any]) -> str:
     return str(case.get("query_type") or "general").strip() or "general"
 
@@ -732,40 +1023,6 @@ def _load_dataset_payload(dataset_path: str) -> Any:
         return None
 
 
-def _summarize_dataset_quality(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    query_counts = Counter(_query(case) for case in cases if _query(case))
-    duplicate_query_count = sum(
-        max(count - 1, 0) for count in query_counts.values() if count > 1
-    )
-
-    auto_generated_flags = []
-    answerable_flags = []
-    required_fact_flags = []
-    for case in cases:
-        tags = {
-            str(tag).strip().lower()
-            for tag in (case.get("evaluation_tags") or [])
-            if str(tag).strip()
-        }
-        case_id = str(case.get("case_id") or "").strip().lower()
-        auto_generated_flags.append(
-            1.0 if "auto_generated" in tags or case_id.startswith("auto_") else 0.0
-        )
-        if "answerable" in case:
-            answerable_flags.append(1.0 if bool(case.get("answerable")) else 0.0)
-        if case.get("required_facts"):
-            required_fact_flags.append(1.0)
-        else:
-            required_fact_flags.append(0.0)
-
-    return {
-        "duplicate_query_count": int(duplicate_query_count),
-        "auto_generated_rate": _avg(auto_generated_flags) or 0.0,
-        "answerable_rate": _avg(answerable_flags) if answerable_flags else None,
-        "required_facts_case_rate": _avg(required_fact_flags) or 0.0,
-    }
-
-
 def _ground_truth_doc_text(doc: Dict[str, Any]) -> str:
     parts = [
         str(doc.get("item_name") or "").strip(),
@@ -776,6 +1033,19 @@ def _ground_truth_doc_text(doc: Dict[str, Any]) -> str:
         str(doc.get("content") or "").strip(),
     ]
     return "\n".join(part for part in parts if part)
+
+
+def _unique_text_values(values: Sequence[Any]) -> List[str]:
+    unique: List[str] = []
+    for value in values or []:
+        text = str(value or "").strip()
+        if text and text not in unique:
+            unique.append(text)
+    return unique
+
+
+def _item_names_from_docs(docs: Sequence[Dict[str, Any]]) -> List[str]:
+    return _unique_text_values(doc.get("item_name") for doc in docs or [])
 
 
 def _token_overlap_ratio(reference: str, candidate: str) -> float:
@@ -792,24 +1062,10 @@ def _chunks_collection_name() -> str:
     return os.environ.get("CHUNKS_COLLECTION") or ""
 
 
-def _fetch_ground_truth_candidates(case: Dict[str, Any]) -> List[Dict[str, Any]]:
-    client = get_milvus_client()
-    collection_name = _chunks_collection_name()
-    if not client or not collection_name:
-        return []
-
-    item_filter = build_item_name_filter_expr(_item_names(case))
-    docs = query_chunks_by_filter(
-        client=client,
-        collection_name=collection_name,
-        filter_expr=item_filter,
-        output_fields=list(GROUND_TRUTH_OUTPUT_FIELDS),
-        limit=GROUND_TRUTH_SEARCH_LIMIT,
-    )
-    docs = [normalize_entity_for_business_id(doc) for doc in docs]
-    if docs or item_filter:
-        return docs
-
+def _fetch_all_ground_truth_candidates(
+    client: Any,
+    collection_name: str,
+) -> List[Dict[str, Any]]:
     return [
         normalize_entity_for_business_id(doc)
         for doc in query_chunks_by_filter(
@@ -820,6 +1076,35 @@ def _fetch_ground_truth_candidates(case: Dict[str, Any]) -> List[Dict[str, Any]]
             limit=GROUND_TRUTH_SEARCH_LIMIT,
         )
     ]
+
+
+def _fetch_ground_truth_candidates(
+    case: Dict[str, Any],
+) -> tuple[List[Dict[str, Any]], bool]:
+    client = get_milvus_client()
+    collection_name = _chunks_collection_name()
+    if not client or not collection_name:
+        return [], False
+
+    item_filter = build_item_name_filter_expr(_item_names(case))
+    if item_filter:
+        docs = query_chunks_by_filter(
+            client=client,
+            collection_name=collection_name,
+            filter_expr=item_filter,
+            output_fields=list(GROUND_TRUTH_OUTPUT_FIELDS),
+            limit=GROUND_TRUTH_SEARCH_LIMIT,
+        )
+        docs = [normalize_entity_for_business_id(doc) for doc in docs]
+        if docs:
+            return docs, False
+
+        # The evaluation set may carry historical short aliases while the current
+        # corpus stores the full imported item name. Fall back to the full corpus
+        # so sync_evaluation_dataset can repair both chunk ids and item_names.
+        return _fetch_all_ground_truth_candidates(client, collection_name), True
+
+    return _fetch_all_ground_truth_candidates(client, collection_name), False
 
 
 def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
@@ -836,15 +1121,23 @@ def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
         "candidate_count": 0,
         "item_names": item_names,
         "declared_ids_stale": False,
+        "item_name_filter_miss": False,
+        "resolved_item_names": [],
     }
     if not eligible:
         result["reason"] = "no_retrieval_ground_truth"
         return result
 
-    candidates = _fetch_ground_truth_candidates(case)
+    candidates, item_name_filter_miss = _fetch_ground_truth_candidates(case)
     result["candidate_count"] = len(candidates)
+    result["item_name_filter_miss"] = item_name_filter_miss
     candidate_ids = {
         str(extract_chunk_id(doc))
+        for doc in candidates
+        if extract_chunk_id(doc) is not None
+    }
+    candidates_by_id = {
+        str(extract_chunk_id(doc)): doc
         for doc in candidates
         if extract_chunk_id(doc) is not None
     }
@@ -856,6 +1149,11 @@ def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
         if matched_ids:
             result["resolved_ids"] = matched_ids
             result["source"] = "declared_ids"
+            result["resolved_item_names"] = _item_names_from_docs(
+                [candidates_by_id[chunk_id] for chunk_id in matched_ids if chunk_id in candidates_by_id]
+            )
+            if item_name_filter_miss:
+                result["reason"] = "item_name_not_in_corpus"
             return result
         result["declared_ids_stale"] = True
 
@@ -883,6 +1181,7 @@ def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
 
     top_score = float(ranked_docs[0][1] or 0.0)
     selected_ids: List[str] = []
+    selected_docs: List[Dict[str, Any]] = []
     for doc, score in ranked_docs:
         if score <= 0:
             continue
@@ -893,6 +1192,7 @@ def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if overlap >= 0.2 or (score >= top_score * 0.92 and overlap >= 0.08):
             selected_ids.append(str(chunk_id))
+            selected_docs.append(doc)
         if len(selected_ids) >= 3:
             break
 
@@ -903,8 +1203,11 @@ def _resolve_retrieval_ground_truth(case: Dict[str, Any]) -> Dict[str, Any]:
 
     result["resolved_ids"] = selected_ids
     result["source"] = "reference_answer_bm25"
+    result["resolved_item_names"] = _item_names_from_docs(selected_docs)
     if result["declared_ids_stale"]:
         result["reason"] = "declared_ids_stale"
+    if item_name_filter_miss:
+        result["reason"] = "item_name_not_in_corpus"
     return result
 
 
@@ -954,6 +1257,14 @@ def _build_ground_truth_alignment(
     stale_declared_cases = sum(
         1 for record in ground_truth_records if record.get("declared_ids_stale")
     )
+    item_name_filter_miss_cases = sum(
+        1 for record in ground_truth_records if record.get("item_name_filter_miss")
+    )
+    item_name_filter_miss_resolved_cases = sum(
+        1
+        for record in ground_truth_records
+        if record.get("item_name_filter_miss") and (record.get("resolved_ids") or [])
+    )
     warnings: List[str] = []
     if ground_truth_records and resolved_cases < len(ground_truth_records):
         warnings.append(
@@ -962,6 +1273,10 @@ def _build_ground_truth_alignment(
     if unresolved_reasons.get("item_name_not_in_corpus"):
         warnings.append(
             f"{unresolved_reasons['item_name_not_in_corpus']} 个样本的 item_names 在当前知识库中不存在，说明评测集与当前入库内容未完全对齐。"
+        )
+    elif item_name_filter_miss_cases:
+        warnings.append(
+            f"{item_name_filter_miss_cases} 个样本的 item_names 与当前知识库名称不一致，系统已按 reference_answer 兜底重映射；正式评测前建议同步评测数据。"
         )
     if stale_declared_cases:
         warnings.append(
@@ -975,6 +1290,8 @@ def _build_ground_truth_alignment(
         "source_breakdown": dict(sorted(source_breakdown.items())),
         "unresolved_reasons": dict(sorted(unresolved_reasons.items())),
         "stale_declared_cases": stale_declared_cases,
+        "item_name_filter_miss_cases": item_name_filter_miss_cases,
+        "item_name_filter_miss_resolved_cases": item_name_filter_miss_resolved_cases,
     }
     return summary, warnings
 
@@ -1043,6 +1360,7 @@ def sync_evaluation_dataset(
 
     updated_cases = 0
     already_aligned_cases = 0
+    updated_item_name_cases = 0
     unresolved_case_ids: List[str] = []
     for raw_case, prepared_case in zip(cases, prepared_before):
         record = prepared_case.get("_evaluation_ground_truth") or {}
@@ -1061,13 +1379,25 @@ def sync_evaluation_dataset(
             continue
 
         declared_ids = _relevant_ids(raw_case)
-        if declared_ids == resolved_ids and not record.get("declared_ids_stale"):
+        resolved_item_names = _unique_text_values(record.get("resolved_item_names") or [])
+        current_item_names = _item_names(raw_case)
+        item_names_changed = bool(
+            resolved_item_names and resolved_item_names != current_item_names
+        )
+        if (
+            declared_ids == resolved_ids
+            and not record.get("declared_ids_stale")
+            and not item_names_changed
+        ):
             already_aligned_cases += 1
         else:
             updated_cases += 1
 
         raw_case["relevant_chunk_ids"] = list(resolved_ids)
         raw_case["resolved_relevant_chunk_ids"] = list(resolved_ids)
+        if item_names_changed:
+            raw_case["item_names"] = list(resolved_item_names)
+            updated_item_name_cases += 1
         if "reference_context_ids" in raw_case:
             raw_case["reference_context_ids"] = list(resolved_ids)
         if "relevant_ids" in raw_case:
@@ -1100,9 +1430,14 @@ def sync_evaluation_dataset(
         after_records, after_resolved_cases
     )
 
+    message_parts = []
+    if updated_cases:
+        message_parts.append(f"已同步 {updated_cases} 个样本的检索金标到当前知识库。")
+    if updated_item_name_cases:
+        message_parts.append(f"其中 {updated_item_name_cases} 个样本更新了 item_names。")
     message = (
-        f"已同步 {updated_cases} 个样本的检索金标到当前 chunk_id。"
-        if updated_cases
+        " ".join(message_parts)
+        if message_parts
         else "当前评测集的检索金标已与现有知识库对齐，无需更新。"
     )
     if unresolved_case_ids:
@@ -1114,6 +1449,7 @@ def sync_evaluation_dataset(
         "backup_path": str(backup_path) if backup_path else "",
         "case_count": len(cases),
         "updated_cases": updated_cases,
+        "updated_item_name_cases": updated_item_name_cases,
         "already_aligned_cases": already_aligned_cases,
         "unresolved_cases": len(unresolved_case_ids),
         "unresolved_case_ids": unresolved_case_ids,
@@ -1152,7 +1488,8 @@ def _pct(values: Sequence[Any], ratio: float) -> Optional[float]:
     )
     if not nums:
         return None
-    index = min(int(len(nums) * ratio), len(nums) - 1)
+    clamped = min(max(float(ratio), 0.0), 1.0)
+    index = max(0, min(math.ceil(len(nums) * clamped) - 1, len(nums) - 1))
     return round(nums[index], 4)
 
 
@@ -1188,6 +1525,21 @@ def _build_overrides(variant_name: str, case: Dict[str, Any]) -> Dict[str, Any]:
     return overrides
 
 
+def _variant_request_payload(variant_name: str) -> Dict[str, Any]:
+    config = VARIANTS.get(variant_name) or {}
+    feature_variant = config.get("feature_variant") or {}
+    if config.get("is_feature_variant"):
+        return {
+            "variant_spec": {
+                "label": feature_variant.get("label")
+                or config.get("technique")
+                or variant_name,
+                "features": feature_variant.get("requested_features") or [],
+            }
+        }
+    return {"variant_name": variant_name}
+
+
 def _extract_contexts(docs: Sequence[Dict[str, Any]]) -> List[str]:
     contexts: List[str] = []
     for doc in docs or []:
@@ -1209,6 +1561,12 @@ def _extract_context_ids(docs: Sequence[Dict[str, Any]]) -> List[str]:
     return chunk_ids
 
 
+def _context_ids_from_summary(summary: Dict[str, Any] | None) -> List[str]:
+    if not isinstance(summary, dict):
+        return []
+    return normalize_ids(summary.get("context_ids") or [])
+
+
 def _hit_at_k(
     predicted_ids: Sequence[str], relevant_ids: Sequence[str], k: int
 ) -> float:
@@ -1216,6 +1574,16 @@ def _hit_at_k(
     if not relevant:
         return 0.0
     return 1.0 if any(chunk_id in relevant for chunk_id in predicted_ids[:k]) else 0.0
+
+
+def _precision_for_ids(predicted_ids: Sequence[str], relevant_ids: Sequence[str]) -> Optional[float]:
+    predicted = [str(item).strip() for item in predicted_ids or [] if str(item).strip()]
+    relevant = {str(item).strip() for item in relevant_ids or [] if str(item).strip()}
+    if not relevant:
+        return None
+    if not predicted:
+        return 0.0
+    return len([chunk_id for chunk_id in predicted if chunk_id in relevant]) / len(predicted)
 
 
 def _preview(text: str, limit: int = 220) -> str:
@@ -1235,10 +1603,19 @@ def _stage_map(perf_doc: Dict[str, Any]) -> Dict[str, float]:
     return mapping
 
 
-def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
+def _run_single_case(
+    case: Dict[str, Any],
+    variant_name: str,
+    cache_temperature: str = "",
+) -> Dict[str, Any]:
     service_base_url = _evaluation_query_service_base_url()
     if service_base_url:
-        return _run_single_case_via_service(case, variant_name, service_base_url)
+        return _run_single_case_via_service(
+            case,
+            variant_name,
+            service_base_url,
+            cache_temperature=cache_temperature,
+        )
 
     case_id = str(case.get("case_id") or case.get("id") or uuid.uuid4().hex[:8])
     session_id = f"eval-{variant_name}-{case_id}-{uuid.uuid4().hex[:8]}"
@@ -1249,7 +1626,10 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         "session_id": session_id,
         "original_query": query,
         "is_stream": False,
+        "evaluation_streaming_llm": True,
+        "suppress_sse": True,
         "evaluation_mode": True,
+        "evaluation_variant_name": variant_name,
         "evaluation_overrides": _build_overrides(variant_name, case),
     }
     final_state: Dict[str, Any] = {}
@@ -1272,6 +1652,19 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
     clear_task(session_id)
     reranked_docs = final_state.get("reranked_docs") or []
     retrieved_contexts = _extract_contexts(reranked_docs)
+    final_context_summary = final_state.get("final_context_summary") or {}
+    final_context_ids = normalize_ids(
+        final_state.get("final_context_ids")
+        or _context_ids_from_summary(final_context_summary)
+    )
+    final_context_titles = _string_list(
+        final_state.get("final_context_titles")
+        or final_context_summary.get("context_titles")
+        or []
+    )
+    final_context_preview = _string_list(
+        final_context_summary.get("context_previews") or []
+    )
     answer_error = str(final_state.get("answer_error") or "").strip()
     item_name_extract_error = str(
         final_state.get("item_name_extract_error") or ""
@@ -1286,6 +1679,10 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         "query": query,
         "query_type": _query_type(case),
         "item_names": _item_names(case),
+        "answerable": bool(case.get("answerable", True)),
+        "required_facts": _string_list(case.get("required_facts")),
+        "forbidden_facts": _string_list(case.get("forbidden_facts")),
+        "evaluation_tags": _string_list(case.get("evaluation_tags")),
         "reference_answer": _reference(case),
         "declared_relevant_chunk_ids": declared_relevant_ids,
         "relevant_chunk_ids": resolved_relevant_ids,
@@ -1322,10 +1719,38 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         "sub_query_routes": final_state.get("sub_query_routes") or [],
         "sub_query_results": final_state.get("sub_query_results") or [],
         "context_expansion_summary": final_state.get("context_expansion_summary") or {},
+        "final_context_summary": final_context_summary,
+        "final_context_ids": final_context_ids,
+        "final_context_titles": final_context_titles,
+        "final_context_preview": final_context_preview,
+        "final_context_chars": int(
+            final_state.get("final_context_chars")
+            or final_context_summary.get("used_chars")
+            or 0
+        ),
+        "final_context_doc_count": int(
+            final_state.get("final_context_doc_count")
+            or final_context_summary.get("included_docs")
+            or 0
+        ),
         "evidence_coverage_summary": final_state.get("evidence_coverage_summary") or {},
+        "rerank_diagnostics": final_state.get("rerank_diagnostics") or {},
         "rescue_plan": final_state.get("rescue_plan") or {},
         "answer_plan": final_state.get("answer_plan") or {},
         "clarification_reason": str(final_state.get("clarification_reason") or ""),
+        "judge_skipped_reason": str(final_state.get("judge_skipped_reason") or ""),
+        "retrieval_judge_skipped_reason": str(
+            final_state.get("retrieval_judge_skipped_reason") or ""
+        ),
+        "hallucination_judge_skipped_reason": str(
+            final_state.get("hallucination_judge_skipped_reason") or ""
+        ),
+        "retrieval_grader_strategy": str(
+            final_state.get("retrieval_grader_strategy") or ""
+        ),
+        "hallucination_check_strategy": str(
+            final_state.get("hallucination_check_strategy") or ""
+        ),
         "answer_error": answer_error,
         "item_name_extract_error": item_name_extract_error,
         "agentic_features": (
@@ -1348,14 +1773,19 @@ def _run_single_case(case: Dict[str, Any], variant_name: str) -> Dict[str, Any]:
         "llm_fallback_reason": str(final_state.get("llm_fallback_reason") or ""),
         "cache_summary": final_state.get("cache_summary") or cache_summary,
         "latency_ms": _num(perf_doc.get("total_duration_ms")),
+        "first_token_ms": _num(perf_doc.get("first_token_ms")),
         "first_answer_ms": _num(perf_doc.get("first_answer_ms")),
         "stage_durations_ms": _stage_map(perf_doc),
+        "cache_temperature": cache_temperature or "",
         "error": runtime_error,
     }
 
 
 def _run_single_case_via_service(
-    case: Dict[str, Any], variant_name: str, service_base_url: str
+    case: Dict[str, Any],
+    variant_name: str,
+    service_base_url: str,
+    cache_temperature: str = "",
 ) -> Dict[str, Any]:
     case_id = str(case.get("case_id") or case.get("id") or uuid.uuid4().hex[:8])
     query = _query(case)
@@ -1364,7 +1794,11 @@ def _run_single_case_via_service(
 
     response = requests.post(
         f"{service_base_url}/evaluation/variants/test",
-        json={"query": query, "variant_name": variant_name},
+        json={
+            "query": query,
+            "streaming": True,
+            **_variant_request_payload(variant_name),
+        },
         timeout=_evaluation_query_service_timeout(),
     )
     response.raise_for_status()
@@ -1387,12 +1821,37 @@ def _run_single_case_via_service(
         ]
         if value
     )
+    final_context_summary = (
+        metadata.get("final_context_summary")
+        or runtime_fields.get("final_context_summary")
+        or {}
+    )
+    final_context_ids = normalize_ids(
+        payload.get("final_context_ids")
+        or metadata.get("final_context_ids")
+        or runtime_fields.get("final_context_ids")
+        or _context_ids_from_summary(final_context_summary)
+    )
+    final_context_titles = _string_list(
+        payload.get("final_context_titles")
+        or metadata.get("final_context_titles")
+        or runtime_fields.get("final_context_titles")
+        or final_context_summary.get("context_titles")
+        or []
+    )
+    final_context_preview = _string_list(
+        final_context_summary.get("context_previews") or []
+    )
 
     return {
         "case_id": case_id,
         "query": query,
         "query_type": _query_type(case),
         "item_names": _item_names(case),
+        "answerable": bool(case.get("answerable", True)),
+        "required_facts": _string_list(case.get("required_facts")),
+        "forbidden_facts": _string_list(case.get("forbidden_facts")),
+        "evaluation_tags": _string_list(case.get("evaluation_tags")),
         "reference_answer": _reference(case),
         "declared_relevant_chunk_ids": declared_relevant_ids,
         "relevant_chunk_ids": resolved_relevant_ids,
@@ -1457,13 +1916,59 @@ def _run_single_case_via_service(
         "context_expansion_summary": metadata.get("context_expansion_summary")
         or runtime_fields.get("context_expansion_summary")
         or {},
+        "final_context_summary": final_context_summary,
+        "final_context_ids": final_context_ids,
+        "final_context_titles": final_context_titles,
+        "final_context_preview": final_context_preview,
+        "final_context_chars": int(
+            payload.get("final_context_chars")
+            or metadata.get("final_context_chars")
+            or runtime_fields.get("final_context_chars")
+            or final_context_summary.get("used_chars")
+            or 0
+        ),
+        "final_context_doc_count": int(
+            payload.get("final_context_doc_count")
+            or metadata.get("final_context_doc_count")
+            or runtime_fields.get("final_context_doc_count")
+            or final_context_summary.get("included_docs")
+            or 0
+        ),
         "evidence_coverage_summary": metadata.get("evidence_coverage_summary")
         or runtime_fields.get("evidence_coverage_summary")
+        or {},
+        "rerank_diagnostics": metadata.get("rerank_diagnostics")
+        or runtime_fields.get("rerank_diagnostics")
         or {},
         "rescue_plan": metadata.get("rescue_plan") or runtime_fields.get("rescue_plan") or {},
         "answer_plan": metadata.get("answer_plan") or runtime_fields.get("answer_plan") or {},
         "clarification_reason": str(
             metadata.get("clarification_reason") or runtime_fields.get("clarification_reason") or ""
+        ),
+        "judge_skipped_reason": str(
+            metadata.get("judge_skipped_reason")
+            or runtime_fields.get("judge_skipped_reason")
+            or ""
+        ),
+        "retrieval_judge_skipped_reason": str(
+            metadata.get("retrieval_judge_skipped_reason")
+            or runtime_fields.get("retrieval_judge_skipped_reason")
+            or ""
+        ),
+        "hallucination_judge_skipped_reason": str(
+            metadata.get("hallucination_judge_skipped_reason")
+            or runtime_fields.get("hallucination_judge_skipped_reason")
+            or ""
+        ),
+        "retrieval_grader_strategy": str(
+            metadata.get("retrieval_grader_strategy")
+            or runtime_fields.get("retrieval_grader_strategy")
+            or ""
+        ),
+        "hallucination_check_strategy": str(
+            metadata.get("hallucination_check_strategy")
+            or runtime_fields.get("hallucination_check_strategy")
+            or ""
         ),
         "answer_error": answer_error,
         "item_name_extract_error": item_name_extract_error,
@@ -1489,19 +1994,32 @@ def _run_single_case_via_service(
         or runtime_fields.get("cache_summary")
         or {},
         "latency_ms": _num(payload.get("latency_ms")),
+        "first_token_ms": _num(payload.get("first_token_ms")),
         "first_answer_ms": _num(payload.get("first_answer_ms")),
         "stage_durations_ms": payload.get("stage_durations_ms") or {},
+        "cache_temperature": cache_temperature or "",
         "error": runtime_error,
     }
 
 
 def _build_ragas_row(case_result: Dict[str, Any]) -> Dict[str, Any]:
+    prompt_contexts = (
+        case_result.get("final_context_preview")
+        or (case_result.get("final_context_summary") or {}).get("context_previews")
+        or case_result.get("retrieved_contexts")
+        or []
+    )
     return {
         "user_input": case_result.get("query") or "",
+        "query_type": case_result.get("query_type") or "general",
+        "item_names": _string_list(case_result.get("item_names")),
+        "answerable": bool(case_result.get("answerable", True)),
         "response": case_result.get("response") or "",
-        "retrieved_contexts": case_result.get("retrieved_contexts") or [],
+        "retrieved_contexts": prompt_contexts,
         "reference": case_result.get("reference_answer") or None,
         "retrieved_context_ids": case_result.get("retrieved_context_ids") or [],
+        "final_context_ids": case_result.get("final_context_ids")
+        or _context_ids_from_summary(case_result.get("final_context_summary") or {}),
         "reference_context_ids": _resolved_relevant_ids(case_result),
     }
 
@@ -1511,6 +2029,13 @@ def _clamp_score(value: Any) -> Optional[float]:
     if casted is None:
         return None
     return round(max(0.0, min(1.0, casted)), 4)
+
+
+def _normalize_judge_score(value: Any) -> Optional[float]:
+    score = _clamp_score(value)
+    if score is None:
+        return None
+    return min(QUALITY_JUDGE_SCORE_BUCKETS, key=lambda bucket: abs(bucket - score))
 
 
 def _metric_tokens(text: str) -> List[str]:
@@ -1615,6 +2140,9 @@ def _lexical_quality_scores(row: Dict[str, Any]) -> Dict[str, float]:
 
 def _llm_quality_scores(row: Dict[str, Any]) -> Dict[str, float]:
     prompt_payload = {
+        "query_type": str(row.get("query_type") or "general")[:80],
+        "item_names": _string_list(row.get("item_names"))[:5],
+        "answerable": bool(row.get("answerable", True)),
         "question": str(row.get("user_input") or "")[:QUALITY_JUDGE_TEXT_CHARS],
         "reference_answer": str(row.get("reference") or "")[
             :QUALITY_JUDGE_TEXT_CHARS
@@ -1623,15 +2151,30 @@ def _llm_quality_scores(row: Dict[str, Any]) -> Dict[str, float]:
         "retrieved_contexts": _join_contexts(row.get("retrieved_contexts") or []),
     }
     prompt = (
-        "你是企业产品手册 RAG 评测员。请只基于输入给出 0 到 1 的小数评分，"
-        "必须返回严格 JSON，不要输出解释。\n"
-        "评分含义：\n"
-        "- factual_correctness：模型答案与参考答案的事实一致程度；空答案为 0。\n"
-        "- faithfulness：模型答案是否被 retrieved_contexts 支撑；未被证据支撑的内容扣分。\n"
-        "- response_relevancy：模型答案是否直接回答 question。\n"
-        "- llm_context_recall：retrieved_contexts 是否覆盖 reference_answer 所需信息。\n"
+        "你是企业产品手册 RAG 评测员。请严格按 rubric 给分，只使用以下固定档位："
+        "0.0、0.2、0.4、0.6、0.8、1.0。必须返回严格 JSON，不要输出 Markdown。\n"
+        "通用规则：\n"
+        "- question 是用户问题，query_type 是问题类型，item_names 是目标产品。\n"
+        "- answerable=false 表示当前资料无法给出确定答案；合理拒答或要求澄清可以是高相关，编造具体答案必须扣分。\n"
+        "- 不要因为措辞相似就给高分；只回答了部分关键结论时不得给满分。\n"
+        "- 参考答案和检索上下文冲突时，faithfulness 只看检索上下文支撑，factual_correctness 只看参考答案一致性。\n"
+        "指标 rubric：\n"
+        "1. factual_correctness：模型答案与 reference_answer 的事实一致程度。"
+        "1.0=完整且无事实错误；0.8=基本正确但遗漏次要条件；0.6=只覆盖部分关键事实；"
+        "0.4=有明显遗漏或轻度错误；0.2=主要结论错误但有少量相关内容；0.0=空答案、错误拒答或核心事实相反。\n"
+        "2. faithfulness：模型答案中的事实是否能被 retrieved_contexts 支撑。"
+        "1.0=所有实质事实均有上下文依据；0.8=少量非关键表述无依据；0.6=部分关键事实有依据；"
+        "0.4=依据不足且夹杂推测；0.2=大部分具体事实无依据；0.0=空答案或明显编造。\n"
+        "3. response_relevancy：模型答案是否直接解决 question。"
+        "1.0=直接且完整回答；0.8=回答方向正确但不够完整；0.6=部分相关；"
+        "0.4=泛泛而谈或偏题较多；0.2=只有少量关键词相关；0.0=未回答问题。"
+        "answerable=false 时，合理拒答/澄清可给 0.8-1.0。\n"
+        "4. llm_context_recall：retrieved_contexts 是否覆盖 reference_answer 所需信息。"
+        "1.0=覆盖全部关键证据；0.8=覆盖主要证据但缺少次要条件；0.6=覆盖部分关键证据；"
+        "0.4=只覆盖少量背景；0.2=几乎没有可用证据；0.0=无上下文或完全不相关。\n"
         '返回格式：{"factual_correctness":0.0,"faithfulness":0.0,'
-        '"response_relevancy":0.0,"llm_context_recall":0.0}\n'
+        '"response_relevancy":0.0,"llm_context_recall":0.0,'
+        '"diagnostics":{"factual":"短句","faithfulness":"短句","relevancy":"短句","context_recall":"短句"}}\n'
         f"输入：{json.dumps(prompt_payload, ensure_ascii=False)}"
     )
     judge_model = str(os.environ.get("EVAL_JUDGE_MODEL") or "").strip() or None
@@ -1642,7 +2185,7 @@ def _llm_quality_scores(row: Dict[str, Any]) -> Dict[str, float]:
     )
     scores: Dict[str, float] = {}
     for key in QUALITY_METRIC_KEYS:
-        score = _clamp_score(parsed.get(key))
+        score = _normalize_judge_score(parsed.get(key))
         if score is None:
             raise ValueError(f"LLM 评估返回缺失或非法字段：{key}")
         scores[key] = score
@@ -1737,6 +2280,8 @@ def _run_ragas(
         "per_case_scores": per_case_scores,
         "metadata": {
             "quality_mode": mode,
+            "judge_prompt_version": QUALITY_JUDGE_PROMPT_VERSION,
+            "score_buckets": list(QUALITY_JUDGE_SCORE_BUCKETS),
             "method_counts": dict(sorted(method_counts.items())),
             "llm_error_count": sum(llm_errors.values()),
         },
@@ -1762,6 +2307,42 @@ def _summarize_retrieval(
     }
     eligible_cases = [item for item in case_results if _resolved_relevant_ids(item)]
     coverage: Dict[str, int] = {}
+    retrieved_context_precision_values = [
+        _precision_for_ids(
+            item.get("retrieved_context_ids") or [],
+            _resolved_relevant_ids(item),
+        )
+        for item in eligible_cases
+    ]
+    prompt_context_precision_values = []
+    for item in eligible_cases:
+        final_ids = normalize_ids(
+            item.get("final_context_ids")
+            or _context_ids_from_summary(item.get("final_context_summary") or {})
+        )
+        if not final_ids:
+            prompt_context_precision_values.append(None)
+        else:
+            prompt_context_precision_values.append(
+                _precision_for_ids(final_ids, _resolved_relevant_ids(item))
+            )
+
+    retrieved_context_precision = _avg(retrieved_context_precision_values)
+    prompt_context_precision = _avg(prompt_context_precision_values)
+    summary["retrieved_context_precision"] = (
+        retrieved_context_precision if retrieved_context_precision is not None else 0.0
+    )
+    summary["prompt_context_precision"] = prompt_context_precision
+    summary["final_context_precision"] = prompt_context_precision
+    coverage["retrieved_context_precision"] = len(
+        [value for value in retrieved_context_precision_values if value is not None]
+    )
+    coverage["prompt_context_precision"] = len(
+        [value for value in prompt_context_precision_values if value is not None]
+    )
+    coverage["final_context_precision"] = len(
+        [value for value in prompt_context_precision_values if value is not None]
+    )
     for k in DEFAULT_K_VALUES:
         summary[f"hit@{k}"] = _avg(
             [
@@ -1809,6 +2390,17 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         (item.get("evidence_coverage_summary") or {}).get("coverage_score")
         for item in case_results
     ]
+    rerank_diagnostics = [
+        item.get("rerank_diagnostics") or {} for item in case_results
+    ]
+    final_context_summaries = []
+    for item in case_results:
+        summary = dict(item.get("final_context_summary") or {})
+        if "included_docs" not in summary and item.get("final_context_doc_count") is not None:
+            summary["included_docs"] = item.get("final_context_doc_count")
+        if "used_chars" not in summary and item.get("final_context_chars") is not None:
+            summary["used_chars"] = item.get("final_context_chars")
+        final_context_summaries.append(summary)
     cache_overall = [
         (item.get("cache_summary") or {}).get("overall") or {} for item in case_results
     ]
@@ -1980,6 +2572,52 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             ]
         )
         or 0.0,
+        "retrieval_judge_skipped_rate": _avg(
+            [
+                1.0
+                if str(item.get("retrieval_judge_skipped_reason") or "").strip()
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "hallucination_judge_skipped_rate": _avg(
+            [
+                1.0
+                if str(item.get("hallucination_judge_skipped_reason") or "").strip()
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "rerank_fallback_rate": _avg(
+            [1.0 if bool(item.get("fallback")) else 0.0 for item in rerank_diagnostics]
+        )
+        or 0.0,
+        "rerank_heuristic_rate": _avg(
+            [1.0 if bool(item.get("heuristic")) else 0.0 for item in rerank_diagnostics]
+        )
+        or 0.0,
+        "rerank_cache_hit_rate": _avg(
+            [1.0 if bool(item.get("cache_hit")) else 0.0 for item in rerank_diagnostics]
+        )
+        or 0.0,
+        "avg_rerank_candidate_count": _avg(
+            [item.get("candidate_count") for item in rerank_diagnostics]
+        )
+        or 0.0,
+        "avg_rerank_selected_count": _avg(
+            [item.get("selected_count") for item in rerank_diagnostics]
+        )
+        or 0.0,
+        "avg_final_context_docs": _avg(
+            [item.get("included_docs") for item in final_context_summaries]
+        )
+        or 0.0,
+        "avg_final_context_used_chars": _avg(
+            [item.get("used_chars") for item in final_context_summaries]
+        )
+        or 0.0,
         "avg_evidence_coverage_score": _avg(evidence_scores) or 0.0,
         "low_evidence_coverage_rate": _avg(
             [
@@ -2027,33 +2665,76 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _summarize_performance(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    total = [item.get("latency_ms") for item in case_results]
-    first_answer = [item.get("first_answer_ms") for item in case_results]
+def _summarize_stage_durations(case_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     stage_bucket: Dict[str, List[float]] = defaultdict(list)
     for item in case_results:
         for stage_name, duration in (item.get("stage_durations_ms") or {}).items():
             casted = _num(duration)
             if casted is not None:
                 stage_bucket[stage_name].append(casted)
-    stage_summary = []
+    stage_summary: List[Dict[str, Any]] = []
     for stage_name, durations in sorted(stage_bucket.items()):
         stage_summary.append(
             {
                 "stage": stage_name,
                 "avg_duration_ms": _avg(durations),
+                "p50_duration_ms": _pct(durations, 0.50),
                 "p95_duration_ms": _pct(durations, 0.95),
                 "count": len(durations),
             }
         )
+    return stage_summary
+
+
+def _duration_stats(prefix: str, case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    total = [item.get("latency_ms") for item in case_results]
+    first_token = [item.get("first_token_ms") for item in case_results]
+    first_answer = [item.get("first_answer_ms") for item in case_results]
+    return {
+        f"{prefix}_avg_total_duration_ms": _avg(total),
+        f"{prefix}_p50_total_duration_ms": _pct(total, 0.50),
+        f"{prefix}_p95_total_duration_ms": _pct(total, 0.95),
+        f"{prefix}_avg_first_token_ms": _avg(first_token),
+        f"{prefix}_p50_first_token_ms": _pct(first_token, 0.50),
+        f"{prefix}_p95_first_token_ms": _pct(first_token, 0.95),
+        f"{prefix}_avg_first_answer_ms": _avg(first_answer),
+        f"{prefix}_p50_first_answer_ms": _pct(first_answer, 0.50),
+        f"{prefix}_p95_first_answer_ms": _pct(first_answer, 0.95),
+    }
+
+
+def _summarize_performance(
+    case_results: List[Dict[str, Any]],
+    cold_case_results: Optional[List[Dict[str, Any]]] = None,
+    hot_case_results: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    cold_results = (
+        cold_case_results
+        if cold_case_results is not None
+        else [item for item in case_results if item.get("cache_temperature") == "cold"]
+    )
+    hot_results = (
+        hot_case_results
+        if hot_case_results is not None
+        else [item for item in case_results if item.get("cache_temperature") == "hot"]
+    )
+    main_results = hot_results or case_results
+    total = [item.get("latency_ms") for item in main_results]
+    first_token = [item.get("first_token_ms") for item in main_results]
+    first_answer = [item.get("first_answer_ms") for item in main_results]
     return {
         "avg_total_duration_ms": _avg(total),
         "p50_total_duration_ms": _pct(total, 0.50),
         "p95_total_duration_ms": _pct(total, 0.95),
+        "avg_first_token_ms": _avg(first_token),
+        "p50_first_token_ms": _pct(first_token, 0.50),
+        "p95_first_token_ms": _pct(first_token, 0.95),
         "avg_first_answer_ms": _avg(first_answer),
         "p50_first_answer_ms": _pct(first_answer, 0.50),
         "p95_first_answer_ms": _pct(first_answer, 0.95),
-        "stages": stage_summary,
+        **_duration_stats("cold", cold_results),
+        **_duration_stats("hot", hot_results),
+        "stages": _summarize_stage_durations(main_results),
     }
 
 
@@ -2075,16 +2756,26 @@ def _build_headline_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
     performance_metrics = summary.get("performance_metrics") or {}
     pipeline_metrics = summary.get("pipeline_metrics") or {}
     result: Dict[str, Any] = {}
-    for key in ("factual_correctness", "faithfulness"):
+    for key in ("factual_correctness", "faithfulness", "response_relevancy"):
         if key in ragas_metrics:
             result[key] = ragas_metrics.get(key)
-    for key in ("recall@5", "mrr@5", "hit@5", "recall@3", "mrr@3", "hit@3"):
+    for key in (
+        "retrieved_context_precision",
+        "prompt_context_precision",
+        "final_context_precision",
+        "recall@5",
+        "mrr@5",
+        "hit@5",
+        "recall@3",
+        "mrr@3",
+        "hit@3",
+    ):
         if key in retrieval_metrics:
             result[key] = retrieval_metrics.get(key)
     for key in ("retrieval_cache_rate",):
         if key in pipeline_metrics:
             result[key] = pipeline_metrics.get(key)
-    for key in ("avg_total_duration_ms",):
+    for key in ("avg_total_duration_ms", "p95_total_duration_ms", "p95_first_token_ms"):
         if key in performance_metrics:
             result[key] = performance_metrics.get(key)
     return result
@@ -2096,6 +2787,8 @@ def _summarize_variant(
     ragas_bundle: Optional[Dict[str, Any]] = None,
     description: str = "",
     technique: str = "",
+    cold_case_results: Optional[List[Dict[str, Any]]] = None,
+    hot_case_results: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     config = VARIANTS.get(variant_name, {})
     retrieval_metrics, retrieval_coverage, retrieval_ground_truth, warnings = (
@@ -2114,7 +2807,11 @@ def _summarize_variant(
         "retrieval_coverage": retrieval_coverage,
         "retrieval_ground_truth": retrieval_ground_truth,
         "pipeline_metrics": _summarize_pipeline(case_results),
-        "performance_metrics": _summarize_performance(case_results),
+        "performance_metrics": _summarize_performance(
+            case_results,
+            cold_case_results=cold_case_results,
+            hot_case_results=hot_case_results,
+        ),
         "warnings": warnings,
     }
     if ragas_bundle is None:
@@ -2179,14 +2876,28 @@ def _delta(current: Any, baseline: Any) -> Dict[str, Any]:
     }
 
 
-def _build_comparison_report(variants: Dict[str, Any]) -> Dict[str, Any]:
+def _build_comparison_report(
+    variants: Dict[str, Any],
+    pairwise_order: Sequence[str] | None = None,
+    pairwise_current_names: Sequence[str] | None = None,
+) -> Dict[str, Any]:
     report: Dict[str, Any] = {}
-    for variant_name, payload in variants.items():
-        compare_to = payload.get("compare_to") or VARIANTS[variant_name].get(
-            "compare_to"
-        )
-        if not compare_to or compare_to not in variants:
-            continue
+    pairwise_current_set = (
+        {str(name) for name in pairwise_current_names}
+        if pairwise_current_names is not None
+        else None
+    )
+
+    def add_comparison(variant_name: str, compare_to: str) -> None:
+        if variant_name == compare_to:
+            return
+        if variant_name not in variants or compare_to not in variants:
+            return
+        comparison_key = f"{variant_name}_vs_{compare_to}"
+        if comparison_key in report:
+            return
+        payload = variants[variant_name] or {}
+        variant_config = VARIANTS.get(variant_name, {})
         current_summary = payload.get("summary") or {}
         baseline_summary = variants[compare_to].get("summary") or {}
         current_numeric = _numeric_metrics(current_summary)
@@ -2220,27 +2931,58 @@ def _build_comparison_report(variants: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 for metric_key in group_keys
             }
-        report[f"{variant_name}_vs_{compare_to}"] = {
+        report[comparison_key] = {
             "variant": variant_name,
             "compare_to": compare_to,
-            "technique": VARIANTS[variant_name].get("technique"),
+            "technique": payload.get("technique") or variant_config.get("technique"),
             "overall": overall,
             "by_query_type": group_report,
         }
+
+    for variant_name, payload in variants.items():
+        variant_config = VARIANTS.get(variant_name, {})
+        compare_to = payload.get("compare_to") or variant_config.get("compare_to")
+        if compare_to:
+            add_comparison(variant_name, str(compare_to))
+
+    if pairwise_order:
+        ordered = [
+            str(variant_name)
+            for variant_name in pairwise_order
+            if str(variant_name) in variants
+        ]
+        for index, variant_name in enumerate(ordered):
+            if pairwise_current_set is not None and variant_name not in pairwise_current_set:
+                continue
+            for compare_to in ordered[:index]:
+                add_comparison(variant_name, compare_to)
     return report
 
 
 def evaluate_variants(
     dataset_path: str,
     variant_names: Sequence[str],
+    feature_variant_specs: Sequence[Dict[str, Any]] | None = None,
     progress_callback: ProgressCallback = None,
     cancel_callback: CancelCallback = None,
 ) -> Dict[str, Any]:
     _raise_if_cancelled(cancel_callback)
     cases = _prepare_cases(load_cases(dataset_path))
-    dataset_payload = _load_dataset_payload(dataset_path)
-    dataset_quality_summary = _summarize_dataset_quality(cases)
-    resolved_variants = _resolve_variants(variant_names)
+    _, _, dataset_payload, _ = _load_dataset_payload(dataset_path)
+    requested_variant_names = [str(name or "").strip() for name in variant_names or [] if str(name or "").strip()]
+    registered_feature_variants: List[Dict[str, Any]] = []
+    if feature_variant_specs:
+        registered_feature_variants.extend(register_feature_variants(feature_variant_specs))
+        requested_variant_names.extend(
+            str(item.get("name") or "").strip()
+            for item in registered_feature_variants
+            if str(item.get("name") or "").strip()
+        )
+    deduped_variant_names: List[str] = []
+    for variant_name in requested_variant_names:
+        if variant_name not in deduped_variant_names:
+            deduped_variant_names.append(variant_name)
+    resolved_variants = _resolve_variants(deduped_variant_names)
     variants_payload: Dict[str, Any] = {}
     if progress_callback is not None:
         progress_callback(
@@ -2256,25 +2998,6 @@ def evaluate_variants(
     service_base_url = _evaluation_query_service_base_url()
     for index, variant_name in enumerate(resolved_variants, start=1):
         _raise_if_cancelled(cancel_callback)
-        variant_config = VARIANTS.get(variant_name, {})
-        if variant_config.get("reset_cache_before_run"):
-            if service_base_url:
-                try:
-                    requests.post(
-                        f"{service_base_url}/cache/reset",
-                        json={"reason": f"evaluation:{variant_name}:start"},
-                        timeout=30,
-                    ).raise_for_status()
-                except Exception:
-                    reset_query_cache(reason=f"evaluation:{variant_name}:start")
-            else:
-                reset_query_cache(reason=f"evaluation:{variant_name}:start")
-        forced_warmup_rounds = _forced_warmup_rounds()
-        warmup_rounds = (
-            forced_warmup_rounds
-            if forced_warmup_rounds is not None
-            else max(0, int(variant_config.get("warmup_rounds") or 0))
-        )
         total_cases = len(cases)
         if progress_callback is not None:
             progress_callback(
@@ -2286,70 +3009,76 @@ def evaluate_variants(
                     "total_cases": total_cases,
                 }
             )
-        if warmup_rounds:
-            for warmup_index in range(1, warmup_rounds + 1):
-                _raise_if_cancelled(cancel_callback)
-                if progress_callback is not None:
-                    progress_callback(
-                        {
-                            "stage": "variant_warmup",
-                            "variant_name": variant_name,
-                            "variant_index": index,
-                            "total_variants": total_variants,
-                            "warmup_round": warmup_index,
-                            "warmup_rounds": warmup_rounds,
-                            "total_cases": total_cases,
-                        }
-                    )
-                for case_index, case in enumerate(cases, start=1):
-                    _raise_if_cancelled(cancel_callback)
-                    if progress_callback is not None:
-                        progress_callback(
-                            {
-                                "stage": "warmup_case_started",
-                                "variant_name": variant_name,
-                                "variant_index": index,
-                                "total_variants": total_variants,
-                                "warmup_round": warmup_index,
-                                "warmup_rounds": warmup_rounds,
-                                "case_id": str(
-                                    case.get("case_id") or case.get("id") or ""
-                                ),
-                                "case_index": case_index,
-                                "total_cases": total_cases,
-                                "query": _query(case),
-                            }
-                        )
-                    _run_single_case(case, variant_name)
-                    if progress_callback is not None:
-                        progress_callback(
-                            {
-                                "stage": "warmup_case_completed",
-                                "variant_name": variant_name,
-                                "variant_index": index,
-                                "total_variants": total_variants,
-                                "warmup_round": warmup_index,
-                                "warmup_rounds": warmup_rounds,
-                                "case_id": str(
-                                    case.get("case_id") or case.get("id") or ""
-                                ),
-                                "case_index": case_index,
-                                "total_cases": total_cases,
-                                "query": _query(case),
-                            }
-                        )
-                if progress_callback is not None:
-                    progress_callback(
-                        {
-                            "stage": "warmup_completed",
-                            "variant_name": variant_name,
-                            "variant_index": index,
-                            "total_variants": total_variants,
-                            "warmup_round": warmup_index,
-                            "warmup_rounds": warmup_rounds,
-                            "total_cases": total_cases,
-                        }
-                    )
+
+        _reset_query_cache_for_evaluation(
+            service_base_url,
+            reason=f"evaluation:{variant_name}:cold",
+        )
+        cold_case_results: List[Dict[str, Any]] = []
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "warmup_started",
+                    "variant_name": variant_name,
+                    "variant_index": index,
+                    "total_variants": total_variants,
+                    "warmup_round": 1,
+                    "warmup_rounds": 1,
+                    "total_cases": total_cases,
+                    "cache_temperature": "cold",
+                }
+            )
+        for case_index, case in enumerate(cases, start=1):
+            _raise_if_cancelled(cancel_callback)
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "stage": "warmup_case_started",
+                        "variant_name": variant_name,
+                        "variant_index": index,
+                        "total_variants": total_variants,
+                        "warmup_round": 1,
+                        "warmup_rounds": 1,
+                        "case_id": str(case.get("case_id") or case.get("id") or ""),
+                        "case_index": case_index,
+                        "total_cases": total_cases,
+                        "query": _query(case),
+                        "cache_temperature": "cold",
+                    }
+                )
+            cold_case_result = _run_single_case(case, variant_name, "cold")
+            cold_case_results.append(cold_case_result)
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "stage": "warmup_case_completed",
+                        "variant_name": variant_name,
+                        "variant_index": index,
+                        "total_variants": total_variants,
+                        "warmup_round": 1,
+                        "warmup_rounds": 1,
+                        "case_id": str(cold_case_result.get("case_id") or ""),
+                        "case_index": case_index,
+                        "total_cases": total_cases,
+                        "query": str(cold_case_result.get("query") or ""),
+                        "cache_temperature": "cold",
+                        "error": str(cold_case_result.get("error") or ""),
+                    }
+                )
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "warmup_completed",
+                    "variant_name": variant_name,
+                    "variant_index": index,
+                    "total_variants": total_variants,
+                    "warmup_round": 1,
+                    "warmup_rounds": 1,
+                    "total_cases": total_cases,
+                    "cache_temperature": "cold",
+                }
+            )
+
         case_results = []
         for case_index, case in enumerate(cases, start=1):
             _raise_if_cancelled(cancel_callback)
@@ -2364,9 +3093,10 @@ def evaluate_variants(
                         "case_index": case_index,
                         "total_cases": total_cases,
                         "query": _query(case),
+                        "cache_temperature": "hot",
                     }
                 )
-            case_result = _run_single_case(case, variant_name)
+            case_result = _run_single_case(case, variant_name, "hot")
             case_results.append(case_result)
             _raise_if_cancelled(cancel_callback)
             if progress_callback is not None:
@@ -2380,28 +3110,42 @@ def evaluate_variants(
                         "case_index": case_index,
                         "total_cases": total_cases,
                         "query": str(case_result.get("query") or ""),
+                        "cache_temperature": "hot",
                         "error": str(case_result.get("error") or ""),
                     }
                 )
         _raise_if_cancelled(cancel_callback)
         ragas_bundle = _run_ragas(case_results, cancel_callback=cancel_callback)
         _merge_ragas_scores(case_results, ragas_bundle.get("per_case_scores") or [])
+        cold_by_query_type = _group_by_query_type(cold_case_results)
         grouped_summaries = {
             query_type: _summarize_variant(
                 variant_name=query_type,
                 case_results=grouped_cases,
                 description=f"query_type={query_type}",
                 technique="QueryType Slice",
+                cold_case_results=cold_by_query_type.get(query_type, []),
+                hot_case_results=grouped_cases,
             )
             for query_type, grouped_cases in _group_by_query_type(case_results).items()
         }
         variants_payload[variant_name] = {
-            "description": VARIANTS[variant_name].get("description"),
-            "technique": VARIANTS[variant_name].get("technique"),
-            "compare_to": VARIANTS[variant_name].get("compare_to"),
-            "summary": _summarize_variant(variant_name, case_results, ragas_bundle),
+            "description": VARIANTS.get(variant_name, {}).get("description"),
+            "technique": VARIANTS.get(variant_name, {}).get("technique"),
+            "compare_to": VARIANTS.get(variant_name, {}).get("compare_to"),
+            "feature_variant": copy.deepcopy(
+                VARIANTS.get(variant_name, {}).get("feature_variant") or {}
+            ),
+            "summary": _summarize_variant(
+                variant_name,
+                case_results,
+                ragas_bundle,
+                cold_case_results=cold_case_results,
+                hot_case_results=case_results,
+            ),
             "by_query_type": grouped_summaries,
             "case_results": case_results,
+            "performance_case_results": cold_case_results + case_results,
         }
         if progress_callback is not None:
             progress_callback(
@@ -2427,6 +3171,10 @@ def evaluate_variants(
         if preferred_variant in variants_payload:
             final_variant = preferred_variant
             break
+    has_feature_variants = any(
+        bool(VARIANTS.get(variant_name, {}).get("is_feature_variant"))
+        for variant_name in resolved_variants
+    )
     report = {
         "generated_at": datetime.now().isoformat(),
         "dataset_path": str(Path(dataset_path).resolve()),
@@ -2436,13 +3184,34 @@ def evaluate_variants(
             else ""
         ),
         "case_count": len(cases),
-        "dataset_quality_summary": dataset_quality_summary,
+        "evaluation_method": {
+            "mode": "controlled_ablation" if has_feature_variants else "static_variants",
+            "case_count": len(cases),
+            "query_type_source": "dataset.query_type",
+            "item_name_source": "dataset.item_names",
+            "execution_order": resolved_variants,
+            "cache_policy": (
+                "each variant resets cache before cold pass, then reuses that cache for hot pass"
+            ),
+            "feature_variants": [
+                copy.deepcopy(VARIANTS.get(variant_name, {}).get("feature_variant"))
+                for variant_name in resolved_variants
+                if VARIANTS.get(variant_name, {}).get("feature_variant")
+            ],
+            "performance_sampling": {
+                "cache_temperature": "explicit_cold_hot",
+                "quality_scoring_source": "hot",
+            },
+        },
         "variants": variants_payload,
         "final_variant": final_variant,
         "final_system_metrics": variants_payload.get(final_variant, {}).get(
             "summary", {}
         ),
-        "comparisons": _build_comparison_report(variants_payload),
+        "comparisons": _build_comparison_report(
+            variants_payload,
+            pairwise_order=resolved_variants if has_feature_variants else None,
+        ),
     }
     if progress_callback is not None:
         progress_callback(
@@ -2460,12 +3229,14 @@ def evaluate_variants_to_file(
     dataset_path: str,
     variant_names: Sequence[str],
     output_path: str | None = None,
+    feature_variant_specs: Sequence[Dict[str, Any]] | None = None,
     progress_callback: ProgressCallback = None,
     cancel_callback: CancelCallback = None,
 ) -> Dict[str, Any]:
     report = evaluate_variants(
         dataset_path,
         variant_names,
+        feature_variant_specs=feature_variant_specs,
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
     )

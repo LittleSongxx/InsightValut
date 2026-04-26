@@ -7,6 +7,7 @@
 import os
 import time
 import logging
+import math
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -51,6 +52,7 @@ class PerfSession:
         self.session_id = session_id
         self.query = query
         self.start_time = time.time()
+        self.first_token_time: Optional[float] = None
         self.first_answer_time: Optional[float] = None
         self.stages: List[Dict[str, Any]] = []
         self._stage_starts: Dict[str, float] = {}
@@ -79,18 +81,27 @@ class PerfSession:
         if self.first_answer_time is None:
             self.first_answer_time = time.time()
 
+    def mark_first_token(self):
+        """标记首个可返回 token/文本片段的时间"""
+        if self.first_token_time is None:
+            self.first_token_time = time.time()
+
     def to_document(self) -> Dict[str, Any]:
         """转为 MongoDB 文档格式"""
         total_duration_ms = (time.time() - self.start_time) * 1000
+        first_token_ms = None
+        if self.first_token_time is not None:
+            first_token_ms = (self.first_token_time - self.start_time) * 1000
         first_answer_ms = None
-        if self.first_answer_time:
+        if self.first_answer_time is not None:
             first_answer_ms = (self.first_answer_time - self.start_time) * 1000
 
         return {
             "session_id": self.session_id,
             "query": self.query,
             "total_duration_ms": round(total_duration_ms, 2),
-            "first_answer_ms": round(first_answer_ms, 2) if first_answer_ms else None,
+            "first_token_ms": round(first_token_ms, 2) if first_token_ms is not None else None,
+            "first_answer_ms": round(first_answer_ms, 2) if first_answer_ms is not None else None,
             "stages": self.stages,
             "stage_count": len(self.stages),
             "created_at": datetime.utcnow(),
@@ -128,6 +139,13 @@ def perf_mark_first_answer(session_id: str):
     session = _active_sessions.get(session_id)
     if session:
         session.mark_first_answer()
+
+
+def perf_mark_first_token(session_id: str):
+    """标记首 token/首个可返回文本片段"""
+    session = _active_sessions.get(session_id)
+    if session:
+        session.mark_first_token()
 
 
 def perf_finish(session_id: str, persist: bool = True):
@@ -179,6 +197,15 @@ def _numeric_values(values: List[Any]) -> List[float]:
     return sorted(float(value) for value in values if _is_number(value))
 
 
+def _percentile(values: List[Any], ratio: float) -> Optional[float]:
+    nums = _numeric_values(values)
+    if not nums:
+        return None
+    clamped = min(max(float(ratio), 0.0), 1.0)
+    index = max(0, min(math.ceil(len(nums) * clamped) - 1, len(nums) - 1))
+    return nums[index]
+
+
 def _round_number(value: Any, default: float = 0) -> float:
     if _is_number(value):
         return round(float(value), 2)
@@ -209,7 +236,10 @@ def get_performance_summary(
                 "run_count": {"$sum": 1},
                 "avg_total_duration_ms": {"$avg": "$total_duration_ms"},
                 "durations": {"$push": "$total_duration_ms"},
+                "avg_first_token_ms": {"$avg": "$first_token_ms"},
+                "first_tokens": {"$push": "$first_token_ms"},
                 "avg_first_answer_ms": {"$avg": "$first_answer_ms"},
+                "first_answers": {"$push": "$first_answer_ms"},
             }
         },
     ]
@@ -221,24 +251,31 @@ def get_performance_summary(
             "avg_total_duration_ms": 0,
             "p50_total_duration_ms": 0,
             "p95_total_duration_ms": 0,
+            "avg_first_token_ms": None,
+            "p50_first_token_ms": None,
+            "p95_first_token_ms": None,
             "avg_first_answer_ms": None,
+            "p50_first_answer_ms": None,
+            "p95_first_answer_ms": None,
             "stages": [],
         }
 
     data = results[0]
     durations = _numeric_values(data.get("durations", []))
-    n = len(durations)
-
-    p50 = durations[n // 2] if n > 0 else 0
-    p95_idx = min(int(n * 0.95), n - 1)
-    p95 = durations[p95_idx] if n > 0 else 0
+    first_tokens = _numeric_values(data.get("first_tokens", []))
+    first_answers = _numeric_values(data.get("first_answers", []))
 
     return {
         "run_count": data.get("run_count", 0),
         "avg_total_duration_ms": _round_number(data.get("avg_total_duration_ms")),
-        "p50_total_duration_ms": _round_number(p50),
-        "p95_total_duration_ms": _round_number(p95),
+        "p50_total_duration_ms": _round_number(_percentile(durations, 0.50)),
+        "p95_total_duration_ms": _round_number(_percentile(durations, 0.95)),
+        "avg_first_token_ms": _round_optional_number(data.get("avg_first_token_ms")),
+        "p50_first_token_ms": _round_optional_number(_percentile(first_tokens, 0.50)),
+        "p95_first_token_ms": _round_optional_number(_percentile(first_tokens, 0.95)),
         "avg_first_answer_ms": _round_optional_number(data.get("avg_first_answer_ms")),
+        "p50_first_answer_ms": _round_optional_number(_percentile(first_answers, 0.50)),
+        "p95_first_answer_ms": _round_optional_number(_percentile(first_answers, 0.95)),
         "stages": [],
     }
 
@@ -268,6 +305,10 @@ def get_performance_time_series(
                 "run_count": {"$sum": 1},
                 "avg_total_duration_ms": {"$avg": "$total_duration_ms"},
                 "durations": {"$push": "$total_duration_ms"},
+                "avg_first_token_ms": {"$avg": "$first_token_ms"},
+                "first_tokens": {"$push": "$first_token_ms"},
+                "avg_first_answer_ms": {"$avg": "$first_answer_ms"},
+                "first_answers": {"$push": "$first_answer_ms"},
             }
         },
         {"$sort": {"_id": 1}},
@@ -277,16 +318,21 @@ def get_performance_time_series(
     time_series = []
     for r in results:
         durations = _numeric_values(r.get("durations", []))
-        n = len(durations)
-        p95_idx = min(int(n * 0.95), n - 1)
+        first_tokens = _numeric_values(r.get("first_tokens", []))
+        first_answers = _numeric_values(r.get("first_answers", []))
         time_series.append(
             {
                 "period": r["_id"],
                 "run_count": r.get("run_count", 0),
                 "avg_total_duration_ms": _round_number(r.get("avg_total_duration_ms")),
-                "p95_total_duration_ms": (
-                    _round_number(durations[p95_idx]) if n > 0 else 0
-                ),
+                "p50_total_duration_ms": _round_number(_percentile(durations, 0.50)),
+                "p95_total_duration_ms": _round_number(_percentile(durations, 0.95)),
+                "avg_first_token_ms": _round_optional_number(r.get("avg_first_token_ms")),
+                "p50_first_token_ms": _round_optional_number(_percentile(first_tokens, 0.50)),
+                "p95_first_token_ms": _round_optional_number(_percentile(first_tokens, 0.95)),
+                "avg_first_answer_ms": _round_optional_number(r.get("avg_first_answer_ms")),
+                "p50_first_answer_ms": _round_optional_number(_percentile(first_answers, 0.50)),
+                "p95_first_answer_ms": _round_optional_number(_percentile(first_answers, 0.95)),
             }
         )
 
@@ -324,14 +370,13 @@ def get_stage_breakdown(
         if not stage_name:
             continue
         sd = _numeric_values(sr.get("durations", []))
-        sn = len(sd)
-        sp95_idx = min(int(sn * 0.95), sn - 1)
         stages.append(
             {
                 "stage": stage_name,
                 "count": sr.get("count", 0),
                 "avg_duration_ms": _round_number(sr.get("avg_duration_ms")),
-                "p95_duration_ms": _round_number(sd[sp95_idx]) if sn > 0 else 0,
+                "p50_duration_ms": _round_number(_percentile(sd, 0.50)),
+                "p95_duration_ms": _round_number(_percentile(sd, 0.95)),
                 "error_rate": (
                     round(sr.get("errors", 0) / sr["count"], 4)
                     if sr.get("count", 0) > 0

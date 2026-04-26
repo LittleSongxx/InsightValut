@@ -25,4 +25,7 @@ frontend/.env
 frontend/.env.local
 test/
 tests/
+!tests/
+tests/*
+!tests/test_evaluation_feature_variants.py
 *.md

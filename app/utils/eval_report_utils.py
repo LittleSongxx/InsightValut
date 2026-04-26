@@ -2,7 +2,7 @@ import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.utils.path_util import PROJECT_ROOT
 
@@ -62,6 +62,9 @@ def _sanitize_for_json(value: Any) -> Any:
 
 
 def _dataset_name(report: Dict[str, Any]) -> str:
+    report_name = str(report.get("dataset_name") or "").strip()
+    if report_name:
+        return report_name
     dataset_path = str(report.get("dataset_path") or "").strip()
     if not dataset_path:
         return ""
@@ -96,7 +99,7 @@ def _strip_case_results(report: Dict[str, Any]) -> Dict[str, Any]:
         "dataset_path": report.get("dataset_path"),
         "dataset_name": report.get("dataset_name"),
         "case_count": int(report.get("case_count") or 0),
-        "dataset_quality_summary": report.get("dataset_quality_summary") or {},
+        "evaluation_method": report.get("evaluation_method") or {},
         "final_variant": report.get("final_variant"),
         "final_system_metrics": report.get("final_system_metrics") or {},
         "variants": variants_payload,
@@ -136,6 +139,13 @@ def get_evaluation_report(report_id: str) -> Optional[Dict[str, Any]]:
         "meta": _build_report_meta(path, report),
         "report": _strip_case_results(report),
     }
+
+
+def load_evaluation_report_payload(report_id: str) -> Optional[Tuple[Path, Dict[str, Any]]]:
+    path = _resolve_report_path(report_id)
+    if path is None:
+        return None
+    return path, _load_json(path)
 
 
 def get_latest_evaluation_report() -> Optional[Dict[str, Any]]:

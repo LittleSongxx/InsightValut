@@ -1,0 +1,3502 @@
+{
+  "dataset_name": "business_benchmark_100",
+  "generated_at": "2026-04-25T14:20:00+08:00",
+  "description": "100 条业务量化评测集，基于现有人工 business benchmark 扩展多种业务问法，覆盖质量、检索、时延和缓存评测。",
+  "notes": [
+    "保留 business_benchmark_30 的人工种子样本，并补充同一证据 chunk 上的多种问法，确保每条样本都有参考答案、金标 chunk、required_facts 与 forbidden_facts。",
+    "用于完整评测时建议减少对比方案数量，100 样本在 cold/hot 性能采样下会显著增加总耗时。",
+    "本数据集不使用 auto_generated 标签；新增样本标注为 paraphrase，便于后续筛选人工复核。"
+  ],
+  "sources": {
+    "seed_dataset": "docs/business_benchmark_30.docs.json",
+    "seed_cases": 30,
+    "expanded_cases": 70,
+    "case_count_by_item": {
+      "HUAWEIMateBookB7-420": 50,
+      "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)": 50
+    },
+    "case_count_by_query_type": {
+      "comparison": 17,
+      "relation": 17,
+      "navigation": 17,
+      "explain": 16,
+      "constraint": 16,
+      "general": 17
+    },
+    "answerable_breakdown": {
+      "true": 91,
+      "false": 9
+    }
+  },
+  "cases": [
+    {
+      "case_id": "business_100_seed_001_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“安装电池”讲蓝牙鼠标第二代的电池安装与首次配对准备；“快捷键与功能键切换”讲 F1/F2 等按键在热键模式和功能键模式之间切换。前者是鼠标硬件启用，后者是键盘按键行为设置。",
+      "relevant_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "required_facts": [
+        "安装电池对应蓝牙鼠标第二代",
+        "安装一节 AA 电池",
+        "快捷键与功能键切换对应 F1/F2 等功能键模式",
+        "两者分别对应鼠标硬件安装和键盘按键设置"
+      ],
+      "forbidden_facts": [
+        "MateBook 内置电池需要用户自行安装",
+        "两者都是安全注意事项"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "comparison",
+        "target_coverage",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_002_matebook_comparison_notice_vs_environment",
+      "query_type": "comparison",
+      "query": "HUAWEIMateBookB7-420中“注意”和“环境保护”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“注意”说明手册描述和产品特性可能受网络、软件和服务支持影响，并声明华为可修改手册信息；“环境保护”说明设备及附件不能按普通生活垃圾处理，应按当地法规回收。前者用于理解手册和功能边界，后者用于回收处理。",
+      "relevant_chunk_ids": [
+        "stc_v1_e8ebd8c526f11574fe3e047c",
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_e8ebd8c526f11574fe3e047c",
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "注意章节说明手册描述和功能限制",
+        "环境保护章节说明回收处理",
+        "两者使用场景分别是阅读限制和废弃回收"
+      ],
+      "forbidden_facts": [
+        "注意章节提供操作步骤",
+        "环境保护章节是电脑管家功能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "comparison",
+        "target_coverage",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_003_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "该节主要提供进一步获取信息的入口，包括访问华为商城和华为消费者业务官网，并不是复杂关系推理题。",
+      "relevant_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "required_facts": [
+        "访问华为商城",
+        "访问华为消费者业务官网",
+        "属于章节信息入口说明"
+      ],
+      "forbidden_facts": [
+        "扩展成完整多步安装流程",
+        "引入与触摸板或键盘相关的内容"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "section_summary",
+        "relation_pseudo",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_004_matebook_section_touchpad",
+      "query_type": "relation",
+      "query": "HUAWEIMateBookB7-420中更改触摸板设置涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "更改触摸板设置包括进入设置界面，开启或关闭触摸板，设置连接鼠标时是否关闭触摸板，更改触摸滚动方向，以及设置手指动作功能。",
+      "relevant_chunk_ids": [
+        "stc_v1_e0e99c593e1bce3925014df5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_e0e99c593e1bce3925014df5"
+      ],
+      "required_facts": [
+        "进入设置界面",
+        "开启或关闭触摸板",
+        "更改触摸滚动方向",
+        "设置手指动作功能"
+      ],
+      "forbidden_facts": [
+        "回答键盘快捷键切换",
+        "回答安装电池"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "section_summary",
+        "relation_pseudo",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_005_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "在新平板进入平板克隆并选择这是新设备和 iPhone/iPad；在旧设备安装并打开平板克隆，选择这是旧设备；通过扫码或手动连接建立连接后，选择数据并完成克隆。",
+      "relevant_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "required_facts": [
+        "新平板选择这是新设备",
+        "选择 iPhone/iPad",
+        "旧设备选择这是旧设备",
+        "扫码或手动连接",
+        "选择数据并完成克隆"
+      ],
+      "forbidden_facts": [
+        "通过蓝牙配对迁移全部数据",
+        "使用电脑管家迁移"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "navigation",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_006_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "该功能解决录音内容需要文字化整理的问题。用户领取或购买转文本时长后，可把录音文件转换为文字，并在播放界面查看结果。",
+      "relevant_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "required_facts": [
+        "录音文件可转为文本",
+        "需要领取免费时长或购买套餐",
+        "转换结果显示在播放界面"
+      ],
+      "forbidden_facts": [
+        "实时电话字幕",
+        "外语视频字幕翻译"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "explain",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_007_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“日历”用于添加和管理日程、提醒与会议安排；“时刻”用于将假日、生日、聚会等场景的照片和视频自动聚合成时刻相册。前者面向时间计划管理，后者面向图库内容整理与回顾。",
+      "relevant_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "required_facts": [
+        "日历用于日程管理",
+        "时刻用于聚合照片视频",
+        "两者分别对应时间计划和图库回顾"
+      ],
+      "forbidden_facts": [
+        "日历是系统清理功能",
+        "时刻是智慧语音技能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "comparison",
+        "target_coverage",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_008_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "资料中没有环境保护功能开启步骤"
+      ],
+      "forbidden_facts": [
+        "进入设置开启环境保护模式",
+        "打开电脑管家开启环境保护开关"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_009_matebook_constraint_personal_data_security",
+      "query_type": "constraint",
+      "query": "HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "资料强调要加强个人信息保护，包括把设备放在安全区域、设置并牢记锁屏密码、不阅读陌生邮件、不访问存在安全隐患的网站、为无线共享和蓝牙设置密码、不用时关闭相关业务，并安装安全软件定期检查。",
+      "relevant_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "required_facts": [
+        "设备放在安全区域",
+        "设置锁屏密码",
+        "不要浏览不安全网站",
+        "无线共享和蓝牙要设密码",
+        "安装安全软件并定期检查"
+      ],
+      "forbidden_facts": [
+        "提供电视投屏步骤",
+        "回答蓝牙鼠标配对流程"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "constraint",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_010_tablet_explain_wlan_security_detection",
+      "query_type": "explain",
+      "query": "华为平板C7DBY-W09的WLAN 安全检测主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "WLAN 安全检测用于监测已连接热点的安全性，并暂停自动连接存在风险的热点，核心目的是降低连接不安全 WLAN 热点的风险。",
+      "relevant_chunk_ids": [
+        "stc_v1_bdd86773039080f4acf122b9"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_bdd86773039080f4acf122b9"
+      ],
+      "required_facts": [
+        "监测已连接热点安全",
+        "暂停自动连接存在风险的热点",
+        "目的是降低连接不安全热点的风险"
+      ],
+      "forbidden_facts": [
+        "WLAN 直连大型文件传输是主要答案",
+        "蓝牙配对是主要答案"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "explain",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_011_tablet_navigation_ai_captions",
+      "query_type": "navigation",
+      "query": "在华为平板C7DBY-W09中，使用 AI 字幕与他人电话通信或面对面交流应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "先确认智慧语音中的 AI 字幕电话语音转文字开关已开启，再从控制中心快捷开关或设置中的 AI 字幕入口打开功能。开启后会出现字幕悬浮窗，对方语音可转为文字显示。",
+      "relevant_chunk_ids": [
+        "stc_v1_70c4552bcb6270f70969368d",
+        "stc_v1_76c0591e1a3e1cd247b06b0f",
+        "stc_v1_495fb3ca7342a9a6b169a179"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_70c4552bcb6270f70969368d",
+        "stc_v1_76c0591e1a3e1cd247b06b0f",
+        "stc_v1_495fb3ca7342a9a6b169a179"
+      ],
+      "required_facts": [
+        "先开启电话语音转文字开关",
+        "可从控制中心或设置入口进入",
+        "开启后出现字幕悬浮窗",
+        "对方语音会转为文字"
+      ],
+      "forbidden_facts": [
+        "通过浏览器插件开启",
+        "先连接蓝牙耳机才能使用"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "navigation",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_012_matebook_comparison_liability_vs_usb_devices",
+      "query_type": "comparison",
+      "query": "HUAWEIMateBookB7-420中“责任限制”和“连接 USB 鼠标、打印机或其他设备”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“责任限制”是手册法律声明，说明内容按现状提供且华为不对特定损失承担赔偿责任；“连接 USB 鼠标、打印机或其他设备”讲通过扩展坞 USB-A 接口连接 USB 设备、接通电源并等待系统自动安装软件。前者用于法律责任边界，后者用于外设连接操作。",
+      "relevant_chunk_ids": [
+        "stc_v1_2d2a5c0937dda0bbbdc603d6",
+        "stc_v1_f481b9bb35f9375d0a8b4bd9"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_2d2a5c0937dda0bbbdc603d6",
+        "stc_v1_f481b9bb35f9375d0a8b4bd9"
+      ],
+      "required_facts": [
+        "责任限制是法律声明",
+        "华为不对某些间接损失承担赔偿责任",
+        "USB 设备通过扩展坞 USB-A 接口连接",
+        "首次安装时计算机会自动安装软件"
+      ],
+      "forbidden_facts": [
+        "责任限制提供外设连接步骤",
+        "USB 设备连接章节讨论法律免责条款"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "comparison",
+        "target_coverage",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_013_matebook_constraint_connect_display",
+      "query_type": "constraint",
+      "query": "HUAWEIMateBookB7-420使用连接到电视、显示器或投影仪时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "连接大屏设备前需要准备 HDMI 或 VGA 线缆并检查端口，操作示例以 HUAWEI MateDock 2 扩展坞为例。HDMI 和 VGA 接口不能同时使用，连接后再接通显示设备电源并打开。",
+      "relevant_chunk_ids": [
+        "stc_v1_f375b53daf913ee50db58371",
+        "stc_v1_dd4805b1aec6cc42d7bb4c1f",
+        "stc_v1_d2e4d6cd0cb59cc5df8fa326"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_f375b53daf913ee50db58371",
+        "stc_v1_dd4805b1aec6cc42d7bb4c1f",
+        "stc_v1_d2e4d6cd0cb59cc5df8fa326"
+      ],
+      "required_facts": [
+        "准备 HDMI 或 VGA 线缆",
+        "连接前检查端口",
+        "HDMI 和 VGA 不能同时使用",
+        "通过扩展坞连接后再打开显示设备"
+      ],
+      "forbidden_facts": [
+        "可以同时使用 HDMI 和 VGA",
+        "只支持无线投屏"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "constraint",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_014_tablet_explain_memo",
+      "query_type": "explain",
+      "query": "华为平板C7DBY-W09的备忘录主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "备忘录用于快速记录和整理想法与灵感，支持书写、扫描文档、多设备协作、语音记事和手绘涂鸦等多种方式创建笔记。",
+      "relevant_chunk_ids": [
+        "stc_v1_fc73665b03b5ae09f9d3fbb8",
+        "stc_v1_a478d8ddf4425549f7873b8b",
+        "stc_v1_697e8bc53461a5a28a5fe888"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_fc73665b03b5ae09f9d3fbb8",
+        "stc_v1_a478d8ddf4425549f7873b8b",
+        "stc_v1_697e8bc53461a5a28a5fe888"
+      ],
+      "required_facts": [
+        "快速记录想法和灵感",
+        "支持书写和扫描文档",
+        "支持语音记事或手绘涂鸦"
+      ],
+      "forbidden_facts": [
+        "主要功能是打印文件",
+        "只能通过键盘输入文字"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "explain",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_015_tablet_navigation_multi_window",
+      "query_type": "navigation",
+      "query": "在华为平板C7DBY-W09中，多窗口应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "先从屏幕左侧或右侧内滑调出智慧多窗应用栏，然后可添加、移动或移除应用。若要关闭应用栏，可在设置 > 辅助功能 > 智慧多窗中关闭对应开关。",
+      "relevant_chunk_ids": [
+        "stc_v1_1fda4efab1fa3481193f05e0",
+        "stc_v1_8f1efedad3d71e8fe78803ac",
+        "stc_v1_a478d8ddf4425549f7873b8b"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_1fda4efab1fa3481193f05e0",
+        "stc_v1_8f1efedad3d71e8fe78803ac",
+        "stc_v1_a478d8ddf4425549f7873b8b"
+      ],
+      "required_facts": [
+        "从屏幕边缘内滑调出智慧多窗应用栏",
+        "可以添加移动移除应用",
+        "可在设置中关闭智慧多窗应用栏"
+      ],
+      "forbidden_facts": [
+        "长按桌面空白处进入多窗口",
+        "必须连接键盘后才能开启"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "navigation",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_016_tablet_relation_document_correction",
+      "query_type": "relation",
+      "query": "华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "文档矫正用于把拍摄角度不正的文档自动矫正为正面图并尽量消除阴影。使用时进入相机 > 更多，选择文档矫正模式，对准文档拍照，系统会识别文字区域并自动矫正。",
+      "relevant_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "required_facts": [
+        "进入相机 > 更多 > 文档矫正",
+        "对准文档拍照",
+        "自动矫正为正面图",
+        "尽量去除文档阴影"
+      ],
+      "forbidden_facts": [
+        "回答成图库滤镜功能",
+        "回答成无线打印设置"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "section_summary",
+        "relation_pseudo",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_017_tablet_relation_smart_table",
+      "query_type": "relation",
+      "query": "华为平板C7DBY-W09中智能表格涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "智能表格支持用手写笔一笔成形画矩形和直线来生成表格，随后可增加、删除行列，并通过长按或圈选单元格继续编辑，还能调整表格位置、大小和行列宽度。",
+      "relevant_chunk_ids": [
+        "stc_v1_4a9a4bff65e9322ea357020b",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5",
+        "stc_v1_4fc9c74fc061fd071cb05d8a"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4a9a4bff65e9322ea357020b",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5",
+        "stc_v1_4fc9c74fc061fd071cb05d8a"
+      ],
+      "required_facts": [
+        "先画矩形",
+        "再画直线切分行列",
+        "可以增加删除行列",
+        "可调整表格位置大小和宽度"
+      ],
+      "forbidden_facts": [
+        "必须导入 Excel 文件后才能使用",
+        "只能删除不能增加行列"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "section_summary",
+        "relation_pseudo",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_018_tablet_comparison_service_cards_vs_notifications",
+      "query_type": "comparison",
+      "query": "华为平板C7DBY-W09中“服务卡片”和“查看和关闭通知”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“服务卡片”讲上滑应用图标展开卡片，预览天气、日程等服务信息并可添加到桌面；“查看和关闭通知”讲从通知中心查看消息、单条右滑清除或底部一键清除全部通知。前者用于桌面服务信息预览，后者用于消息通知查看与清理。",
+      "relevant_chunk_ids": [
+        "stc_v1_edba8c1072f7c18ae3b59b62",
+        "stc_v1_1b2faa1e873118b5d29aa01f",
+        "stc_v1_57245818257b37f0ccbbc669"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edba8c1072f7c18ae3b59b62",
+        "stc_v1_1b2faa1e873118b5d29aa01f",
+        "stc_v1_57245818257b37f0ccbbc669"
+      ],
+      "required_facts": [
+        "服务卡片可预览服务信息并添加到桌面",
+        "通知中心可查看和清除通知",
+        "两者分别对应桌面信息卡片和消息管理"
+      ],
+      "forbidden_facts": [
+        "服务卡片就是通知中心",
+        "查看和关闭通知用于添加天气卡片"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "comparison",
+        "target_coverage",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_019_tablet_constraint_custom_voice_skills",
+      "query_type": "constraint",
+      "query": "华为平板C7DBY-W09使用查看智慧语音自定义技能时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "资料说明在教智慧语音学习新技能或创建组合技能后，可在设置 > 智慧助手 > 智慧语音 > 我的技能中查看、编辑、分享或删除技能。路径会因机型不同略有差异，这就是主要限制。",
+      "relevant_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "required_facts": [
+        "先有新技能或组合技能",
+        "在我的技能中查看或编辑",
+        "可分享或删除技能",
+        "不同机型路径略有差异"
+      ],
+      "forbidden_facts": [
+        "必须联网下载插件后才能查看",
+        "所有机型路径完全一致"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "constraint",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_020_matebook_unanswerable_liability_switch",
+      "query_type": "navigation",
+      "query": "HUAWEIMateBookB7-420中责任限制功能在哪里打开？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_2d2a5c0937dda0bbbdc603d6"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_2d2a5c0937dda0bbbdc603d6"
+      ],
+      "required_facts": [
+        "责任限制是法律声明而不是功能开关",
+        "资料没有提供打开位置"
+      ],
+      "forbidden_facts": [
+        "在设置中开启责任限制",
+        "在华为电脑管家中打开责任限制"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_021_matebook_general_f10_restore",
+      "query_type": "general",
+      "query": "HUAWEIMateBookB7-420 的 F10 一键恢复出厂是什么？会影响哪些数据？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂是计算机内置的系统恢复出厂功能，可以在较短时间内将系统恢复到初始状态。恢复会删除 C 盘数据，包括桌面、下载、文档等个人数据，因此需要提前备份 C 盘内个人数据。",
+      "required_facts": [
+        "F10 是内置系统恢复出厂功能",
+        "可将系统恢复到初始状态",
+        "会删除 C 盘数据",
+        "桌面、下载、文档等个人数据需要提前备份"
+      ],
+      "forbidden_facts": [
+        "F10 只会清理缓存不会删除数据",
+        "F10 是恢复 BIOS 密码的功能"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "high_frequency",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_022_matebook_general_keyboard_hotkeys",
+      "query_type": "general",
+      "query": "HUAWEIMateBookB7-420 的 F1、F2 等键默认是什么模式？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F1、F2 等键默认为快捷键或热键模式，可用于降低或增强屏幕亮度、开启或关闭键盘背光等常见任务。不同机型键盘按键可能不同，应以实际为准。",
+      "required_facts": [
+        "F1、F2 等键默认为快捷键或热键模式",
+        "可执行常见任务",
+        "可调节屏幕亮度或键盘背光",
+        "不同机型按键以实际为准"
+      ],
+      "forbidden_facts": [
+        "F1、F2 默认只能作为软件功能键",
+        "所有机型键盘按键完全一致"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_655e74ef8a219fe66e845cdc"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_655e74ef8a219fe66e845cdc"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "high_frequency",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_023_matebook_general_solar_charging_unanswerable",
+      "query_type": "general",
+      "query": "HUAWEIMateBookB7-420 支持太阳能充电吗？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": false,
+      "reference_answer": "资料中未提供 HUAWEIMateBookB7-420 支持太阳能充电的信息，只能确认手册包含常规充电注意事项，不能编造太阳能充电能力。",
+      "required_facts": [
+        "资料中未提供太阳能充电支持信息",
+        "只能确认手册包含常规充电注意事项"
+      ],
+      "forbidden_facts": [
+        "支持太阳能充电",
+        "可以通过太阳能板给电脑充电"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_8c8d0759924a7cefd768cbcf"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_8c8d0759924a7cefd768cbcf"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "unanswerable",
+        "edge_case",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_024_tablet_general_huawei_print",
+      "query_type": "general",
+      "query": "华为平板C7DBY-W09 使用华为打印时，发现打印机前需要满足什么条件？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "使用华为打印前，需要启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。随后在平板中从图库、文件管理或第三方应用选择文件并调用华为打印。",
+      "required_facts": [
+        "需要启动打印机",
+        "打印机与平板接入同一 WLAN 网络",
+        "或开启 WLAN 直连功能",
+        "可从图库、文件管理或第三方应用选择文件打印"
+      ],
+      "forbidden_facts": [
+        "必须通过 USB 线连接打印机",
+        "无需打印机连接网络或 WLAN 直连"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "high_frequency",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_025_tablet_general_reboot",
+      "query_type": "general",
+      "query": "华为平板C7DBY-W09 普通重启和强制重启分别怎么做？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "普通重启是长按电源键几秒钟，直到弹出重启菜单后依次点击重启和点击重启。若平板不能正常工作且无法正常关机，可同时长按电源键和音量下键 10 秒以上进行强制重启。",
+      "required_facts": [
+        "普通重启需要长按电源键几秒钟",
+        "弹出重启菜单后点击重启",
+        "无法正常关机时可强制重启",
+        "强制重启需同时长按电源键和音量下键 10 秒以上"
+      ],
+      "forbidden_facts": [
+        "强制重启需要同时按电源键和音量上键",
+        "普通重启必须进入设置菜单"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_43fd3797e217bddd3297ba3f"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_43fd3797e217bddd3297ba3f"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "high_frequency",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_026_matebook_relation_dock_devices",
+      "query_type": "relation",
+      "query": "HUAWEIMateBookB7-420 的扩展坞和外接显示、USB 设备之间是什么关系？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "扩展坞是可选配件，通过接口或插槽帮助计算机连接投影仪、电视、U 盘等设备。连接电视、显示器或投影仪时可通过扩展坞连接，并需准备 HDMI 或 VGA 线缆；连接 USB 鼠标、打印机等设备时也可通过扩展坞 USB-A 接口。",
+      "required_facts": [
+        "扩展坞是可选配件",
+        "可连接投影仪、电视、U 盘等设备",
+        "外接显示设备需要 HDMI 或 VGA 线缆",
+        "USB 鼠标或打印机可通过扩展坞 USB-A 接口连接"
+      ],
+      "forbidden_facts": [
+        "扩展坞是内置不可选配件",
+        "HDMI 和 VGA 接口可以同时使用"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_d2e4d6cd0cb59cc5df8fa326",
+        "stc_v1_f375b53daf913ee50db58371",
+        "stc_v1_f481b9bb35f9375d0a8b4bd9"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_d2e4d6cd0cb59cc5df8fa326",
+        "stc_v1_f375b53daf913ee50db58371",
+        "stc_v1_f481b9bb35f9375d0a8b4bd9"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "multi_hop",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_027_matebook_explain_f10_restore",
+      "query_type": "explain",
+      "query": "HUAWEIMateBookB7-420 的 F10 一键恢复出厂主要解决什么问题？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂主要解决需要快速将计算机系统恢复到初始状态的问题。它适合系统需要重置的场景，但会删除 C 盘个人数据，所以操作前要连接电源并备份 C 盘数据。",
+      "required_facts": [
+        "快速将系统恢复到初始状态",
+        "适合系统重置场景",
+        "会删除 C 盘个人数据",
+        "操作前要连接电源并备份 C 盘数据"
+      ],
+      "forbidden_facts": [
+        "用于升级系统到最新版本",
+        "不会影响任何个人数据"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_028_tablet_explain_wireless_projection",
+      "query_type": "explain",
+      "query": "华为平板C7DBY-W09 的平板投屏主要解决什么问题？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "平板投屏主要解决把平板画面无线投到电视机等大屏显示器的问题，让办公和娱乐更方便。由于不同大屏设备支持的投屏协议不同，投屏方式会有差异，需要根据设备支持的协议选择方式。",
+      "required_facts": [
+        "将平板通过无线连接投屏至大屏显示器",
+        "适用于办公和娱乐",
+        "不同大屏设备支持的投屏协议不同",
+        "需要根据协议选择投屏方式"
+      ],
+      "forbidden_facts": [
+        "平板投屏只能通过有线 USB 连接",
+        "所有大屏设备投屏方式完全相同"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_6481a5b8dc79143ebf05cfa3"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_6481a5b8dc79143ebf05cfa3"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_029_matebook_constraint_charge_safety",
+      "query_type": "constraint",
+      "query": "HUAWEIMateBookB7-420 充电时有哪些限制或安全注意事项？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "充电时应在适宜温度范围内和通风良好的阴凉区域进行，高温环境充电可能损坏计算机。充电时间会随温度和电池使用状况变化，长时间工作和充电导致表面发热属于正常现象；若发烫应关闭部分功能并停止充电。电池寿命明显减少时不要自行更换，应到华为客户服务中心更换原装电池。",
+      "required_facts": [
+        "在适宜温度范围内充电",
+        "在通风良好的阴凉区域充电",
+        "高温环境充电可能损坏计算机",
+        "发烫时关闭部分功能并停止充电",
+        "电池寿命明显减少不要自行更换"
+      ],
+      "forbidden_facts": [
+        "高温环境充电不会影响计算机",
+        "用户可以自行更换内置电池"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_8c8d0759924a7cefd768cbcf"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_8c8d0759924a7cefd768cbcf"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "edge_case",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_seed_030_tablet_constraint_4k_video_effects",
+      "query_type": "constraint",
+      "query": "华为平板C7DBY-W09 录制 4K 高清视频时有哪些限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "录制 4K 高清视频时，需要在相机录像模式中选择 4K 分辨率。4K 分辨率下不支持使用美颜、滤镜和视频特效，选择 4K 后平板会自动关闭这些功能；分辨率越高越清晰，但占用的存储空间也越大。",
+      "required_facts": [
+        "需要在录像模式选择 4K 分辨率",
+        "4K 分辨率不支持美颜",
+        "4K 分辨率不支持滤镜和视频特效",
+        "选择 4K 后会自动关闭这些功能",
+        "分辨率越高占用存储空间越大"
+      ],
+      "forbidden_facts": [
+        "4K 分辨率支持美颜和滤镜",
+        "4K 视频占用存储空间更小"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_bfd0eee350291c65bf92f959"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_bfd0eee350291c65bf92f959"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "curated",
+        "edge_case",
+        "business_benchmark_100",
+        "seed_30"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_001_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "请用对照表思路回答：HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“安装电池”讲蓝牙鼠标第二代的电池安装与首次配对准备；“快捷键与功能键切换”讲 F1/F2 等按键在热键模式和功能键模式之间切换。前者是鼠标硬件启用，后者是键盘按键行为设置。",
+      "relevant_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "required_facts": [
+        "安装电池对应蓝牙鼠标第二代",
+        "安装一节 AA 电池",
+        "快捷键与功能键切换对应 F1/F2 等功能键模式",
+        "两者分别对应鼠标硬件安装和键盘按键设置"
+      ],
+      "forbidden_facts": [
+        "MateBook 内置电池需要用户自行安装",
+        "两者都是安全注意事项"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_002_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "请梳理相关功能关系：HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "该节主要提供进一步获取信息的入口，包括访问华为商城和华为消费者业务官网，并不是复杂关系推理题。",
+      "relevant_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "required_facts": [
+        "访问华为商城",
+        "访问华为消费者业务官网",
+        "属于章节信息入口说明"
+      ],
+      "forbidden_facts": [
+        "扩展成完整多步安装流程",
+        "引入与触摸板或键盘相关的内容"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_003_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "请按步骤回答：在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "在新平板进入平板克隆并选择这是新设备和 iPhone/iPad；在旧设备安装并打开平板克隆，选择这是旧设备；通过扫码或手动连接建立连接后，选择数据并完成克隆。",
+      "relevant_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "required_facts": [
+        "新平板选择这是新设备",
+        "选择 iPhone/iPad",
+        "旧设备选择这是旧设备",
+        "扫码或手动连接",
+        "选择数据并完成克隆"
+      ],
+      "forbidden_facts": [
+        "通过蓝牙配对迁移全部数据",
+        "使用电脑管家迁移"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_004_matebook_general_f10_restore",
+      "query_type": "general",
+      "query": "请直接回答并给出依据：HUAWEIMateBookB7-420 的 F10 一键恢复出厂是什么？会影响哪些数据？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂是计算机内置的系统恢复出厂功能，可以在较短时间内将系统恢复到初始状态。恢复会删除 C 盘数据，包括桌面、下载、文档等个人数据，因此需要提前备份 C 盘内个人数据。",
+      "required_facts": [
+        "F10 是内置系统恢复出厂功能",
+        "可将系统恢复到初始状态",
+        "会删除 C 盘数据",
+        "桌面、下载、文档等个人数据需要提前备份"
+      ],
+      "forbidden_facts": [
+        "F10 只会清理缓存不会删除数据",
+        "F10 是恢复 BIOS 密码的功能"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_005_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "只基于资料，分别说明两部分差异：华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“日历”用于添加和管理日程、提醒与会议安排；“时刻”用于将假日、生日、聚会等场景的照片和视频自动聚合成时刻相册。前者面向时间计划管理，后者面向图库内容整理与回顾。",
+      "relevant_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "required_facts": [
+        "日历用于日程管理",
+        "时刻用于聚合照片视频",
+        "两者分别对应时间计划和图库回顾"
+      ],
+      "forbidden_facts": [
+        "日历是系统清理功能",
+        "时刻是智慧语音技能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_006_tablet_relation_document_correction",
+      "query_type": "relation",
+      "query": "请按功能链路说明：华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "文档矫正用于把拍摄角度不正的文档自动矫正为正面图并尽量消除阴影。使用时进入相机 > 更多，选择文档矫正模式，对准文档拍照，系统会识别文字区域并自动矫正。",
+      "relevant_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "required_facts": [
+        "进入相机 > 更多 > 文档矫正",
+        "对准文档拍照",
+        "自动矫正为正面图",
+        "尽量去除文档阴影"
+      ],
+      "forbidden_facts": [
+        "回答成图库滤镜功能",
+        "回答成无线打印设置"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_007_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "用户要实际操作，请给出可执行步骤：HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "资料中没有环境保护功能开启步骤"
+      ],
+      "forbidden_facts": [
+        "进入设置开启环境保护模式",
+        "打开电脑管家开启环境保护开关"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_008_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "请用一句结论加简要解释回答：华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "该功能解决录音内容需要文字化整理的问题。用户领取或购买转文本时长后，可把录音文件转换为文字，并在播放界面查看结果。",
+      "relevant_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "required_facts": [
+        "录音文件可转为文本",
+        "需要领取免费时长或购买套餐",
+        "转换结果显示在播放界面"
+      ],
+      "forbidden_facts": [
+        "实时电话字幕",
+        "外语视频字幕翻译"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_009_matebook_constraint_personal_data_security",
+      "query_type": "constraint",
+      "query": "请列出限制和注意事项：HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "资料强调要加强个人信息保护，包括把设备放在安全区域、设置并牢记锁屏密码、不阅读陌生邮件、不访问存在安全隐患的网站、为无线共享和蓝牙设置密码、不用时关闭相关业务，并安装安全软件定期检查。",
+      "relevant_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "required_facts": [
+        "设备放在安全区域",
+        "设置锁屏密码",
+        "不要浏览不安全网站",
+        "无线共享和蓝牙要设密码",
+        "安装安全软件并定期检查"
+      ],
+      "forbidden_facts": [
+        "提供电视投屏步骤",
+        "回答蓝牙鼠标配对流程"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_010_tablet_general_huawei_print",
+      "query_type": "general",
+      "query": "请用客服口径回答：华为平板C7DBY-W09 使用华为打印时，发现打印机前需要满足什么条件？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "使用华为打印前，需要启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。随后在平板中从图库、文件管理或第三方应用选择文件并调用华为打印。",
+      "required_facts": [
+        "需要启动打印机",
+        "打印机与平板接入同一 WLAN 网络",
+        "或开启 WLAN 直连功能",
+        "可从图库、文件管理或第三方应用选择文件打印"
+      ],
+      "forbidden_facts": [
+        "必须通过 USB 线连接打印机",
+        "无需打印机连接网络或 WLAN 直连"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_011_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "请先给结论再比较使用场景：HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“安装电池”讲蓝牙鼠标第二代的电池安装与首次配对准备；“快捷键与功能键切换”讲 F1/F2 等按键在热键模式和功能键模式之间切换。前者是鼠标硬件启用，后者是键盘按键行为设置。",
+      "relevant_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "required_facts": [
+        "安装电池对应蓝牙鼠标第二代",
+        "安装一节 AA 电池",
+        "快捷键与功能键切换对应 F1/F2 等功能键模式",
+        "两者分别对应鼠标硬件安装和键盘按键设置"
+      ],
+      "forbidden_facts": [
+        "MateBook 内置电池需要用户自行安装",
+        "两者都是安全注意事项"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_012_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "如果用户需要定位关联步骤，请回答：HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "该节主要提供进一步获取信息的入口，包括访问华为商城和华为消费者业务官网，并不是复杂关系推理题。",
+      "relevant_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "required_facts": [
+        "访问华为商城",
+        "访问华为消费者业务官网",
+        "属于章节信息入口说明"
+      ],
+      "forbidden_facts": [
+        "扩展成完整多步安装流程",
+        "引入与触摸板或键盘相关的内容"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_013_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "请用简洁流程说明：在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "在新平板进入平板克隆并选择这是新设备和 iPhone/iPad；在旧设备安装并打开平板克隆，选择这是旧设备；通过扫码或手动连接建立连接后，选择数据并完成克隆。",
+      "relevant_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "required_facts": [
+        "新平板选择这是新设备",
+        "选择 iPhone/iPad",
+        "旧设备选择这是旧设备",
+        "扫码或手动连接",
+        "选择数据并完成克隆"
+      ],
+      "forbidden_facts": [
+        "通过蓝牙配对迁移全部数据",
+        "使用电脑管家迁移"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_014_matebook_explain_f10_restore",
+      "query_type": "explain",
+      "query": "请说明该功能解决的问题和关键前提：HUAWEIMateBookB7-420 的 F10 一键恢复出厂主要解决什么问题？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂主要解决需要快速将计算机系统恢复到初始状态的问题。它适合系统需要重置的场景，但会删除 C 盘个人数据，所以操作前要连接电源并备份 C 盘数据。",
+      "required_facts": [
+        "快速将系统恢复到初始状态",
+        "适合系统重置场景",
+        "会删除 C 盘个人数据",
+        "操作前要连接电源并备份 C 盘数据"
+      ],
+      "forbidden_facts": [
+        "用于升级系统到最新版本",
+        "不会影响任何个人数据"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_015_tablet_constraint_custom_voice_skills",
+      "query_type": "constraint",
+      "query": "请说明哪些条件不能越界：华为平板C7DBY-W09使用查看智慧语音自定义技能时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "资料说明在教智慧语音学习新技能或创建组合技能后，可在设置 > 智慧助手 > 智慧语音 > 我的技能中查看、编辑、分享或删除技能。路径会因机型不同略有差异，这就是主要限制。",
+      "relevant_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "required_facts": [
+        "先有新技能或组合技能",
+        "在我的技能中查看或编辑",
+        "可分享或删除技能",
+        "不同机型路径略有差异"
+      ],
+      "forbidden_facts": [
+        "必须联网下载插件后才能查看",
+        "所有机型路径完全一致"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_016_matebook_general_f10_restore",
+      "query_type": "general",
+      "query": "请先判断资料是否支持，再回答：HUAWEIMateBookB7-420 的 F10 一键恢复出厂是什么？会影响哪些数据？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂是计算机内置的系统恢复出厂功能，可以在较短时间内将系统恢复到初始状态。恢复会删除 C 盘数据，包括桌面、下载、文档等个人数据，因此需要提前备份 C 盘内个人数据。",
+      "required_facts": [
+        "F10 是内置系统恢复出厂功能",
+        "可将系统恢复到初始状态",
+        "会删除 C 盘数据",
+        "桌面、下载、文档等个人数据需要提前备份"
+      ],
+      "forbidden_facts": [
+        "F10 只会清理缓存不会删除数据",
+        "F10 是恢复 BIOS 密码的功能"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_017_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "面向客服质检，请回答：华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“日历”用于添加和管理日程、提醒与会议安排；“时刻”用于将假日、生日、聚会等场景的照片和视频自动聚合成时刻相册。前者面向时间计划管理，后者面向图库内容整理与回顾。",
+      "relevant_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "required_facts": [
+        "日历用于日程管理",
+        "时刻用于聚合照片视频",
+        "两者分别对应时间计划和图库回顾"
+      ],
+      "forbidden_facts": [
+        "日历是系统清理功能",
+        "时刻是智慧语音技能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_018_tablet_relation_document_correction",
+      "query_type": "relation",
+      "query": "请只列出资料支持的相关功能：华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "文档矫正用于把拍摄角度不正的文档自动矫正为正面图并尽量消除阴影。使用时进入相机 > 更多，选择文档矫正模式，对准文档拍照，系统会识别文字区域并自动矫正。",
+      "relevant_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "required_facts": [
+        "进入相机 > 更多 > 文档矫正",
+        "对准文档拍照",
+        "自动矫正为正面图",
+        "尽量去除文档阴影"
+      ],
+      "forbidden_facts": [
+        "回答成图库滤镜功能",
+        "回答成无线打印设置"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_019_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "遇到该场景时应该怎么做？HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "资料中没有环境保护功能开启步骤"
+      ],
+      "forbidden_facts": [
+        "进入设置开启环境保护模式",
+        "打开电脑管家开启环境保护开关"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_020_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "请面向新用户解释：华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "该功能解决录音内容需要文字化整理的问题。用户领取或购买转文本时长后，可把录音文件转换为文字，并在播放界面查看结果。",
+      "relevant_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "required_facts": [
+        "录音文件可转为文本",
+        "需要领取免费时长或购买套餐",
+        "转换结果显示在播放界面"
+      ],
+      "forbidden_facts": [
+        "实时电话字幕",
+        "外语视频字幕翻译"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_021_matebook_constraint_personal_data_security",
+      "query_type": "constraint",
+      "query": "请面向风险控制回答：HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "资料强调要加强个人信息保护，包括把设备放在安全区域、设置并牢记锁屏密码、不阅读陌生邮件、不访问存在安全隐患的网站、为无线共享和蓝牙设置密码、不用时关闭相关业务，并安装安全软件定期检查。",
+      "relevant_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "required_facts": [
+        "设备放在安全区域",
+        "设置锁屏密码",
+        "不要浏览不安全网站",
+        "无线共享和蓝牙要设密码",
+        "安装安全软件并定期检查"
+      ],
+      "forbidden_facts": [
+        "提供电视投屏步骤",
+        "回答蓝牙鼠标配对流程"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_022_tablet_general_huawei_print",
+      "query_type": "general",
+      "query": "请简明回答：华为平板C7DBY-W09 使用华为打印时，发现打印机前需要满足什么条件？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "使用华为打印前，需要启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。随后在平板中从图库、文件管理或第三方应用选择文件并调用华为打印。",
+      "required_facts": [
+        "需要启动打印机",
+        "打印机与平板接入同一 WLAN 网络",
+        "或开启 WLAN 直连功能",
+        "可从图库、文件管理或第三方应用选择文件打印"
+      ],
+      "forbidden_facts": [
+        "必须通过 USB 线连接打印机",
+        "无需打印机连接网络或 WLAN 直连"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_023_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "请用对照表思路回答：HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“安装电池”讲蓝牙鼠标第二代的电池安装与首次配对准备；“快捷键与功能键切换”讲 F1/F2 等按键在热键模式和功能键模式之间切换。前者是鼠标硬件启用，后者是键盘按键行为设置。",
+      "relevant_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "required_facts": [
+        "安装电池对应蓝牙鼠标第二代",
+        "安装一节 AA 电池",
+        "快捷键与功能键切换对应 F1/F2 等功能键模式",
+        "两者分别对应鼠标硬件安装和键盘按键设置"
+      ],
+      "forbidden_facts": [
+        "MateBook 内置电池需要用户自行安装",
+        "两者都是安全注意事项"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_024_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "请梳理相关功能关系：HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "该节主要提供进一步获取信息的入口，包括访问华为商城和华为消费者业务官网，并不是复杂关系推理题。",
+      "relevant_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "required_facts": [
+        "访问华为商城",
+        "访问华为消费者业务官网",
+        "属于章节信息入口说明"
+      ],
+      "forbidden_facts": [
+        "扩展成完整多步安装流程",
+        "引入与触摸板或键盘相关的内容"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_025_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "请按步骤回答：在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "在新平板进入平板克隆并选择这是新设备和 iPhone/iPad；在旧设备安装并打开平板克隆，选择这是旧设备；通过扫码或手动连接建立连接后，选择数据并完成克隆。",
+      "relevant_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "required_facts": [
+        "新平板选择这是新设备",
+        "选择 iPhone/iPad",
+        "旧设备选择这是旧设备",
+        "扫码或手动连接",
+        "选择数据并完成克隆"
+      ],
+      "forbidden_facts": [
+        "通过蓝牙配对迁移全部数据",
+        "使用电脑管家迁移"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_026_matebook_explain_f10_restore",
+      "query_type": "explain",
+      "query": "请只基于资料解释用途：HUAWEIMateBookB7-420 的 F10 一键恢复出厂主要解决什么问题？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂主要解决需要快速将计算机系统恢复到初始状态的问题。它适合系统需要重置的场景，但会删除 C 盘个人数据，所以操作前要连接电源并备份 C 盘数据。",
+      "required_facts": [
+        "快速将系统恢复到初始状态",
+        "适合系统重置场景",
+        "会删除 C 盘个人数据",
+        "操作前要连接电源并备份 C 盘数据"
+      ],
+      "forbidden_facts": [
+        "用于升级系统到最新版本",
+        "不会影响任何个人数据"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_027_tablet_constraint_custom_voice_skills",
+      "query_type": "constraint",
+      "query": "请区分可做事项和限制：华为平板C7DBY-W09使用查看智慧语音自定义技能时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "资料说明在教智慧语音学习新技能或创建组合技能后，可在设置 > 智慧助手 > 智慧语音 > 我的技能中查看、编辑、分享或删除技能。路径会因机型不同略有差异，这就是主要限制。",
+      "relevant_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "required_facts": [
+        "先有新技能或组合技能",
+        "在我的技能中查看或编辑",
+        "可分享或删除技能",
+        "不同机型路径略有差异"
+      ],
+      "forbidden_facts": [
+        "必须联网下载插件后才能查看",
+        "所有机型路径完全一致"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_028_matebook_general_f10_restore",
+      "query_type": "general",
+      "query": "请直接回答并给出依据：HUAWEIMateBookB7-420 的 F10 一键恢复出厂是什么？会影响哪些数据？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂是计算机内置的系统恢复出厂功能，可以在较短时间内将系统恢复到初始状态。恢复会删除 C 盘数据，包括桌面、下载、文档等个人数据，因此需要提前备份 C 盘内个人数据。",
+      "required_facts": [
+        "F10 是内置系统恢复出厂功能",
+        "可将系统恢复到初始状态",
+        "会删除 C 盘数据",
+        "桌面、下载、文档等个人数据需要提前备份"
+      ],
+      "forbidden_facts": [
+        "F10 只会清理缓存不会删除数据",
+        "F10 是恢复 BIOS 密码的功能"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_029_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "只基于资料，分别说明两部分差异：华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“日历”用于添加和管理日程、提醒与会议安排；“时刻”用于将假日、生日、聚会等场景的照片和视频自动聚合成时刻相册。前者面向时间计划管理，后者面向图库内容整理与回顾。",
+      "relevant_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "required_facts": [
+        "日历用于日程管理",
+        "时刻用于聚合照片视频",
+        "两者分别对应时间计划和图库回顾"
+      ],
+      "forbidden_facts": [
+        "日历是系统清理功能",
+        "时刻是智慧语音技能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_030_tablet_relation_document_correction",
+      "query_type": "relation",
+      "query": "请按功能链路说明：华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "文档矫正用于把拍摄角度不正的文档自动矫正为正面图并尽量消除阴影。使用时进入相机 > 更多，选择文档矫正模式，对准文档拍照，系统会识别文字区域并自动矫正。",
+      "relevant_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "required_facts": [
+        "进入相机 > 更多 > 文档矫正",
+        "对准文档拍照",
+        "自动矫正为正面图",
+        "尽量去除文档阴影"
+      ],
+      "forbidden_facts": [
+        "回答成图库滤镜功能",
+        "回答成无线打印设置"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_031_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "用户要实际操作，请给出可执行步骤：HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "资料中没有环境保护功能开启步骤"
+      ],
+      "forbidden_facts": [
+        "进入设置开启环境保护模式",
+        "打开电脑管家开启环境保护开关"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_032_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "请用一句结论加简要解释回答：华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "该功能解决录音内容需要文字化整理的问题。用户领取或购买转文本时长后，可把录音文件转换为文字，并在播放界面查看结果。",
+      "relevant_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "required_facts": [
+        "录音文件可转为文本",
+        "需要领取免费时长或购买套餐",
+        "转换结果显示在播放界面"
+      ],
+      "forbidden_facts": [
+        "实时电话字幕",
+        "外语视频字幕翻译"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_033_matebook_constraint_personal_data_security",
+      "query_type": "constraint",
+      "query": "请列出限制和注意事项：HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "资料强调要加强个人信息保护，包括把设备放在安全区域、设置并牢记锁屏密码、不阅读陌生邮件、不访问存在安全隐患的网站、为无线共享和蓝牙设置密码、不用时关闭相关业务，并安装安全软件定期检查。",
+      "relevant_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "required_facts": [
+        "设备放在安全区域",
+        "设置锁屏密码",
+        "不要浏览不安全网站",
+        "无线共享和蓝牙要设密码",
+        "安装安全软件并定期检查"
+      ],
+      "forbidden_facts": [
+        "提供电视投屏步骤",
+        "回答蓝牙鼠标配对流程"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_034_tablet_general_huawei_print",
+      "query_type": "general",
+      "query": "请用客服口径回答：华为平板C7DBY-W09 使用华为打印时，发现打印机前需要满足什么条件？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "使用华为打印前，需要启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。随后在平板中从图库、文件管理或第三方应用选择文件并调用华为打印。",
+      "required_facts": [
+        "需要启动打印机",
+        "打印机与平板接入同一 WLAN 网络",
+        "或开启 WLAN 直连功能",
+        "可从图库、文件管理或第三方应用选择文件打印"
+      ],
+      "forbidden_facts": [
+        "必须通过 USB 线连接打印机",
+        "无需打印机连接网络或 WLAN 直连"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_035_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "请先给结论再比较使用场景：HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“安装电池”讲蓝牙鼠标第二代的电池安装与首次配对准备；“快捷键与功能键切换”讲 F1/F2 等按键在热键模式和功能键模式之间切换。前者是鼠标硬件启用，后者是键盘按键行为设置。",
+      "relevant_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "required_facts": [
+        "安装电池对应蓝牙鼠标第二代",
+        "安装一节 AA 电池",
+        "快捷键与功能键切换对应 F1/F2 等功能键模式",
+        "两者分别对应鼠标硬件安装和键盘按键设置"
+      ],
+      "forbidden_facts": [
+        "MateBook 内置电池需要用户自行安装",
+        "两者都是安全注意事项"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_036_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "如果用户需要定位关联步骤，请回答：HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "该节主要提供进一步获取信息的入口，包括访问华为商城和华为消费者业务官网，并不是复杂关系推理题。",
+      "relevant_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "required_facts": [
+        "访问华为商城",
+        "访问华为消费者业务官网",
+        "属于章节信息入口说明"
+      ],
+      "forbidden_facts": [
+        "扩展成完整多步安装流程",
+        "引入与触摸板或键盘相关的内容"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_037_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "请用简洁流程说明：在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "在新平板进入平板克隆并选择这是新设备和 iPhone/iPad；在旧设备安装并打开平板克隆，选择这是旧设备；通过扫码或手动连接建立连接后，选择数据并完成克隆。",
+      "relevant_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "required_facts": [
+        "新平板选择这是新设备",
+        "选择 iPhone/iPad",
+        "旧设备选择这是旧设备",
+        "扫码或手动连接",
+        "选择数据并完成克隆"
+      ],
+      "forbidden_facts": [
+        "通过蓝牙配对迁移全部数据",
+        "使用电脑管家迁移"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_038_matebook_explain_f10_restore",
+      "query_type": "explain",
+      "query": "请说明该功能解决的问题和关键前提：HUAWEIMateBookB7-420 的 F10 一键恢复出厂主要解决什么问题？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂主要解决需要快速将计算机系统恢复到初始状态的问题。它适合系统需要重置的场景，但会删除 C 盘个人数据，所以操作前要连接电源并备份 C 盘数据。",
+      "required_facts": [
+        "快速将系统恢复到初始状态",
+        "适合系统重置场景",
+        "会删除 C 盘个人数据",
+        "操作前要连接电源并备份 C 盘数据"
+      ],
+      "forbidden_facts": [
+        "用于升级系统到最新版本",
+        "不会影响任何个人数据"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_039_tablet_constraint_custom_voice_skills",
+      "query_type": "constraint",
+      "query": "请说明哪些条件不能越界：华为平板C7DBY-W09使用查看智慧语音自定义技能时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "资料说明在教智慧语音学习新技能或创建组合技能后，可在设置 > 智慧助手 > 智慧语音 > 我的技能中查看、编辑、分享或删除技能。路径会因机型不同略有差异，这就是主要限制。",
+      "relevant_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "required_facts": [
+        "先有新技能或组合技能",
+        "在我的技能中查看或编辑",
+        "可分享或删除技能",
+        "不同机型路径略有差异"
+      ],
+      "forbidden_facts": [
+        "必须联网下载插件后才能查看",
+        "所有机型路径完全一致"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_040_matebook_general_f10_restore",
+      "query_type": "general",
+      "query": "请先判断资料是否支持，再回答：HUAWEIMateBookB7-420 的 F10 一键恢复出厂是什么？会影响哪些数据？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂是计算机内置的系统恢复出厂功能，可以在较短时间内将系统恢复到初始状态。恢复会删除 C 盘数据，包括桌面、下载、文档等个人数据，因此需要提前备份 C 盘内个人数据。",
+      "required_facts": [
+        "F10 是内置系统恢复出厂功能",
+        "可将系统恢复到初始状态",
+        "会删除 C 盘数据",
+        "桌面、下载、文档等个人数据需要提前备份"
+      ],
+      "forbidden_facts": [
+        "F10 只会清理缓存不会删除数据",
+        "F10 是恢复 BIOS 密码的功能"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_041_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "面向客服质检，请回答：华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“日历”用于添加和管理日程、提醒与会议安排；“时刻”用于将假日、生日、聚会等场景的照片和视频自动聚合成时刻相册。前者面向时间计划管理，后者面向图库内容整理与回顾。",
+      "relevant_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "required_facts": [
+        "日历用于日程管理",
+        "时刻用于聚合照片视频",
+        "两者分别对应时间计划和图库回顾"
+      ],
+      "forbidden_facts": [
+        "日历是系统清理功能",
+        "时刻是智慧语音技能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_042_tablet_relation_document_correction",
+      "query_type": "relation",
+      "query": "请只列出资料支持的相关功能：华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "文档矫正用于把拍摄角度不正的文档自动矫正为正面图并尽量消除阴影。使用时进入相机 > 更多，选择文档矫正模式，对准文档拍照，系统会识别文字区域并自动矫正。",
+      "relevant_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "required_facts": [
+        "进入相机 > 更多 > 文档矫正",
+        "对准文档拍照",
+        "自动矫正为正面图",
+        "尽量去除文档阴影"
+      ],
+      "forbidden_facts": [
+        "回答成图库滤镜功能",
+        "回答成无线打印设置"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_043_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "遇到该场景时应该怎么做？HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "资料中没有环境保护功能开启步骤"
+      ],
+      "forbidden_facts": [
+        "进入设置开启环境保护模式",
+        "打开电脑管家开启环境保护开关"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_044_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "请面向新用户解释：华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "该功能解决录音内容需要文字化整理的问题。用户领取或购买转文本时长后，可把录音文件转换为文字，并在播放界面查看结果。",
+      "relevant_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "required_facts": [
+        "录音文件可转为文本",
+        "需要领取免费时长或购买套餐",
+        "转换结果显示在播放界面"
+      ],
+      "forbidden_facts": [
+        "实时电话字幕",
+        "外语视频字幕翻译"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_045_matebook_constraint_personal_data_security",
+      "query_type": "constraint",
+      "query": "请面向风险控制回答：HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "资料强调要加强个人信息保护，包括把设备放在安全区域、设置并牢记锁屏密码、不阅读陌生邮件、不访问存在安全隐患的网站、为无线共享和蓝牙设置密码、不用时关闭相关业务，并安装安全软件定期检查。",
+      "relevant_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "required_facts": [
+        "设备放在安全区域",
+        "设置锁屏密码",
+        "不要浏览不安全网站",
+        "无线共享和蓝牙要设密码",
+        "安装安全软件并定期检查"
+      ],
+      "forbidden_facts": [
+        "提供电视投屏步骤",
+        "回答蓝牙鼠标配对流程"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_046_tablet_general_huawei_print",
+      "query_type": "general",
+      "query": "请简明回答：华为平板C7DBY-W09 使用华为打印时，发现打印机前需要满足什么条件？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "使用华为打印前，需要启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。随后在平板中从图库、文件管理或第三方应用选择文件并调用华为打印。",
+      "required_facts": [
+        "需要启动打印机",
+        "打印机与平板接入同一 WLAN 网络",
+        "或开启 WLAN 直连功能",
+        "可从图库、文件管理或第三方应用选择文件打印"
+      ],
+      "forbidden_facts": [
+        "必须通过 USB 线连接打印机",
+        "无需打印机连接网络或 WLAN 直连"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_047_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "请用对照表思路回答：HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“安装电池”讲蓝牙鼠标第二代的电池安装与首次配对准备；“快捷键与功能键切换”讲 F1/F2 等按键在热键模式和功能键模式之间切换。前者是鼠标硬件启用，后者是键盘按键行为设置。",
+      "relevant_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "required_facts": [
+        "安装电池对应蓝牙鼠标第二代",
+        "安装一节 AA 电池",
+        "快捷键与功能键切换对应 F1/F2 等功能键模式",
+        "两者分别对应鼠标硬件安装和键盘按键设置"
+      ],
+      "forbidden_facts": [
+        "MateBook 内置电池需要用户自行安装",
+        "两者都是安全注意事项"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_048_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "请梳理相关功能关系：HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "该节主要提供进一步获取信息的入口，包括访问华为商城和华为消费者业务官网，并不是复杂关系推理题。",
+      "relevant_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "required_facts": [
+        "访问华为商城",
+        "访问华为消费者业务官网",
+        "属于章节信息入口说明"
+      ],
+      "forbidden_facts": [
+        "扩展成完整多步安装流程",
+        "引入与触摸板或键盘相关的内容"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_049_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "请按步骤回答：在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "在新平板进入平板克隆并选择这是新设备和 iPhone/iPad；在旧设备安装并打开平板克隆，选择这是旧设备；通过扫码或手动连接建立连接后，选择数据并完成克隆。",
+      "relevant_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "required_facts": [
+        "新平板选择这是新设备",
+        "选择 iPhone/iPad",
+        "旧设备选择这是旧设备",
+        "扫码或手动连接",
+        "选择数据并完成克隆"
+      ],
+      "forbidden_facts": [
+        "通过蓝牙配对迁移全部数据",
+        "使用电脑管家迁移"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_050_matebook_explain_f10_restore",
+      "query_type": "explain",
+      "query": "请只基于资料解释用途：HUAWEIMateBookB7-420 的 F10 一键恢复出厂主要解决什么问题？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂主要解决需要快速将计算机系统恢复到初始状态的问题。它适合系统需要重置的场景，但会删除 C 盘个人数据，所以操作前要连接电源并备份 C 盘数据。",
+      "required_facts": [
+        "快速将系统恢复到初始状态",
+        "适合系统重置场景",
+        "会删除 C 盘个人数据",
+        "操作前要连接电源并备份 C 盘数据"
+      ],
+      "forbidden_facts": [
+        "用于升级系统到最新版本",
+        "不会影响任何个人数据"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_051_tablet_constraint_custom_voice_skills",
+      "query_type": "constraint",
+      "query": "请区分可做事项和限制：华为平板C7DBY-W09使用查看智慧语音自定义技能时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "资料说明在教智慧语音学习新技能或创建组合技能后，可在设置 > 智慧助手 > 智慧语音 > 我的技能中查看、编辑、分享或删除技能。路径会因机型不同略有差异，这就是主要限制。",
+      "relevant_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "required_facts": [
+        "先有新技能或组合技能",
+        "在我的技能中查看或编辑",
+        "可分享或删除技能",
+        "不同机型路径略有差异"
+      ],
+      "forbidden_facts": [
+        "必须联网下载插件后才能查看",
+        "所有机型路径完全一致"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_052_matebook_general_f10_restore",
+      "query_type": "general",
+      "query": "请直接回答并给出依据：HUAWEIMateBookB7-420 的 F10 一键恢复出厂是什么？会影响哪些数据？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂是计算机内置的系统恢复出厂功能，可以在较短时间内将系统恢复到初始状态。恢复会删除 C 盘数据，包括桌面、下载、文档等个人数据，因此需要提前备份 C 盘内个人数据。",
+      "required_facts": [
+        "F10 是内置系统恢复出厂功能",
+        "可将系统恢复到初始状态",
+        "会删除 C 盘数据",
+        "桌面、下载、文档等个人数据需要提前备份"
+      ],
+      "forbidden_facts": [
+        "F10 只会清理缓存不会删除数据",
+        "F10 是恢复 BIOS 密码的功能"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_053_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "只基于资料，分别说明两部分差异：华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“日历”用于添加和管理日程、提醒与会议安排；“时刻”用于将假日、生日、聚会等场景的照片和视频自动聚合成时刻相册。前者面向时间计划管理，后者面向图库内容整理与回顾。",
+      "relevant_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "required_facts": [
+        "日历用于日程管理",
+        "时刻用于聚合照片视频",
+        "两者分别对应时间计划和图库回顾"
+      ],
+      "forbidden_facts": [
+        "日历是系统清理功能",
+        "时刻是智慧语音技能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_054_tablet_relation_document_correction",
+      "query_type": "relation",
+      "query": "请按功能链路说明：华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "文档矫正用于把拍摄角度不正的文档自动矫正为正面图并尽量消除阴影。使用时进入相机 > 更多，选择文档矫正模式，对准文档拍照，系统会识别文字区域并自动矫正。",
+      "relevant_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "required_facts": [
+        "进入相机 > 更多 > 文档矫正",
+        "对准文档拍照",
+        "自动矫正为正面图",
+        "尽量去除文档阴影"
+      ],
+      "forbidden_facts": [
+        "回答成图库滤镜功能",
+        "回答成无线打印设置"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_055_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "用户要实际操作，请给出可执行步骤：HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "资料中没有环境保护功能开启步骤"
+      ],
+      "forbidden_facts": [
+        "进入设置开启环境保护模式",
+        "打开电脑管家开启环境保护开关"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_056_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "请用一句结论加简要解释回答：华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "该功能解决录音内容需要文字化整理的问题。用户领取或购买转文本时长后，可把录音文件转换为文字，并在播放界面查看结果。",
+      "relevant_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "required_facts": [
+        "录音文件可转为文本",
+        "需要领取免费时长或购买套餐",
+        "转换结果显示在播放界面"
+      ],
+      "forbidden_facts": [
+        "实时电话字幕",
+        "外语视频字幕翻译"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_057_matebook_constraint_personal_data_security",
+      "query_type": "constraint",
+      "query": "请列出限制和注意事项：HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "资料强调要加强个人信息保护，包括把设备放在安全区域、设置并牢记锁屏密码、不阅读陌生邮件、不访问存在安全隐患的网站、为无线共享和蓝牙设置密码、不用时关闭相关业务，并安装安全软件定期检查。",
+      "relevant_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "required_facts": [
+        "设备放在安全区域",
+        "设置锁屏密码",
+        "不要浏览不安全网站",
+        "无线共享和蓝牙要设密码",
+        "安装安全软件并定期检查"
+      ],
+      "forbidden_facts": [
+        "提供电视投屏步骤",
+        "回答蓝牙鼠标配对流程"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_058_tablet_general_huawei_print",
+      "query_type": "general",
+      "query": "请用客服口径回答：华为平板C7DBY-W09 使用华为打印时，发现打印机前需要满足什么条件？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "使用华为打印前，需要启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。随后在平板中从图库、文件管理或第三方应用选择文件并调用华为打印。",
+      "required_facts": [
+        "需要启动打印机",
+        "打印机与平板接入同一 WLAN 网络",
+        "或开启 WLAN 直连功能",
+        "可从图库、文件管理或第三方应用选择文件打印"
+      ],
+      "forbidden_facts": [
+        "必须通过 USB 线连接打印机",
+        "无需打印机连接网络或 WLAN 直连"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_059_matebook_comparison_battery_install_vs_fn_keys",
+      "query_type": "comparison",
+      "query": "请先给结论再比较使用场景：HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "“安装电池”讲蓝牙鼠标第二代的电池安装与首次配对准备；“快捷键与功能键切换”讲 F1/F2 等按键在热键模式和功能键模式之间切换。前者是鼠标硬件启用，后者是键盘按键行为设置。",
+      "relevant_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4e2dfefb4d590beb84439bde",
+        "stc_v1_877cff45508fdf4619d40683"
+      ],
+      "required_facts": [
+        "安装电池对应蓝牙鼠标第二代",
+        "安装一节 AA 电池",
+        "快捷键与功能键切换对应 F1/F2 等功能键模式",
+        "两者分别对应鼠标硬件安装和键盘按键设置"
+      ],
+      "forbidden_facts": [
+        "MateBook 内置电池需要用户自行安装",
+        "两者都是安全注意事项"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_060_matebook_section_get_more",
+      "query_type": "relation",
+      "query": "如果用户需要定位关联步骤，请回答：HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "该节主要提供进一步获取信息的入口，包括访问华为商城和华为消费者业务官网，并不是复杂关系推理题。",
+      "relevant_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_9f3b5b2292e0b685e5c684eb"
+      ],
+      "required_facts": [
+        "访问华为商城",
+        "访问华为消费者业务官网",
+        "属于章节信息入口说明"
+      ],
+      "forbidden_facts": [
+        "扩展成完整多步安装流程",
+        "引入与触摸板或键盘相关的内容"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_061_tablet_navigation_clone_iphone",
+      "query_type": "navigation",
+      "query": "请用简洁流程说明：在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "在新平板进入平板克隆并选择这是新设备和 iPhone/iPad；在旧设备安装并打开平板克隆，选择这是旧设备；通过扫码或手动连接建立连接后，选择数据并完成克隆。",
+      "relevant_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_71dc6ff4fe02cf4e7210c006"
+      ],
+      "required_facts": [
+        "新平板选择这是新设备",
+        "选择 iPhone/iPad",
+        "旧设备选择这是旧设备",
+        "扫码或手动连接",
+        "选择数据并完成克隆"
+      ],
+      "forbidden_facts": [
+        "通过蓝牙配对迁移全部数据",
+        "使用电脑管家迁移"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_062_matebook_explain_f10_restore",
+      "query_type": "explain",
+      "query": "请说明该功能解决的问题和关键前提：HUAWEIMateBookB7-420 的 F10 一键恢复出厂主要解决什么问题？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂主要解决需要快速将计算机系统恢复到初始状态的问题。它适合系统需要重置的场景，但会删除 C 盘个人数据，所以操作前要连接电源并备份 C 盘数据。",
+      "required_facts": [
+        "快速将系统恢复到初始状态",
+        "适合系统重置场景",
+        "会删除 C 盘个人数据",
+        "操作前要连接电源并备份 C 盘数据"
+      ],
+      "forbidden_facts": [
+        "用于升级系统到最新版本",
+        "不会影响任何个人数据"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_063_tablet_constraint_custom_voice_skills",
+      "query_type": "constraint",
+      "query": "请说明哪些条件不能越界：华为平板C7DBY-W09使用查看智慧语音自定义技能时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "资料说明在教智慧语音学习新技能或创建组合技能后，可在设置 > 智慧助手 > 智慧语音 > 我的技能中查看、编辑、分享或删除技能。路径会因机型不同略有差异，这就是主要限制。",
+      "relevant_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_f48fc4b141d9c968c2b56bd4",
+        "stc_v1_bc49afec41c839493d2f275b",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
+      ],
+      "required_facts": [
+        "先有新技能或组合技能",
+        "在我的技能中查看或编辑",
+        "可分享或删除技能",
+        "不同机型路径略有差异"
+      ],
+      "forbidden_facts": [
+        "必须联网下载插件后才能查看",
+        "所有机型路径完全一致"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_064_matebook_general_f10_restore",
+      "query_type": "general",
+      "query": "请先判断资料是否支持，再回答：HUAWEIMateBookB7-420 的 F10 一键恢复出厂是什么？会影响哪些数据？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "answerable": true,
+      "reference_answer": "F10 一键恢复出厂是计算机内置的系统恢复出厂功能，可以在较短时间内将系统恢复到初始状态。恢复会删除 C 盘数据，包括桌面、下载、文档等个人数据，因此需要提前备份 C 盘内个人数据。",
+      "required_facts": [
+        "F10 是内置系统恢复出厂功能",
+        "可将系统恢复到初始状态",
+        "会删除 C 盘数据",
+        "桌面、下载、文档等个人数据需要提前备份"
+      ],
+      "forbidden_facts": [
+        "F10 只会清理缓存不会删除数据",
+        "F10 是恢复 BIOS 密码的功能"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_785a7b8f62271093852d9b09"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    },
+    {
+      "case_id": "business_100_comparison_065_tablet_comparison_calendar_vs_moments",
+      "query_type": "comparison",
+      "query": "面向客服质检，请回答：华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“日历”用于添加和管理日程、提醒与会议安排；“时刻”用于将假日、生日、聚会等场景的照片和视频自动聚合成时刻相册。前者面向时间计划管理，后者面向图库内容整理与回顾。",
+      "relevant_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_b57c4ba1316cae716afa97de",
+        "stc_v1_030c3e767d6b676f6f6517ae",
+        "stc_v1_f3bbbff307192485a67a73ef"
+      ],
+      "required_facts": [
+        "日历用于日程管理",
+        "时刻用于聚合照片视频",
+        "两者分别对应时间计划和图库回顾"
+      ],
+      "forbidden_facts": [
+        "日历是系统清理功能",
+        "时刻是智慧语音技能"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "comparison",
+        "curated",
+        "target_coverage"
+      ]
+    },
+    {
+      "case_id": "business_100_relation_066_tablet_relation_document_correction",
+      "query_type": "relation",
+      "query": "请只列出资料支持的相关功能：华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "文档矫正用于把拍摄角度不正的文档自动矫正为正面图并尽量消除阴影。使用时进入相机 > 更多，选择文档矫正模式，对准文档拍照，系统会识别文字区域并自动矫正。",
+      "relevant_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_cbd13432da0e4487a556b5a5",
+        "stc_v1_ae54d1583ef183188451e799",
+        "stc_v1_6abe7ac52d87ea9e4d0447a5"
+      ],
+      "required_facts": [
+        "进入相机 > 更多 > 文档矫正",
+        "对准文档拍照",
+        "自动矫正为正面图",
+        "尽量去除文档阴影"
+      ],
+      "forbidden_facts": [
+        "回答成图库滤镜功能",
+        "回答成无线打印设置"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "relation",
+        "curated",
+        "section_summary",
+        "relation_pseudo"
+      ]
+    },
+    {
+      "case_id": "business_100_navigation_067_matebook_unanswerable_environment_steps",
+      "query_type": "navigation",
+      "query": "遇到该场景时应该怎么做？HUAWEIMateBookB7-420中环境保护功能应该怎么开启？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "抱歉，资料中未提供",
+      "relevant_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_4d65dfc7adcd204a9b88a0e0"
+      ],
+      "required_facts": [
+        "资料中没有环境保护功能开启步骤"
+      ],
+      "forbidden_facts": [
+        "进入设置开启环境保护模式",
+        "打开电脑管家开启环境保护开关"
+      ],
+      "answerable": false,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "navigation",
+        "curated",
+        "unanswerable",
+        "abstention",
+        "grounded_fallback"
+      ]
+    },
+    {
+      "case_id": "business_100_explain_068_tablet_explain_recording_to_text",
+      "query_type": "explain",
+      "query": "请面向新用户解释：华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "该功能解决录音内容需要文字化整理的问题。用户领取或购买转文本时长后，可把录音文件转换为文字，并在播放界面查看结果。",
+      "relevant_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_c5062ad4a1f3d8d818aeea57"
+      ],
+      "required_facts": [
+        "录音文件可转为文本",
+        "需要领取免费时长或购买套餐",
+        "转换结果显示在播放界面"
+      ],
+      "forbidden_facts": [
+        "实时电话字幕",
+        "外语视频字幕翻译"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "explain",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_constraint_069_matebook_constraint_personal_data_security",
+      "query_type": "constraint",
+      "query": "请面向风险控制回答：HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "item_names": [
+        "HUAWEIMateBookB7-420"
+      ],
+      "reference_answer": "资料强调要加强个人信息保护，包括把设备放在安全区域、设置并牢记锁屏密码、不阅读陌生邮件、不访问存在安全隐患的网站、为无线共享和蓝牙设置密码、不用时关闭相关业务，并安装安全软件定期检查。",
+      "relevant_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_edad2e3766ada080f7fae948"
+      ],
+      "required_facts": [
+        "设备放在安全区域",
+        "设置锁屏密码",
+        "不要浏览不安全网站",
+        "无线共享和蓝牙要设密码",
+        "安装安全软件并定期检查"
+      ],
+      "forbidden_facts": [
+        "提供电视投屏步骤",
+        "回答蓝牙鼠标配对流程"
+      ],
+      "answerable": true,
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "constraint",
+        "curated"
+      ]
+    },
+    {
+      "case_id": "business_100_general_070_tablet_general_huawei_print",
+      "query_type": "general",
+      "query": "请简明回答：华为平板C7DBY-W09 使用华为打印时，发现打印机前需要满足什么条件？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "answerable": true,
+      "reference_answer": "使用华为打印前，需要启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。随后在平板中从图库、文件管理或第三方应用选择文件并调用华为打印。",
+      "required_facts": [
+        "需要启动打印机",
+        "打印机与平板接入同一 WLAN 网络",
+        "或开启 WLAN 直连功能",
+        "可从图库、文件管理或第三方应用选择文件打印"
+      ],
+      "forbidden_facts": [
+        "必须通过 USB 线连接打印机",
+        "无需打印机连接网络或 WLAN 直连"
+      ],
+      "relevant_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "expected_source_chunk_ids": [
+        "stc_v1_7757c37ceb523a16de8fc470"
+      ],
+      "evaluation_tags": [
+        "business_benchmark",
+        "business_benchmark_100",
+        "paraphrase",
+        "general",
+        "curated",
+        "high_frequency"
+      ]
+    }
+  ]
+}

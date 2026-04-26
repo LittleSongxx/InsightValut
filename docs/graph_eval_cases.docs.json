@@ -1,44 +1,32 @@
 {
-  "dataset_name": "insightvault_50_case_eval",
-  "generated_at": "2026-04-22T09:46:15.409925",
-  "description": "50 条统一 RAG 评测集（从 100 条正式评测集按产品/题型分层抽样得到）",
+  "dataset_name": "insightvault_25_case_eval",
+  "generated_at": "2026-04-24T15:56:21.370121",
+  "description": "基于当前 InsightVault Milvus 知识库生成的 25 条多产品 RAG 受控消融评测集。",
   "notes": [
-    "默认评测入口已切换为 50 条版本，用于更快完成消融测试。",
-    "完整 100 条版本保留在 /app/docs/graph_eval_cases_100.docs.json。",
-    "50 条子集按产品与题型配额抽样，避免简单截断带来的分布偏差。"
+    "样本从当前 Milvus chunk 自动构造，便于和当前知识库保持一致。",
+    "所有样本都绑定当前 Milvus stable chunk_id，便于统计 Recall/MRR。",
+    "覆盖 navigation/constraint/explain/relation/general/comparison 等题型。"
   ],
   "sources": {
-    "derived_from": "/app/docs/graph_eval_cases_100.docs.json",
-    "sampling_strategy": "stratified_subset_by_item_and_query_type",
+    "chunks_collection": "kb_chunks",
     "case_count_by_item": {
-      "HUAWEIMateBookB7-420": 20,
-      "华为平板C7DBY-W09": 30
+      "HUAWEIMateBookB7-420": 12,
+      "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)": 13
     },
     "case_count_by_query_type": {
-      "constraint": 9,
-      "explain": 8,
-      "relation": 9,
-      "general": 8,
-      "comparison": 8,
-      "navigation": 8
-    },
-    "sampling_quota": {
-      "HUAWEIMateBookB7-420|constraint": 7,
-      "HUAWEIMateBookB7-420|relation": 7,
-      "HUAWEIMateBookB7-420|comparison": 6,
-      "华为平板C7DBY-W09|explain": 8,
-      "华为平板C7DBY-W09|general": 8,
-      "华为平板C7DBY-W09|navigation": 8,
-      "华为平板C7DBY-W09|relation": 2,
-      "华为平板C7DBY-W09|comparison": 2,
-      "华为平板C7DBY-W09|constraint": 2
+      "explain": 4,
+      "relation": 4,
+      "general": 4,
+      "comparison": 4,
+      "navigation": 4,
+      "constraint": 5
     }
   },
   "cases": [
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_constraint_001",
-      "query_type": "constraint",
-      "query": "HUAWEIMateBookB7-420使用个人信息和数据安全时有哪些注意事项或限制？",
+      "case_id": "auto_HUAWEIMateBookB7_420_explain_001",
+      "query_type": "explain",
+      "query": "HUAWEIMateBookB7-420的个人信息和数据安全主要解决什么问题？请简要说明。",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
@@ -52,19 +40,19 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "constraint"
+        "explain"
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_explain_002",
-      "query_type": "explain",
-      "query": "华为平板C7DBY-W09的WLAN 安全检测主要解决什么问题？请简要说明。",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__relation_002",
+      "query_type": "relation",
+      "query": "华为平板 C7中WLAN 安全检测涉及哪些相关功能或步骤？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
       "reference_answer": "进入 WLAN 设置界面，点击更多 WLAN 设置 ，开启 WLAN 安全检测开关。平板管家将对已连接的热点进行联网安全监测，并暂停自动连接存在安全风险的热点。；通过 WLAN 直连传输数据 WLAN 直连支持在华为设备之间快速传输数据。相比蓝牙传输，WLAN 直连无需配对且速度更快，更适合近距离传输大型文件。；1 在接收设备上，进入设置 $>$ WLAN，开启WLAN开关。；2 点击更多 WLAN 设置 $>$ WLAN 直连，开启 WLAN 直连检测。；3 在发送设备上长按选中待分享文件，点击 $\\int \\l。",
       "relevant_chunk_ids": [
-        "stc_v1_bc53f6a96fd11536edff2144"
+        "stc_v1_bdd86773039080f4acf122b9"
       ],
       "source_titles": [
         "WLAN 安全检测"
@@ -72,13 +60,13 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "explain"
+        "relation"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_relation_003",
-      "query_type": "relation",
-      "query": "HUAWEIMateBookB7-420中交通安全涉及哪些相关功能或步骤？",
+      "case_id": "auto_HUAWEIMateBookB7_420_general_003",
+      "query_type": "general",
+      "query": "请概括HUAWEIMateBookB7-420中关于交通安全的说明。",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
@@ -92,44 +80,24 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_general_004",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于下拉自动清理的说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "1 进入平板管家，点击清理加速。；2 从屏幕上部向下拉，平板会自动清理系统垃圾。；手动清理垃圾文件 平板在自动清理完垃圾后，还会识别到一些可以清理的垃圾文件，推荐您按需清理。；在清理加速界面，点击垃圾文件后的去清理，然后选择需要清理的项目，点击删除。；清理微信数据 长时间使用微信，会产生大量的数据，如微信缓存、聊天视频、语音、表情等。平板管家可以识别缓存数据类型，并允许您按数据类型或按微信群清理不需要的数据。；在清理加速界面，点击微信清理。您可以：；清理缓存文件、网络视频、收藏夹。；前往微信清理聊天数据。；对聊天图。",
-      "relevant_chunk_ids": [
-        "stc_v1_f385b86fa0a47a5f2d28f9e8"
-      ],
-      "source_titles": [
-        "下拉自动清理"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
         "general"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_comparison_005",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__comparison_004",
       "query_type": "comparison",
-      "query": "HUAWEIMateBookB7-420中“充电注意事项”和“安装电池”分别讲什么，使用场景有什么区别？",
+      "query": "华为平板 C7中“下拉自动清理”和“与智慧语音对话”分别讲什么，使用场景有什么区别？",
       "item_names": [
-        "HUAWEIMateBookB7-420"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
-      "reference_answer": "“充电注意事项”部分：请在适宜的温度范围内和通风良好的阴凉区域为计算机充电，在高温环境下充电可能会损坏计算机。；计算机充电时间会随温度条件和电池使用状况而变化。；计算机长时间工作和充电时，可能会表面发热，这属于正常现象。感觉发烫时，请关闭部分功能并停止充电。；电池属于易损耗品，如发现电池使用寿命大幅度减少，请勿自行更换，请前往附近的华为客户服务中心更换原装电池。；了解电池状态 您。 “安装电池”部分：沿鼠标尾部标志打开上壳，在电池仓中安装一节 AA 电池， 合上上壳，即可完成安装。；HUAWEI 蓝牙鼠标(第二代)与计算机配对 首次使用鼠标，需要与蓝牙设备进行配对连接，最多支持连接 3 台蓝牙设备。；1 向下拨动鼠标底部的电源开关，使鼠标开机。；2 长按多设备切换按键 3 秒，多设备指示灯快闪，鼠标进入配对状态。（首次配对无需长按多设备切换按键，开机后多。",
+      "reference_answer": "“下拉自动清理”部分：1 进入平板管家，点击清理加速。；2 从屏幕上部向下拉，平板会自动清理系统垃圾。；手动清理垃圾文件 平板在自动清理完垃圾后，还会识别到一些可以清理的垃圾文件，推荐您按需清理。；在清理加速界面，点击垃圾文件后的去清理，然后选择需要清理的项目，点击删除。；清理微信数据 长时间使用微信，会产生大量的数据，如微信缓存、聊天视频、语音、表情等。平板管家可以识别缓存数据。 “与智慧语音对话”部分：智慧语音存在静默、聆听、思考三种状态，当智慧语音处于聆听状态时，您可以与智慧语音对话。；静默：智慧语音不收音。；聆听：智慧语音开始收音，此时您可以进行对话。；思考：智慧语音结束收音，开始执行指令。；此功能只有部分国家和地区支持，请以实际情况为准。；与智慧语音畅聊 您可以设置与智慧语音连续对话，无需每次对话前都重复唤醒。；1 进入设置 > 智慧助手 $>$ 智。",
       "relevant_chunk_ids": [
-        "stc_v1_8c8d0759924a7cefd768cbcf",
-        "stc_v1_80253eb4c24ecaed71a7add6"
+        "stc_v1_6a0489e0386e0ef473a0b364",
+        "stc_v1_0fe6f115fe830ca01562ab1a"
       ],
       "source_titles": [
-        "充电注意事项",
-        "安装电池"
+        "下拉自动清理",
+        "与智慧语音对话"
       ],
       "evaluation_tags": [
         "auto_generated",
@@ -138,435 +106,9 @@
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_006",
+      "case_id": "auto_HUAWEIMateBookB7_420_navigation_005",
       "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，从 iPhone 或 iPad 迁移数据应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "1 在新平板上，进入平板克隆应用，或进入设置 > 系统和更新 > 平板克隆，点击这是新设备，选择 iPhone/iPad。；2 根据屏幕提示，在旧设备下载安装平板克隆。；3 在旧设备上，进入平板克隆应用，点击这是旧设备，根据界面提示，通过扫码或手动连接的方式，将旧设备与新平板建立连接。；4 在旧设备上，选择要克隆的数据，并根据界面提示完成数据克隆。；通过外部存储设备备份数据 备份数据到外置存储卡 当平板插入外置存储卡时，您可以随时将数据备份到外置存储卡中，让您的数据不易丢失。；1 进入设置 > 系统和更新 > 备份。",
-      "relevant_chunk_ids": [
-        "stc_v1_39ab8d1c59d30c999ca99ece"
-      ],
-      "source_titles": [
-        "从 iPhone 或 iPad 迁移数据"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "navigation"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_constraint_007",
-      "query_type": "constraint",
-      "query": "HUAWEIMateBookB7-420使用安装电池时有哪些注意事项或限制？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "如下图所示，沿鼠标尾部标志打开上壳，按电池仓正负极 $( + - )$ 的标志安装一节 AA 电池，合上上壳，即可安装完成。；蓝牙鼠标与计算机配对 1 按照图示将蓝牙鼠标底部开关拨至 $\\ngeq$ 处并保持 3 秒，指示灯闪烁后松开，鼠标进入配对状态。；2 在计算机中，点击 > > ，进入蓝牙和其他设备界面，点击 添加蓝牙设备，在发现的蓝牙设备列表中选择 Huawei Mouse，稍等即可完成配对",
-      "relevant_chunk_ids": [
-        "stc_v1_d15121110fa6295ce2c24abb"
-      ],
-      "source_titles": [
-        "安装电池"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "constraint"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_explain_008",
-      "query_type": "explain",
-      "query": "华为平板C7DBY-W09的从外置存储卡上恢复备份数据主要解决什么问题？请简要说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "1 在外部存储界面，选择外置存储卡。；2 在从备份记录恢复数据列表中选择合适的备份记录项进入。；3 选择需要恢复的数据，点击恢复，根据提示输入密码，然后恢复数据。；备份数据到 USB 存储设备 当平板存储空间不足时，建议您定期将大文件或重要数据备份到 USB 存储设备上（例如：U 盘、读卡器等）。；1 用 USB OTG 数据线将平板连接至 USB 存储设备。；2 进入平板的设置 > 系统和更新 $>$ 备份和恢复 $>$ 外部存储，选择USB存储。；3 点击新建备份，勾选要备份的数据，点击开始备份。；4 根据界面。",
-      "relevant_chunk_ids": [
-        "stc_v1_60f708a5c072b50035171db6"
-      ],
-      "source_titles": [
-        "从外置存储卡上恢复备份数据"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "explain"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_relation_009",
-      "query_type": "relation",
-      "query": "HUAWEIMateBookB7-420中更改触摸板设置涉及哪些相关功能或步骤？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "您也可以根据自己的使用习惯更改触摸板设置，让指尖操作更得心应手。；1 点击 > 打开设置界面。；2 在设置界面中，点击 ,再点击 ，您可以：；开启或关闭触摸板。；连接鼠标时开启或关闭触摸板。；更改触摸滚动方向。；设置手指动作在触摸板上的功能等。；设置压力触控板功能 计算机出厂默认开启压力触控板功能，您可以根据个人喜好调节触摸板按压灵敏度、振动强度。；点击桌面底部任务栏的 $\\lfloor \\mathsf { m l } \\rfloor$ 打开华为电脑管家，然后点击 ，选择压力触控板，可对触摸板进行设置。；给计算机充。",
-      "relevant_chunk_ids": [
-        "stc_v1_e0e99c593e1bce3925014df5"
-      ],
-      "source_titles": [
-        "更改触摸板设置"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_010",
-      "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，使用 AI 字幕与他人电话通信或面对面交流应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "AI 字幕可以帮助听力不佳人士，打电话时可以将接收的语音转为文字，还可以将输入的文字转为语音发送给对方。；1 请确保进入设置 $>$ 智慧助手 $>$ 智慧语音 $>$ AI 字幕，电话语音转文字开关已开启。；2 您可以通过以下任一方式进入 AI 字幕：；从屏幕顶部右侧下滑出控制中心，点击 选择编辑快捷开关，将AI 字幕拖动到上方的快捷开关面板中，并开启此功能。；进入设置 $>$ 智慧助手 $>$ 智慧语音 > AI 字幕，打开 AI 字幕开关。；3 开启后，平板将出现字幕悬浮窗。；对方语音将转为文字，呈现在字幕上。",
-      "relevant_chunk_ids": [
-        "stc_v1_900ff442666a3e6b9b05460a"
-      ],
-      "source_titles": [
-        "使用 AI 字幕与他人电话通信或面对面交流"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "navigation"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_comparison_011",
-      "query_type": "comparison",
-      "query": "HUAWEIMateBookB7-420中“注意”和“环境保护”分别讲什么，使用场景有什么区别？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "“注意”部分：本手册描述的产品及其附件的某些特性和功能，取决于当地网络的设计和性能，以及您安装的软件。某些特性和功能可能由于当地网络运营商或网络服务供应商不支持，或者由于当地网络的设置，或者您安装的软件不支持而无法实现。因此，本手册中的描述可能与您购买的产品或其附件并非完全一一对应。；华为保留随时修改本手册中任何信息的权利，无需提前通知且不承担任何责任。；第三方软件声明。 “环境保护”部分：请勿将本设备及其附件作为普通的生活垃圾处理。；请遵守本设备及其附件处理的本地法令，并支持回收行动。；认证信息 请在产品铭牌上查看型号核准代码。；支持微功率短距离无线电发射能力说明（NFC） 本产品具备《中华人民共和国无线电管理条例》规定的微功率短距离无线电发射能力（NFC 功能），根据“工业和信息化部公告 2019 年第 52 号”的要求，现注明如下： （一。",
-      "relevant_chunk_ids": [
-        "stc_v1_e8ebd8c526f11574fe3e047c",
-        "stc_v1_4d65dfc7adcd204a9b88a0e0"
-      ],
-      "source_titles": [
-        "注意",
-        "环境保护"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "comparison"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_general_012",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于使用声控拍照的说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "无需手动点击快门，说出拍照口令，即可拍照。；1 进入相机 > > 声控拍照，选择需要的拍照口令。；2 回到拍照界面，说出设置的口令拍照。；全景拍摄 拍摄全景照片 当拍摄壮丽河山、集体合照等大幅照片时，您可使用全景模式，在拍摄过程中移动相机，将捕获的画面合成一幅宽广的全景照片。；使用后置摄像头拍摄全景照片 使用全景模式，在拍摄时移动相机，将捕获的画面合成一幅宽广的全景照片。；1 进入相机 $>$ 更多，选择全景模式。；2 点击 ，选择相机移动方向为水平或垂直。；3 对准拍摄起点，点击 开始拍摄，沿箭头方向移动取景框。",
-      "relevant_chunk_ids": [
-        "stc_v1_adb0ade83be589efee6e65e2"
-      ],
-      "source_titles": [
-        "使用声控拍照"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "general"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_constraint_013",
-      "query_type": "constraint",
-      "query": "HUAWEIMateBookB7-420使用用户指南时有哪些注意事项或限制？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "目 录 了解计算机 外观介绍 1 键盘 2 触摸板 3 给计算机充电 6 启用计算机 开启和关闭计算机 7 获取精彩功能 7 F10 一键恢复出厂 护眼模式 配件及扩展连线 扩展坞（可选配件） 10 连接到电视、显示器或投影仪 11 连接 USB 鼠标、打印机或其他设备 13 蓝牙鼠标（可选配件） 13 安全信息 个人信息和数据安全 法律声明 了解计算机 外观介绍 0 键盘布局可能会因国家、地区存在差异，请以实物为准。；1 隐藏式环境光传感器 感知周围光线情况，自动调节屏幕显示亮度。；请不要在环境光感应器位置上覆盖。",
-      "relevant_chunk_ids": [
-        "stc_v1_89da7f3aa38b59cac77670a0"
-      ],
-      "source_titles": [
-        "用户指南"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "constraint"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_explain_014",
-      "query_type": "explain",
-      "query": "华为平板C7DBY-W09的使用带皮套的平板主要解决什么问题？请简要说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "为避免出现误操作，建议您从官方渠道购买产品专属的原装皮套。；开启皮套模式 进入设置 $>$ 辅助功能 $>$ 皮套操作，开启皮套操作开关。；使用手写笔轻松书写 手写笔搭配平板使用，可以代替手指方便地进行操作，捕捉您细腻多样的笔尖动作，让您体验到真实纸笔一般的书写感受。使用手写笔，可提笔速记、快速截屏等，也可以配合特色应用给您带来更多使用乐趣。；使用此功能前，需要配备 HUAWEI M-Pen 2 手写笔。您可以前往华为专卖店或访问华为商城购买。；首次使用时，打开手写笔尾部，将 USB 口插入平板充电口，根据屏幕弹框。",
-      "relevant_chunk_ids": [
-        "stc_v1_3eff4368c9e1138327efb99a"
-      ],
-      "source_titles": [
-        "使用带皮套的平板"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "explain"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_relation_015",
-      "query_type": "relation",
-      "query": "HUAWEIMateBookB7-420中获取更多涉及哪些相关功能或步骤？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "购买华为终端产品，请访问华为商城 https://www.vmall.com/ 更多信息请访问 https://consumer.huawei.com/cn/",
-      "relevant_chunk_ids": [
-        "stc_v1_9f3b5b2292e0b685e5c684eb"
-      ],
-      "source_titles": [
-        "获取更多"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_016",
-      "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，使用智慧语音扫食物获取卡路里应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "1 唤醒智慧语音，说出指令，例如：“识别卡路里”、“看看这块蛋糕的卡路里含量”等。；2 将镜头对准食物，可查看食物的单位重量卡路里和营养成分等信息。；3 点击 可分享和保存识别结果。；用智慧语音扫码 1 唤醒智慧语音，说出指令，例如：“扫码”、“扫二维码”、“扫条码”等。；2 将相机对准二维码或条形码，等待扫码结果呈现。；3 点击 ，可识别保存在图库中的二维码或条形码图片。；智慧语音识别屏幕 当您在浏览平板，看到感兴趣的动植物、或是想购买的衣服时，您可使用智慧识屏，您可以用智慧语音识别屏幕，获取物体信息，或实现搜图。",
-      "relevant_chunk_ids": [
-        "stc_v1_47e83ef4c7b4c53c2db2eefa"
-      ],
-      "source_titles": [
-        "使用智慧语音扫食物获取卡路里"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "navigation"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_comparison_017",
-      "query_type": "comparison",
-      "query": "HUAWEIMateBookB7-420中“责任限制”和“连接 USB 鼠标、打印机或其他设备”分别讲什么，使用场景有什么区别？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "“责任限制”部分：本手册中的内容均“按照现状”提供，除非适用法律要求，华为对本手册中的所有内容不提供任何明示或暗示的保证，包括但不限于适销性或者适用于某一特定目的的保证。；在适用法律允许的范围内，华为在任何情况下，都不对因使用本手册相关内容及本手册描述的产品而产生的任何特殊的、附带的、间接的、继发性的损害进行赔偿，也不对任何利润、数据、商誉或预期节约的损失进行赔偿。；在相关法。 “连接 USB 鼠标、打印机或其他设备”部分：通过扩展坞 USB-A 接口，可连接 USB 鼠标、打印机、扫描仪、智能手机或硬盘等 USB 设备。；连接 USB 设备 1 将设备的 USB 线缆插入扩展坞 USB-A 接口。；2 如果设备需要连接电源线，请接通设备电源并启动 USB 设备。；3 首次安装 USB 设备时，计算机会自动安装设备所需的软件。；查找计算机安装的 USB 设备 1 点击桌面底部任。",
-      "relevant_chunk_ids": [
-        "stc_v1_2d2a5c0937dda0bbbdc603d6",
-        "stc_v1_b6518190291b94a1842a1890"
-      ],
-      "source_titles": [
-        "责任限制",
-        "连接 USB 鼠标、打印机或其他设备"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "comparison"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_general_018",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于使用水平仪辅助构图的说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "开启水平仪开关，开启后，取景界面将出现水平辅助线。；当水平辅助线的虚线与实线重合时，表明平板处于水平位置，帮您避免因平板不正导致的构图倾斜。；自定义相机模式 您可以自定义相机模式，将常用的模式移动到相机主界面，或调整模式顺序，让模式布局更符合您的使用习惯。；拍照、人像和录像模式不支持移动到更多中，请以实际情况为准。；1 进入相机 > 更多，点击 进入模式编辑界面。；2 长按某个模式，拖动到要放置的位置。您可以将更多中的模式移动到相机主界面，或将主界面中的模式移动到更多中，或按使用频率调整布局。；部分可删除的模式上会。",
-      "relevant_chunk_ids": [
-        "stc_v1_ed973557db8d8f68b700d422"
-      ],
-      "source_titles": [
-        "使用水平仪辅助构图"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "general"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_constraint_019",
-      "query_type": "constraint",
-      "query": "HUAWEIMateBookB7-420使用连接到电视、显示器或投影仪时有哪些注意事项或限制？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "观看电影或会议演示时，将计算机连接到电视、显示器或投影仪等大屏显示设备，观看效果更佳。；除了计算机、扩展坞和连接设备之外，您还需要准备 HDMI 或 VGA 连接线缆。；在连接之前您需要检查所连接设备的端口。；通过扩展坞将计算机连接到电视等设备的操作步骤类似，下文以 HUAWEI MateDock 2扩展坞为例。；HDMI 接口和 VGA 接口不能同时使用。；1 参照图示，通过扩展坞连接计算机和电视、显示器或投影仪。；2 接通电视、显示器或投影仪的电源并打开。；回3 热键模式下，按 键，或者点击 $\\equiv {。",
-      "relevant_chunk_ids": [
-        "stc_v1_c846b5eee96f9cd5bdd6ee14"
-      ],
-      "source_titles": [
-        "连接到电视、显示器或投影仪"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "constraint"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_explain_020",
-      "query_type": "explain",
-      "query": "华为平板C7DBY-W09的使用语音创建笔记主要解决什么问题？请简要说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "使用语音输入记录笔记，语音会自动转换成文字，方便快速地记事。；1 进入备忘录 $>$ 笔记，点击 2 点击 ，说出要记录的内容，语音内容自动转换为文字，显示在笔记中。；3 点击 结束语音。；4 点击 保存笔记。；手绘涂鸦创建笔记 有些想法和灵感不方便用文字表达，可以使用手绘涂鸦生动地画出来。；1 进入备忘录 $>$ 笔记，点击 2 点击 ，手写或手绘要记录的内容，根据需要选择书写的颜色。；3 点击 保存笔记。；通过分享创建笔记 您可以将其他应用中的网页、图片、文字等内容通过分享方式添加到备忘录。；并非所有应用都支持。",
-      "relevant_chunk_ids": [
-        "stc_v1_e964cc9bdf33c87c6063959d"
-      ],
-      "source_titles": [
-        "使用语音创建笔记"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "explain"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_relation_021",
-      "query_type": "relation",
-      "query": "HUAWEIMateBookB7-420中键盘涉及哪些相关功能或步骤？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "不同机型，键盘按键不同，请以实际为准。；快捷键功能介绍 计算机键盘的 F1、F2 等键默认为快捷键（热键）模式，可用于轻松执行常见任务。；F1 降低屏幕亮度 F2 增强屏幕亮度 F3 开启或关闭键盘背光,调节键盘背光亮度 如果此按键上无图标,则不支持背光。；F4 开启或关闭静音 F5 减小音量 F6 增大音量 F7 开启或关闭麦克风 F8 切换屏幕投影模式 F9 开启或关闭无线网络 F10 开启华为电脑管家 开启或关闭智慧语音",
-      "relevant_chunk_ids": [
-        "stc_v1_655e74ef8a219fe66e845cdc"
-      ],
-      "source_titles": [
-        "键盘"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_022",
-      "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，全局手写应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "通过全局手写功能，您可以在输入框内，用手写笔输入文字，并使用笔势操作编辑文本。全局手写功能支持中英文混合输入。；进入设置 $>$ 辅助功能 $>$ 手写笔 $>$ 全局手写输入，打开全局手写输入开关。；选择文字：在要选择的文字上画横线，横线所穿过的文字区域会被选中。；删除文字：在要删除的文字上画波浪线，波浪线所覆盖的区域会被删除。；插入空格：在要插入空格的文字中间画竖线。；合并段落：在要合并的空白位置上画竖线。；让书写识别更精准；减少连笔，按笔顺书写可以很大程度上提高识别率。；倾斜角度不要过大（尽量不要超过15度）。",
-      "relevant_chunk_ids": [
-        "stc_v1_bb406934017e13e99ace85e5"
-      ],
-      "source_titles": [
-        "全局手写"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "navigation"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_comparison_023",
-      "query_type": "comparison",
-      "query": "HUAWEIMateBookB7-420中“个人信息和数据安全”和“了解 HUAWEI 蓝牙鼠标(第二代)”分别讲什么，使用场景有什么区别？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "“个人信息和数据安全”部分：在使用设备的一些功能和第三方应用时，可能会因为操作不正确或其他原因导致您的个人信息或数据泄露或丢失，建议按以下方式加强保护您的个人信息。；请将设备放置于安全区域，防止未经授权人员使用您的设备。；设置设备屏幕锁定，并牢记您设定的密码或解锁图案。；建议不要阅读来自陌生人的信息或邮件，以免设备遭受病毒感染。；在使用设备上网时，请勿浏览存在安全隐患的网站，以免个人信。 “了解 HUAWEI 蓝牙鼠标(第二代)”部分：HUAWEI 蓝牙鼠标(第二代)为可选配件，您可单独购买。；1 左键 2 滚轮+中键 3 右键 4 LED指示灯 指示灯为红色闪烁时，表示电池电量低，请注意更换电池。；5 传感器 6 电源开关 7 多设备切换按键 8 多设备指示灯",
-      "relevant_chunk_ids": [
-        "stc_v1_edad2e3766ada080f7fae948",
-        "stc_v1_0f242cd925d0b84473d35119"
-      ],
-      "source_titles": [
-        "个人信息和数据安全",
-        "了解 HUAWEI 蓝牙鼠标(第二代)"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "comparison"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_general_024",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于关闭屏幕朗读的说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "长按电源键直至平板弹出关机和重启菜单，双指长按屏幕 3 秒 即可关闭屏幕朗读。；将文本转换成语音（TTS） 文本转语音（TTS）输出功能可以让平板上的文字以语音的形式读出来，可以与读屏软件配合使用。；在无障碍设置界面，点击文本转语音，您可以：；选择需要的语音合成引擎 开启色彩校正，定制屏幕色彩 色彩校正可以帮助视力偏弱的人士更方便识别屏幕。；1 进入设置 $>$ 辅助功能 $>$ 无障碍 $>$ 色彩校正，开启色彩校正开关。；2 点击校正模式，根据需要选择色彩校正模式。；放大手势 您可以通过放大手势，放大屏幕显示的。",
-      "relevant_chunk_ids": [
-        "stc_v1_ac16110b7cbc8e0ed7677931"
-      ],
-      "source_titles": [
-        "关闭屏幕朗读"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "general"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_constraint_025",
-      "query_type": "constraint",
-      "query": "HUAWEIMateBookB7-420使用交通安全时有哪些注意事项或限制？",
-      "item_names": [
-        "HUAWEIMateBookB7-420"
-      ],
-      "reference_answer": "遵守所在地区或国家的相关规定，驾车时请勿使用本设备。；谨记安全驾驶是您的首要职责，请勿从事会分散注意力的活动。；汽车的电子设备可能因设备的无线电干扰而出现故障。请联系制造商咨询详细信息。；请勿将设备放在汽车安全气囊上方或安全气囊展开后能够触及的区域内。否则当安全气囊膨胀时，设备就会受到很强的外力推动而对车内人员造成严重伤害。；无线设备可能干扰飞机的飞行系统，请遵守航空公司的相关规定，在禁止使用无线设备的地方，请勿使用该设备。；请勿在多灰、潮湿、肮脏或靠近磁场的地方使用设备，以免引起设备内部电路故障。；请勿在雷雨天气。",
-      "relevant_chunk_ids": [
-        "stc_v1_905800710cc6f3f5830c6175"
-      ],
-      "source_titles": [
-        "交通安全"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "constraint"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_explain_026",
-      "query_type": "explain",
-      "query": "华为平板C7DBY-W09的分享时刻长图主要解决什么问题？请简要说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "点击要分享的时刻相册，然后点击 > 分享，平板会自动生成时刻长图，您可以按屏幕提示进行分享。；生成的时刻长图默认保存在图库 $>$ 相册 $>$ 拼图中，您也可以在该相册中分享。；添加、移除时刻中的图片或视频 1 在时刻中，选择一个时刻相册。；2 您可以执行以下任一操作：；添加图片或视频：点击 ，按提示勾选并添加图片或视频。；移除图片或视频：长按勾选时刻相册内要移除的图片或视频，点击 ，然后点击移出。；重命名时刻相册 1 在时刻中，选择一个时刻相册。；2 点击 > 重命名，然后输入新的相册名。；删除时刻 1 在时刻。",
-      "relevant_chunk_ids": [
-        "stc_v1_0917135b9e111f2016f73ef5"
-      ],
-      "source_titles": [
-        "分享时刻长图"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "explain"
-      ]
-    },
-    {
-      "case_id": "auto_HUAWEIMateBookB7_420_relation_027",
-      "query_type": "relation",
-      "query": "HUAWEIMateBookB7-420中充电注意事项涉及哪些相关功能或步骤？",
+      "query": "在HUAWEIMateBookB7-420中，充电注意事项应该怎么操作？",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
@@ -580,75 +122,73 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_028",
-      "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，创建大文件夹应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "1 长按应用图标，然后将其拖动到另一个图标上，两个图标将集合在一个新文件夹中。部分平板会根据应用类型，自动命名文件夹，并同时智能推荐同类型应用，您可选择是否添加至新文件夹中。；2 长按可切换文件夹显示方式。例如，长按新文件夹，弹出菜单中选择显示为大文件夹。；3 点击大文件夹右下角，打开大文件夹，点击文件夹名称，输入新名称。您还可长按大文件夹，然后选择重命名，输入新名称。；大文件夹常用操作 您可进行如下任一操作：；直接打开应用：在大文件夹中，点击大图标，直接进入应用程序。；打开或退出：点击大文件夹右下角，进入文件夹。",
-      "relevant_chunk_ids": [
-        "stc_v1_cf3dd47772788a3e8a7a0e87"
-      ],
-      "source_titles": [
-        "创建大文件夹"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
         "navigation"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_comparison_029",
-      "query_type": "comparison",
-      "query": "HUAWEIMateBookB7-420中“安装电池”和“快捷键与功能键切换”分别讲什么，使用场景有什么区别？",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__constraint_006",
+      "query_type": "constraint",
+      "query": "华为平板 C7使用从 iPhone 或 iPad 迁移数据时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "1 在新平板上，进入平板克隆应用，或进入设置 > 系统和更新 > 平板克隆，点击这是新设备，选择 iPhone/iPad。；2 根据屏幕提示，在旧设备下载安装平板克隆。；3 在旧设备上，进入平板克隆应用，点击这是旧设备，根据界面提示，通过扫码或手动连接的方式，将旧设备与新平板建立连接。；4 在旧设备上，选择要克隆的数据，并根据界面提示完成数据克隆。；通过外部存储设备备份数据 备份数据到外置存储卡 当平板插入外置存储卡时，您可以随时将数据备份到外置存储卡中，让您的数据不易丢失。；1 进入设置 > 系统和更新 > 备份。",
+      "relevant_chunk_ids": [
+        "stc_v1_e4150340880f20df9caab76c"
+      ],
+      "source_titles": [
+        "从 iPhone 或 iPad 迁移数据"
+      ],
+      "evaluation_tags": [
+        "auto_generated",
+        "from_current_milvus",
+        "constraint"
+      ]
+    },
+    {
+      "case_id": "auto_HUAWEIMateBookB7_420_constraint_007",
+      "query_type": "constraint",
+      "query": "HUAWEIMateBookB7-420使用安装电池时有哪些注意事项或限制？",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
-      "reference_answer": "“安装电池”部分：如下图所示，沿鼠标尾部标志打开上壳，按电池仓正负极 $( + - )$ 的标志安装一节 AA 电池，合上上壳，即可安装完成。；蓝牙鼠标与计算机配对 1 按照图示将蓝牙鼠标底部开关拨至 $\\ngeq$ 处并保持 3 秒，指示灯闪烁后松开，鼠标进入配对状态。；2 在计算机中，点击 > > ，进入蓝牙和其他设备界面，点击 添加蓝牙设备，在发现的蓝牙设备列表中选择。 “快捷键与功能键切换”部分：在功能键模式下，运行不同的软件时，F1、F2 等键被定义不同的功能。；若要将 F1、F2 等键作为功能键使用，您可以：；按下 Fn 键，当 Fn 键指示灯亮起，表示已将 F1、F2 等键锁定为功能键模式。只需再次按 Fn键，当 Fn 键指示灯熄灭，即可返回快捷键（热键）模式。；前往华为电脑管家的设置中心，将键盘设置为功能键优先，设置后，F1、F2 等键将默认。",
+      "reference_answer": "如下图所示，沿鼠标尾部标志打开上壳，按电池仓正负极 $( + - )$ 的标志安装一节 AA 电池，合上上壳，即可安装完成。；蓝牙鼠标与计算机配对 1 按照图示将蓝牙鼠标底部开关拨至 $\\ngeq$ 处并保持 3 秒，指示灯闪烁后松开，鼠标进入配对状态。；2 在计算机中，点击 > > ，进入蓝牙和其他设备界面，点击 添加蓝牙设备，在发现的蓝牙设备列表中选择 Huawei Mouse，稍等即可完成配对",
       "relevant_chunk_ids": [
-        "stc_v1_d15121110fa6295ce2c24abb",
-        "stc_v1_877cff45508fdf4619d40683"
+        "stc_v1_4e2dfefb4d590beb84439bde"
       ],
       "source_titles": [
-        "安装电池",
-        "快捷键与功能键切换"
+        "安装电池"
       ],
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "comparison"
+        "constraint"
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_general_030",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于加密存储卡内容的说明。",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__relation_008",
+      "query_type": "relation",
+      "query": "华为平板 C7中从外置存储卡上恢复备份数据涉及哪些相关功能或步骤？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
-      "reference_answer": "您可以对存储卡中的文件进行加密。加密后的文件仅能在您的设备中查看和使用，其他设备无法读取。；1 在平板中插入存储卡，且确保存储卡有足够的空间。；2 进入设置 > 安全 > 更多安全设置 > 加密和凭据。；3 点击加密存储卡，根据屏幕提示完成操作。；加密过程中，请勿重启平板或强制移除存储卡，否则可能导致加密失败或数据丢失。；若要解密存储卡，点击解密存储卡，依照屏幕提示完成存储卡文件解密。格式化存储卡也可解密该存储卡，但会清除存储卡中的所有数据。；当您的平板添加了多用户时，子用户模式下，不支持存储卡的加密和解密。；启用。",
+      "reference_answer": "1 在外部存储界面，选择外置存储卡。；2 在从备份记录恢复数据列表中选择合适的备份记录项进入。；3 选择需要恢复的数据，点击恢复，根据提示输入密码，然后恢复数据。；备份数据到 USB 存储设备 当平板存储空间不足时，建议您定期将大文件或重要数据备份到 USB 存储设备上（例如：U 盘、读卡器等）。；1 用 USB OTG 数据线将平板连接至 USB 存储设备。；2 进入平板的设置 > 系统和更新 $>$ 备份和恢复 $>$ 外部存储，选择USB存储。；3 点击新建备份，勾选要备份的数据，点击开始备份。；4 根据界面。",
       "relevant_chunk_ids": [
-        "stc_v1_c59533cfe8e62caf10305c99"
+        "stc_v1_eb5b3a3c0efa18e8cee61b76"
       ],
       "source_titles": [
-        "加密存储卡内容"
+        "从外置存储卡上恢复备份数据"
       ],
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "general"
+        "relation"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_constraint_031",
-      "query_type": "constraint",
-      "query": "HUAWEIMateBookB7-420使用更改触摸板设置时有哪些注意事项或限制？",
+      "case_id": "auto_HUAWEIMateBookB7_420_general_009",
+      "query_type": "general",
+      "query": "请概括HUAWEIMateBookB7-420中关于更改触摸板设置的说明。",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
@@ -662,33 +202,35 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "constraint"
+        "general"
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_explain_032",
-      "query_type": "explain",
-      "query": "华为平板C7DBY-W09的华为打印主要解决什么问题？请简要说明。",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__comparison_010",
+      "query_type": "comparison",
+      "query": "华为平板 C7中“使用 AI 字幕与他人电话通信或面对面交流”和“使用充电器充电”分别讲什么，使用场景有什么区别？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
-      "reference_answer": "使用华为打印快速打印文件 当周围有支持华为打印的打印机时，平板便能轻松发现并一键打印存于平板中的图片、文档。；1 启动打印机，并确保打印机与平板接入同一 WLAN 网络，或已开启 WLAN 直连功能。；2 在平板中不同存储位置的文件选择对应方式进行打印： 图库：在图库中打开一张或选择多张图片，点击分享 > 。；文件管理：在文件管理中选择一个或多个文件，点击分享 $>$ 打印。；三方应用：在三方应用，如 WPS 中，打开需要打印的文档，点击分享 $>$ 以文件分享 $>$ 华为打印。；不同应用中的操作路径可能有所差异。",
+      "reference_answer": "“使用 AI 字幕与他人电话通信或面对面交流”部分：AI 字幕可以帮助听力不佳人士，打电话时可以将接收的语音转为文字，还可以将输入的文字转为语音发送给对方。；1 请确保进入设置 $>$ 智慧助手 $>$ 智慧语音 $>$ AI 字幕，电话语音转文字开关已开启。；2 您可以通过以下任一方式进入 AI 字幕：；从屏幕顶部右侧下滑出控制中心，点击 选择编辑快捷开关，将AI 字幕拖动到上方的快捷开关面板中，并开启此功。 “使用充电器充电”部分：为了保证充电安全，请使用兼容的充电器和数据线。；1 使用数据线连接充电器和平板。；2 将充电器插入电源插座。；当平板有“滴”的声音，表示开始充电，并在充电动画界面显示充电模式图标和当前电量。；图标 充电模式 超级快充 快充充电 普通充电 通过电脑为平板充电 1 通过数据线将平板连接至电脑或其他设备。；2 当平板弹出USB 连接方式对话框时，点击仅充电。；如果。",
       "relevant_chunk_ids": [
-        "stc_v1_433ea77e1386ecf8fa9cad91"
+        "stc_v1_70c4552bcb6270f70969368d",
+        "stc_v1_20a9cb606e70cc88b8df7039"
       ],
       "source_titles": [
-        "华为打印"
+        "使用 AI 字幕与他人电话通信或面对面交流",
+        "使用充电器充电"
       ],
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "explain"
+        "comparison"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_relation_033",
-      "query_type": "relation",
-      "query": "HUAWEIMateBookB7-420中注意涉及哪些相关功能或步骤？",
+      "case_id": "auto_HUAWEIMateBookB7_420_navigation_011",
+      "query_type": "navigation",
+      "query": "在HUAWEIMateBookB7-420中，注意应该怎么操作？",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
@@ -702,75 +244,73 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_034",
-      "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，取消或关闭应用锁应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "进入应用锁设置界面，请执行以下任一操作：；取消应用锁：在加锁应用列表中，关闭需要取消应用锁的应用尾部的开关。；关闭应用锁：关闭应用锁开关，根据界面提示点击重置。此操作会取消所有应用的应用锁，同时清除应用锁的所有数据。；开启智能解锁 当您的平板检测到可解锁的蓝牙设备时（如手环），无需密码、指纹或人脸身份验证，即可滑动解锁平板，方便快捷。；1 将平板与蓝牙设备配对连接。；配对成功后，蓝牙设备名称将显示在蓝牙界面的已配对的设备列表中。；2 在平板上，进入设置 > 生物识别和密码 $>$ 智能解锁，开启智能解锁开关。；3。",
-      "relevant_chunk_ids": [
-        "stc_v1_3296a3c1f854ec8dc4458245"
-      ],
-      "source_titles": [
-        "取消或关闭应用锁"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
         "navigation"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_comparison_035",
-      "query_type": "comparison",
-      "query": "HUAWEIMateBookB7-420中“用户指南”和“电池安全”分别讲什么，使用场景有什么区别？",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__explain_012",
+      "query_type": "explain",
+      "query": "华为平板 C7的使用声控拍照主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "无需手动点击快门，说出拍照口令，即可拍照。；1 进入相机 > > 声控拍照，选择需要的拍照口令。；2 回到拍照界面，说出设置的口令拍照。；全景拍摄 拍摄全景照片 当拍摄壮丽河山、集体合照等大幅照片时，您可使用全景模式，在拍摄过程中移动相机，将捕获的画面合成一幅宽广的全景照片。；使用后置摄像头拍摄全景照片 使用全景模式，在拍摄时移动相机，将捕获的画面合成一幅宽广的全景照片。；1 进入相机 $>$ 更多，选择全景模式。；2 点击 ，选择相机移动方向为水平或垂直。；3 对准拍摄起点，点击 开始拍摄，沿箭头方向移动取景框。",
+      "relevant_chunk_ids": [
+        "stc_v1_37e3a8eef630c3ae3e760492"
+      ],
+      "source_titles": [
+        "使用声控拍照"
+      ],
+      "evaluation_tags": [
+        "auto_generated",
+        "from_current_milvus",
+        "explain"
+      ]
+    },
+    {
+      "case_id": "auto_HUAWEIMateBookB7_420_constraint_013",
+      "query_type": "constraint",
+      "query": "HUAWEIMateBookB7-420使用用户指南时有哪些注意事项或限制？",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
-      "reference_answer": "“用户指南”部分：目 录 了解计算机 外观介绍 1 键盘 2 触摸板 3 给计算机充电 6 启用计算机 开启和关闭计算机 7 获取精彩功能 7 F10 一键恢复出厂 护眼模式 配件及扩展连线 扩展坞（可选配件） 10 连接到电视、显示器或投影仪 11 连接 USB 鼠标、打印机或其他设备 13 蓝牙鼠标（可选配件） 13 安全信息 个人信息和数据安全 法律声明 了解计算机 外。 “电池安全”部分：如果更换不正确的型号的电池会有起火或爆炸的危险。；请勿将电池暴露在高温处或发热产品的周围，如日照、取暖器、微波炉、烤箱或热水器等。电池过热可能引起爆炸。；请勿将电池放置在极低气压环境中，可能导致电池爆炸或泄漏可燃液体或气体。；请勿把电池扔到火里，否则会导致电池起火和爆炸。；请勿跌落、挤压或穿刺电池。避免让电池遭受外部大的压力，从而导致电池内部短路和过热。；请。",
+      "reference_answer": "目 录 了解计算机 外观介绍 1 键盘 2 触摸板 3 给计算机充电 6 启用计算机 开启和关闭计算机 7 获取精彩功能 7 F10 一键恢复出厂 护眼模式 配件及扩展连线 扩展坞（可选配件） 10 连接到电视、显示器或投影仪 11 连接 USB 鼠标、打印机或其他设备 13 蓝牙鼠标（可选配件） 13 安全信息 个人信息和数据安全 法律声明 了解计算机 外观介绍 0 键盘布局可能会因国家、地区存在差异，请以实物为准。；1 隐藏式环境光传感器 感知周围光线情况，自动调节屏幕显示亮度。；请不要在环境光感应器位置上覆盖。",
       "relevant_chunk_ids": [
-        "stc_v1_89da7f3aa38b59cac77670a0",
-        "stc_v1_98aad1ae51cccaa383f64d46"
+        "stc_v1_dd4805b1aec6cc42d7bb4c1f"
       ],
       "source_titles": [
-        "用户指南",
-        "电池安全"
+        "用户指南"
       ],
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "comparison"
+        "constraint"
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_general_036",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于在休眠状态下保持网络连接的说明。",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__relation_014",
+      "query_type": "relation",
+      "query": "华为平板 C7中使用带皮套的平板涉及哪些相关功能或步骤？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
-      "reference_answer": "如果想平板在休眠状态下，仍然接收消息或者继续下载数据，需要设置休眠时仍然保持网络连接。但开启此开关会增加耗电量。；在电池界面，点击更多电池设置，开启或关闭休眠时始终保持网络连接开关。；存储 查看存储空间使用情况 进入设置 > 存储，查看存储空间使用情况，并根据存储空间的情况，及时清理空间。；清理平板空间 平板管家的清理加速会扫描存储空间中冗余文件和大文件，如应用残留、多余的安装包、微信产生的数据等，并提供清理建议，帮助您释放存储空间。；1 进入平板管家，点击清理加速。；2 待扫描完毕后，点击清理项后的去清理或立即清。",
+      "reference_answer": "为避免出现误操作，建议您从官方渠道购买产品专属的原装皮套。；开启皮套模式 进入设置 $>$ 辅助功能 $>$ 皮套操作，开启皮套操作开关。；使用手写笔轻松书写 手写笔搭配平板使用，可以代替手指方便地进行操作，捕捉您细腻多样的笔尖动作，让您体验到真实纸笔一般的书写感受。使用手写笔，可提笔速记、快速截屏等，也可以配合特色应用给您带来更多使用乐趣。；使用此功能前，需要配备 HUAWEI M-Pen 2 手写笔。您可以前往华为专卖店或访问华为商城购买。；首次使用时，打开手写笔尾部，将 USB 口插入平板充电口，根据屏幕弹框。",
       "relevant_chunk_ids": [
-        "stc_v1_c934d942031b0d8e6519cfa6"
+        "stc_v1_4fc9c74fc061fd071cb05d8a"
       ],
       "source_titles": [
-        "在休眠状态下保持网络连接"
+        "使用带皮套的平板"
       ],
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "general"
+        "relation"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_constraint_037",
-      "query_type": "constraint",
-      "query": "HUAWEIMateBookB7-420使用获取更多时有哪些注意事项或限制？",
+      "case_id": "auto_HUAWEIMateBookB7_420_general_015",
+      "query_type": "general",
+      "query": "请概括HUAWEIMateBookB7-420中关于获取更多的说明。",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
@@ -784,33 +324,35 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "constraint"
+        "general"
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_explain_038",
-      "query_type": "explain",
-      "query": "华为平板C7DBY-W09的备忘录主要解决什么问题？请简要说明。",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__comparison_016",
+      "query_type": "comparison",
+      "query": "华为平板 C7中“使用智慧语音扫食物获取卡路里”和“使用杂志锁屏”分别讲什么，使用场景有什么区别？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
-      "reference_answer": "使用多种方式创建笔记 用书写、扫描文档、多设备共同协作、语音记事或手绘涂鸦等多种方式记录笔记，帮您快速留住一闪而过的想法和灵感。；键入方式创建笔记 1 进入备忘录 $>$ 笔记，点击 2 输入笔记的标题和需要记录的内容。根据需要，您可以进行以下操作： 点击 ，添加核对清单。；点 击 ，更改文字样式、段落对齐或背景等。；点 击 ，插入图片。长按图片，拖动图片在笔记中的显示位置。；如果您希望笔记分类更清晰、方便查看，记录完成后为笔记添加分类。；3 点击 保存笔记。；扫描文档创建笔记 1 打开备忘录，选择笔记 > > >。",
+      "reference_answer": "“使用智慧语音扫食物获取卡路里”部分：1 唤醒智慧语音，说出指令，例如：“识别卡路里”、“看看这块蛋糕的卡路里含量”等。；2 将镜头对准食物，可查看食物的单位重量卡路里和营养成分等信息。；3 点击 可分享和保存识别结果。；用智慧语音扫码 1 唤醒智慧语音，说出指令，例如：“扫码”、“扫二维码”、“扫条码”等。；2 将相机对准二维码或条形码，等待扫码结果呈现。；3 点击 ，可识别保存在图库中的二维。 “使用杂志锁屏”部分：杂志锁屏可以在每次亮屏时自动切换锁屏壁纸。；开启杂志锁屏 进入设置 > 桌面和壁纸 > 杂志锁屏，开启开启杂志锁屏开关。；当平板连接至 WLAN 网络后，将自动下载锁屏壁纸。当有新壁纸时，历史壁纸会被自动清理，不再占用空间。；关闭杂志锁屏 进入设置 $>$ 桌面和壁纸 $>$ 杂志锁屏，关闭开启杂志锁屏开关。；关闭杂志锁屏后，平板将不再自动切换锁屏壁纸。但收。",
       "relevant_chunk_ids": [
-        "stc_v1_ce246b20ac9880e7fd57779e"
+        "stc_v1_94fda47d18c2ffc34bf56542",
+        "stc_v1_a763ba52c0f17686c9656afc"
       ],
       "source_titles": [
-        "备忘录"
+        "使用智慧语音扫食物获取卡路里",
+        "使用杂志锁屏"
       ],
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "explain"
+        "comparison"
       ]
     },
     {
-      "case_id": "auto_HUAWEIMateBookB7_420_relation_039",
-      "query_type": "relation",
-      "query": "HUAWEIMateBookB7-420中责任限制涉及哪些相关功能或步骤？",
+      "case_id": "auto_HUAWEIMateBookB7_420_navigation_017",
+      "query_type": "navigation",
+      "query": "在HUAWEIMateBookB7-420中，责任限制应该怎么操作？",
       "item_names": [
         "HUAWEIMateBookB7-420"
       ],
@@ -824,62 +366,22 @@
       "evaluation_tags": [
         "auto_generated",
         "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_040",
-      "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，多窗口应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "编辑智慧多窗应用栏 在平板屏幕左侧或右侧，从外向内滑动屏幕并停顿，调出智慧多窗应用栏。；添加应用：在智慧多窗应用栏点击 > ，在支持智慧多窗的应用中选择应用添加到应用栏，然后点击 。；移动应用：点击 > ，在应用栏中长按应用图标并拖拽，可将其移动到应用栏任一位置，然后点击 。；移除应用：点击 > ，在应用栏中点击应用图标右上角的 移除应用，然后点击 。智慧多窗应用栏默认开启，若想要关闭，请进入设置 $>$ 辅助功能 $>$ 智慧多窗，关闭智慧多窗应用栏开关。；分屏，轻松应对多任务 使用智慧多窗，开启分屏，可同时使用。",
-      "relevant_chunk_ids": [
-        "stc_v1_516fc4c441c9c6af8e5bb925"
-      ],
-      "source_titles": [
-        "多窗口"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
         "navigation"
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_general_042",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于将常用功能添加到桌面的说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "长按应用图标，在弹出的常用功能列表中，长按功能并拖动至桌面，即可为该功能创建桌面快捷图标。；桌面窗口小工具 添加、移动或删除窗口小工具 您可以根据需要添加、移动或删除桌面窗口小工具，包括一键锁屏、天气、备忘录预览、联系人、日历等。；添加天气、时钟等桌面小工具 1 在桌面上双指捏合，进入桌面编辑状态。；2 点击窗口小工具，向左滑动可查看所有小工具。；3 部分小工具（如天气）会有多种样式，点击该图标可以展开所有的样式，向右滑动可以收拢。；4 点击需要的小工具图标，即可将其添加到当前屏幕。若当前屏幕没有空间，可长按并拖动。",
-      "relevant_chunk_ids": [
-        "stc_v1_b6d221e1c983f3602abda2c3"
-      ],
-      "source_titles": [
-        "将常用功能添加到桌面"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "general"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_explain_044",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__explain_018",
       "query_type": "explain",
-      "query": "华为平板C7DBY-W09的将录音文件转换成文本主要解决什么问题？请简要说明。",
+      "query": "华为平板 C7的使用水平仪辅助构图主要解决什么问题？请简要说明。",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
-      "reference_answer": "1 在录音机首页，点击 > 转文本服务，登录华为帐号领取赠送的免费时长或直接购买转文本套餐。；2 获取时长后，点击需要转换的录音文件。；3 点击 > 开始转文本，等待转换文本完成。转换结果将显示在录音文件播放界面。；编辑录音文件 1 在录音机首页，点击录音文件。；2 点击编辑，显示录音的全部波形。；3 拖动录音的起始和结束时间条，选择需剪辑的录音区域。您还可以在波形区域，放大和合拢双指，调节波形显示区域后再选择裁剪区域。；4 点击裁剪，选择保留选中区域或删除选中区域。；分享录音文件 1 在录音机首页，点击要分享的录。",
+      "reference_answer": "开启水平仪开关，开启后，取景界面将出现水平辅助线。；当水平辅助线的虚线与实线重合时，表明平板处于水平位置，帮您避免因平板不正导致的构图倾斜。；自定义相机模式 您可以自定义相机模式，将常用的模式移动到相机主界面，或调整模式顺序，让模式布局更符合您的使用习惯。；拍照、人像和录像模式不支持移动到更多中，请以实际情况为准。；1 进入相机 > 更多，点击 进入模式编辑界面。；2 长按某个模式，拖动到要放置的位置。您可以将更多中的模式移动到相机主界面，或将主界面中的模式移动到更多中，或按使用频率调整布局。；部分可删除的模式上会。",
       "relevant_chunk_ids": [
-        "stc_v1_c7246ccf93bbdb7158dd6487"
+        "stc_v1_039e4e3dd67607467c2b95bb"
       ],
       "source_titles": [
-        "将录音文件转换成文本"
+        "使用水平仪辅助构图"
       ],
       "evaluation_tags": [
         "auto_generated",
@@ -888,100 +390,18 @@
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_navigation_046",
-      "query_type": "navigation",
-      "query": "在华为平板C7DBY-W09中，将畅连、视频、音乐流转至其他设备应该怎么操作？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "当您正在使用平板与家人进行畅连通话、观看视频（如华为视频、优酷视频等）、聆听音乐时，您可以通过超级终端将当前任务一键流转至其他设备，如：在智慧屏上继续畅连通话等。；根据不同的流转任务，流转设备可以选择如下：；视频：可以流转至智慧屏。；畅连：可以流转至智慧屏。；音乐：可以流转至蓝牙耳机、智慧屏（亮屏、熄屏状态下均可）。；1 从平板顶部右侧下滑出控制中心，超级终端中会显示已发现的设备，也可点击 ，手动搜索附近我的设备。；2 点击想要流转的设备名称，一键流转至对应设备，或点击 ，拖拽待流转设备至平板即可流转。；控制智慧生。",
-      "relevant_chunk_ids": [
-        "stc_v1_93fabfa494860e28e6c58acc"
-      ],
-      "source_titles": [
-        "将畅连、视频、音乐流转至其他设备"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "navigation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_general_048",
-      "query_type": "general",
-      "query": "请概括华为平板C7DBY-W09中关于平板与电脑互传文件的说明。",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "通过华为分享在平板与华为电脑间互传文件，实现快速共享。；1 从平板顶部右侧下滑出控制中心，点击 展开快捷开关栏（取决于您的机型），点亮华为分享。；2 在电脑上打开电脑管家，开启华为分享。；您可以按照以下方式互传文件： 从平板传到电脑： 1 在平板上，长按选中待传输文件，点击分享。；2 在设备列表中，选择对应的电脑名称。；3 在电脑提示框中，点击接收。；4 文件传输完成后，存放文件夹自动打开，可查看已传输文件。；从电脑传到平板：；分享方式互传 1 在电脑中选中待传输文件，鼠标右键单击，点击华为分享。；2 在弹出的设备。",
-      "relevant_chunk_ids": [
-        "stc_v1_d980ed25742070d5d2512464"
-      ],
-      "source_titles": [
-        "平板与电脑互传文件"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "general"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_relation_081",
-      "query_type": "relation",
-      "query": "华为平板C7DBY-W09中文档矫正涉及哪些相关功能或步骤？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "使用文档矫正帮您调整歪斜文档 当您想拍下重要的演示资料，却因为位置、角度不正受限时，可以使用文档矫正。；拍下照片后，相机会自动将角度不正的资料调整为正面图，并消除文档阴影，让您轻松查看。；使用文档矫正拍摄 1 进入相机 > 更多，选择文档矫正模式。；如您在更多中没有找到文档矫正，请在更多中点击 ，下载文档矫正。；2 将镜头对准要拍摄的文档内容（如投影的幻灯片、路边海报等），点击快门拍照。；3 拍照后，相机将识别取景范围内的文字区域，自动矫正为正面图，并去除文档部分的阴影。；部分产品不支持去除文档阴影，请以实际情况为。",
-      "relevant_chunk_ids": [
-        "stc_v1_ee621e09abdec7fa83aaa219"
-      ],
-      "source_titles": [
-        "文档矫正"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "relation"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_comparison_083",
-      "query_type": "comparison",
-      "query": "华为平板C7DBY-W09中“日历”和“时刻”分别讲什么，使用场景有什么区别？",
-      "item_names": [
-        "华为平板C7DBY-W09"
-      ],
-      "reference_answer": "“日历”部分：添加和管理日程 日程帮助您规划日常生活和工作中的各项活动，例如公司会议、朋友聚会、银行还贷等。添加日程并设置提醒，提前安排好日程计划。；添加日程 1 进入日历，点击 2 输入日程的标题、地点、开始、结束时间等详细信息。；3 点击添加提醒，设置日程的提醒时间。；4 点击 保存。；导入会议提醒 1 进入日历 > > 日历帐户管理。；2 点击添加帐户，根据界面提示。 “时刻”部分：时刻 当您在假日、生日、聚会等场景，拍摄了较多的照片、视频时，图库会根据时间、主题或场景，自动聚合精华照片视频，生成时刻相册。；平板会根据照片、视频的拍摄时间和地理位置信息合成视频。拍摄前请进入相机 $> \\infty$ ， 打开记录地理位置信息开关。；请确保平板已接入网络，并在图库设置界面，打开开启图库网络连接开关。；当平板处于熄屏充电状态，并连接到 WL。",
-      "relevant_chunk_ids": [
-        "stc_v1_4f0a03343b610345cf96e02e",
-        "stc_v1_cf95956afe2c4e92109cb7ff"
-      ],
-      "source_titles": [
-        "日历",
-        "时刻"
-      ],
-      "evaluation_tags": [
-        "auto_generated",
-        "from_current_milvus",
-        "comparison"
-      ]
-    },
-    {
-      "case_id": "auto_华为平板C7DBY_W09_constraint_085",
+      "case_id": "auto_HUAWEIMateBookB7_420_constraint_019",
       "query_type": "constraint",
-      "query": "华为平板C7DBY-W09使用智慧语音朗读屏幕内容时有哪些注意事项或限制？",
+      "query": "HUAWEIMateBookB7-420使用连接到电视、显示器或投影仪时有哪些注意事项或限制？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "HUAWEIMateBookB7-420"
       ],
-      "reference_answer": "您可以通过智慧语音，朗读华为浏览器、信息等应用打开的资讯内容或短信等。；唤醒智慧语音，说出指令，例如：“朗读一下”、“帮我朗读”、“读一下屏幕”。；由于第三方应用的差异，会遇到内容无法朗读，请以实际情况为准。；智慧视觉 开启智慧视觉 您可以通过多个入口进入智慧视觉。；智慧语音唤醒 唤醒智慧语音，说出指令，例如：“智慧视觉”。；相机入口 打开相机，选择拍照模式，点击 ，进入智慧视觉。；搜索栏入口 屏幕解锁状态下，在屏幕中部向下滑动，打开搜索框，点击搜索框旁边的 ，进入智慧视觉。；负一屏入口 7屏幕右滑至负一屏，点击搜。",
+      "reference_answer": "观看电影或会议演示时，将计算机连接到电视、显示器或投影仪等大屏显示设备，观看效果更佳。；除了计算机、扩展坞和连接设备之外，您还需要准备 HDMI 或 VGA 连接线缆。；在连接之前您需要检查所连接设备的端口。；通过扩展坞将计算机连接到电视等设备的操作步骤类似，下文以 HUAWEI MateDock 2扩展坞为例。；HDMI 接口和 VGA 接口不能同时使用。；1 参照图示，通过扩展坞连接计算机和电视、显示器或投影仪。；2 接通电视、显示器或投影仪的电源并打开。；回3 热键模式下，按 键，或者点击 $\\equiv {。",
       "relevant_chunk_ids": [
-        "stc_v1_e6c0677aa63ad1062642837e"
+        "stc_v1_f375b53daf913ee50db58371"
       ],
       "source_titles": [
-        "智慧语音朗读屏幕内容"
+        "连接到电视、显示器或投影仪"
       ],
       "evaluation_tags": [
         "auto_generated",
@@ -990,18 +410,18 @@
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_relation_087",
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__relation_020",
       "query_type": "relation",
-      "query": "华为平板C7DBY-W09中智能表格涉及哪些相关功能或步骤？",
+      "query": "华为平板 C7中使用语音创建笔记涉及哪些相关功能或步骤？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
       ],
-      "reference_answer": "智能表格功能可以让您使用手写笔画出标准的表格并进行编辑，方便信息整理。；1 首先使用一笔成形画一个矩形。；2 画一条直线贯穿矩形中间，停顿后即可切分行列形成表格。；3 表格形成后，会出现 $\\textcircled{-1}$ 、 按钮，可以点击来增加、删除行列。也可以继续通过画直线贯穿表格来增加行列。；4 编辑完毕后，要再次增加行列需要选中单元格，然后用手写笔点击要插入或删除的行或列。通过手写笔长按或用套索圈选，选中单元格。；5 手写笔长按表格，直至表格边框出现蓝色虚线后，用笔尖可自由调整表格位置、大小和行列宽度。",
+      "reference_answer": "使用语音输入记录笔记，语音会自动转换成文字，方便快速地记事。；1 进入备忘录 $>$ 笔记，点击 2 点击 ，说出要记录的内容，语音内容自动转换为文字，显示在笔记中。；3 点击 结束语音。；4 点击 保存笔记。；手绘涂鸦创建笔记 有些想法和灵感不方便用文字表达，可以使用手绘涂鸦生动地画出来。；1 进入备忘录 $>$ 笔记，点击 2 点击 ，手写或手绘要记录的内容，根据需要选择书写的颜色。；3 点击 保存笔记。；通过分享创建笔记 您可以将其他应用中的网页、图片、文字等内容通过分享方式添加到备忘录。；并非所有应用都支持。",
       "relevant_chunk_ids": [
-        "stc_v1_8ed66ff299d1de429f061bca"
+        "stc_v1_a478d8ddf4425549f7873b8b"
       ],
       "source_titles": [
-        "智能表格"
+        "使用语音创建笔记"
       ],
       "evaluation_tags": [
         "auto_generated",
@@ -1010,20 +430,40 @@
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_comparison_089",
-      "query_type": "comparison",
-      "query": "华为平板C7DBY-W09中“服务卡片”和“查看和关闭通知”分别讲什么，使用场景有什么区别？",
+      "case_id": "auto_HUAWEIMateBookB7_420_general_021",
+      "query_type": "general",
+      "query": "请概括HUAWEIMateBookB7-420中关于键盘的说明。",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "HUAWEIMateBookB7-420"
       ],
-      "reference_answer": "“服务卡片”部分：上滑应用图标，展开服务卡片。卡片让您便捷地预览服务信息，例如查看天气或日历日程等内容。您可将卡片添加到屏幕上，让这类信息触手可及。您还可按喜好选取不同样式和排列方式，打造个性化桌面。；部分情况不支持该功能，例如简易模式。；展开和收回卡片 上滑应用图标，展开卡片，点击卡片外区域收回卡片。；底部带有提示条 的应用图标支持该功能。；您可在设置 $>$ 桌面和壁纸。 “查看和关闭通知”部分：查看和清除通知 查看通知 当有通知提醒时，您可以解锁屏幕，从屏幕顶部左侧向下滑动，打开通知中心，查看各类消息。；若您不想查看某条通知，可快速向右滑动通知，清除该通知。；若通知太多需清理，可点击通知中心底部的 ，清除所有通知。；部分系统通知和前台运行应用的通知不能被清除。；免于通知打扰 若不想被通知打扰，可向左滑动需要处理的通知，点击 $\\mathfrak {。",
+      "reference_answer": "不同机型，键盘按键不同，请以实际为准。；快捷键功能介绍 计算机键盘的 F1、F2 等键默认为快捷键（热键）模式，可用于轻松执行常见任务。；F1 降低屏幕亮度 F2 增强屏幕亮度 F3 开启或关闭键盘背光,调节键盘背光亮度 如果此按键上无图标,则不支持背光。；F4 开启或关闭静音 F5 减小音量 F6 增大音量 F7 开启或关闭麦克风 F8 切换屏幕投影模式 F9 开启或关闭无线网络 F10 开启华为电脑管家 开启或关闭智慧语音",
       "relevant_chunk_ids": [
-        "stc_v1_22aafbe0cd0cccec354b82c9",
-        "stc_v1_7ce6f84ba3c847c8752b62b0"
+        "stc_v1_655e74ef8a219fe66e845cdc"
       ],
       "source_titles": [
-        "服务卡片",
-        "查看和关闭通知"
+        "键盘"
+      ],
+      "evaluation_tags": [
+        "auto_generated",
+        "from_current_milvus",
+        "general"
+      ]
+    },
+    {
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__comparison_022",
+      "query_type": "comparison",
+      "query": "华为平板 C7中“全局手写”和“关于平板电脑”分别讲什么，使用场景有什么区别？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "“全局手写”部分：通过全局手写功能，您可以在输入框内，用手写笔输入文字，并使用笔势操作编辑文本。全局手写功能支持中英文混合输入。；进入设置 $>$ 辅助功能 $>$ 手写笔 $>$ 全局手写输入，打开全局手写输入开关。；选择文字：在要选择的文字上画横线，横线所穿过的文字区域会被选中。；删除文字：在要删除的文字上画波浪线，波浪线所覆盖的区域会被删除。；插入空格：在要插入空格的文。 “关于平板电脑”部分：法律声明 版权所有 $\\circledcirc$ 华为 2021。保留一切权利。；本指南仅供参考，不构成任何形式的承诺，产品（包括但不限于颜色、大小、屏幕显示等）请以实物为准。；型号: DBY-W09 HarmonyOS 2 01",
+      "relevant_chunk_ids": [
+        "stc_v1_6abe7ac52d87ea9e4d0447a5",
+        "stc_v1_2fa3e652c6ac171071bfaa21"
+      ],
+      "source_titles": [
+        "全局手写",
+        "关于平板电脑"
       ],
       "evaluation_tags": [
         "auto_generated",
@@ -1032,18 +472,58 @@
       ]
     },
     {
-      "case_id": "auto_华为平板C7DBY_W09_constraint_091",
-      "query_type": "constraint",
-      "query": "华为平板C7DBY-W09使用查看智慧语音自定义技能时有哪些注意事项或限制？",
+      "case_id": "auto_HUAWEIMateBookB7_420_navigation_023",
+      "query_type": "navigation",
+      "query": "在HUAWEIMateBookB7-420中，个人信息和数据安全应该怎么操作？",
       "item_names": [
-        "华为平板C7DBY-W09"
+        "HUAWEIMateBookB7-420"
       ],
-      "reference_answer": "在教智慧语音学习了新技能，或者创建组合技能后，您可以查看或编辑这些自定义技能。；进入设置 $>$ 智慧助手 $>$ 智慧语音 $>$ 我的 $>$ 我的技能或设置 $>$ 智慧助手 $>$ 智慧语音 $>$ 我的技能（取决于您的机型），点击一条技能，可查看技能详情，或编辑、分享、删除技能。；语音设置闹钟 您可以通过智慧语音创建、关闭、查询闹钟。；唤醒智慧语音，说出指令，例如：“设置明早 8 点的闹钟”、“创建 20 分钟后的闹钟”、“取消早上 8 点的闹钟”、“查看明天的闹钟”等。；语音播放音乐或视频 想听音乐或者。",
+      "reference_answer": "在使用设备的一些功能和第三方应用时，可能会因为操作不正确或其他原因导致您的个人信息或数据泄露或丢失，建议按以下方式加强保护您的个人信息。；请将设备放置于安全区域，防止未经授权人员使用您的设备。；设置设备屏幕锁定，并牢记您设定的密码或解锁图案。；建议不要阅读来自陌生人的信息或邮件，以免设备遭受病毒感染。；在使用设备上网时，请勿浏览存在安全隐患的网站，以免个人信息被盗。；在使用无线共享、蓝牙等业务时，请设定密码，防止未授权访问。不需要使用这些业务时，建议及时关闭。；安装设备安全软件，并定期进行安全检查。；获取第三方应用。",
       "relevant_chunk_ids": [
-        "stc_v1_46b7f1c98311fec5ef90b990"
+        "stc_v1_edad2e3766ada080f7fae948"
       ],
       "source_titles": [
-        "查看智慧语音自定义技能"
+        "个人信息和数据安全"
+      ],
+      "evaluation_tags": [
+        "auto_generated",
+        "from_current_milvus",
+        "navigation"
+      ]
+    },
+    {
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__explain_024",
+      "query_type": "explain",
+      "query": "华为平板 C7的关闭屏幕朗读主要解决什么问题？请简要说明。",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "长按电源键直至平板弹出关机和重启菜单，双指长按屏幕 3 秒 即可关闭屏幕朗读。；将文本转换成语音（TTS） 文本转语音（TTS）输出功能可以让平板上的文字以语音的形式读出来，可以与读屏软件配合使用。；在无障碍设置界面，点击文本转语音，您可以：；选择需要的语音合成引擎 开启色彩校正，定制屏幕色彩 色彩校正可以帮助视力偏弱的人士更方便识别屏幕。；1 进入设置 $>$ 辅助功能 $>$ 无障碍 $>$ 色彩校正，开启色彩校正开关。；2 点击校正模式，根据需要选择色彩校正模式。；放大手势 您可以通过放大手势，放大屏幕显示的。",
+      "relevant_chunk_ids": [
+        "stc_v1_76576310672429f1252b2a43"
+      ],
+      "source_titles": [
+        "关闭屏幕朗读"
+      ],
+      "evaluation_tags": [
+        "auto_generated",
+        "from_current_milvus",
+        "explain"
+      ]
+    },
+    {
+      "case_id": "auto_华为平板_C7_用户指南_DBY_W09_HarmonyOS_2_01__constraint_025",
+      "query_type": "constraint",
+      "query": "华为平板 C7使用分享图片和视频时有哪些注意事项或限制？",
+      "item_names": [
+        "华为平板 C7 用户指南-(DBY-W09,HarmonyOS 2_01,ZH-CN)"
+      ],
+      "reference_answer": "进入图库，您可以通过以下方式分享图片和视频：；分享单个图片或视频：点击某个图片或视频，然后点击 分享。；分享多个图片或视频：在某个相册或照片页签中，长按勾选多个图片和视频，点击 分享。；当要分享的图片或视频位于云端时，需下载到本地后才能分享。此功能需要在联网状态下进行，建议您将设备连接 WLAN 网络以避免消耗数据流量。；安全分享照片 照片安全分享，可帮你去除照片位置信息、时间、设备、照片名称等信息，让你在分享时不用担心隐私泄露。；2 选择单个或多个图片，点击 。；3 点击分享界面左上方的隐私保护开关，弹出分享隐私。",
+      "relevant_chunk_ids": [
+        "stc_v1_da699c2ee1b1307262a0acde"
+      ],
+      "source_titles": [
+        "分享图片和视频"
       ],
       "evaluation_tags": [
         "auto_generated",
