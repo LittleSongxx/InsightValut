@@ -62,6 +62,13 @@ class QueryGraphState(TypedDict):
     retrieval_judge_skipped_reason: str  # 检索质量 LLM Judge 跳过原因
     hallucination_judge_skipped_reason: str  # 幻觉自检 LLM Judge 跳过原因
     answer_plan: dict  # 结构化回答规划
+    quality_trace: dict
+    quality_flags: list
+    quality_risk_level: str
+    crag_safe_generation_required: bool
+    crag_safe_reason: str
+    citation_required: bool
+    citation_targets: list
     clarification_reason: str  # 触发澄清的原因
     evaluation_mode: bool
     evaluation_overrides: dict
@@ -80,3 +87,4 @@ class QueryGraphState(TypedDict):
     hallucination_check_passed: bool  # 幻觉检查是否通过
     hallucination_retry_count: int  # 幻觉重试计数
     hallucination_feedback: str  # 幻觉反馈信息，用于重新生成时的约束
+    claim_verification_summary: dict

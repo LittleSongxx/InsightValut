@@ -24,7 +24,10 @@ except ImportError:
 
 
 from app.clients.milvus_utils import get_milvus_client, query_chunks_by_filter
-from app.query_process.agent.agentic_utils import DEFAULT_AGENTIC_FEATURES
+from app.query_process.agent.agentic_utils import (
+    DEFAULT_AGENTIC_FEATURES,
+    build_quality_trace,
+)
 from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.query_process.agent.main_graph import query_app
 from app.query_process.agent.retrieval_utils import build_item_name_filter_expr
@@ -96,6 +99,108 @@ DEFAULT_VARIANTS = [
     "agentic_enhanced_system_cached",
     "router_anchor_contextual_grounded_cached",
     "router_anchor_rescue_structured_cached",
+]
+DEFAULT_QUALITY_GATE_THRESHOLDS: Dict[str, float] = {
+    "max_error_rate": 0.0,
+    "max_quality_high_risk_rate": 0.35,
+    "max_quality_medium_or_high_risk_rate": 0.75,
+    "max_coverage_high_risk_rate": 0.35,
+    "max_coverage_unanswerable_rate": 0.10,
+    "max_claim_verification_high_risk_rate": 0.15,
+    "max_unsupported_claim_case_rate": 0.15,
+    "min_avg_claim_support_rate": 0.70,
+    "max_retrieval_judge_failed_rate": 0.05,
+    "max_hallucination_judge_failed_rate": 0.05,
+    "max_insufficient_evidence_answer_rate": 0.20,
+    "min_final_context_precision": 0.45,
+    "min_faithfulness": 0.45,
+    "min_response_relevancy": 0.45,
+}
+QUALITY_GATE_SPECS: List[Dict[str, str]] = [
+    {
+        "gate": "no_runtime_errors",
+        "metric": "error_rate",
+        "operator": "<=",
+        "threshold": "max_error_rate",
+    },
+    {
+        "gate": "quality_high_risk_bounded",
+        "metric": "quality_high_risk_rate",
+        "operator": "<=",
+        "threshold": "max_quality_high_risk_rate",
+    },
+    {
+        "gate": "quality_medium_or_high_risk_bounded",
+        "metric": "quality_medium_or_high_risk_rate",
+        "operator": "<=",
+        "threshold": "max_quality_medium_or_high_risk_rate",
+    },
+    {
+        "gate": "coverage_high_risk_bounded",
+        "metric": "coverage_high_risk_rate",
+        "operator": "<=",
+        "threshold": "max_coverage_high_risk_rate",
+    },
+    {
+        "gate": "coverage_unanswerable_bounded",
+        "metric": "coverage_unanswerable_rate",
+        "operator": "<=",
+        "threshold": "max_coverage_unanswerable_rate",
+    },
+    {
+        "gate": "claim_high_risk_bounded",
+        "metric": "claim_verification_high_risk_rate",
+        "operator": "<=",
+        "threshold": "max_claim_verification_high_risk_rate",
+    },
+    {
+        "gate": "unsupported_claims_bounded",
+        "metric": "unsupported_claim_case_rate",
+        "operator": "<=",
+        "threshold": "max_unsupported_claim_case_rate",
+    },
+    {
+        "gate": "claim_support_rate_floor",
+        "metric": "avg_claim_support_rate",
+        "operator": ">=",
+        "threshold": "min_avg_claim_support_rate",
+    },
+    {
+        "gate": "retrieval_judge_failure_bounded",
+        "metric": "retrieval_judge_failed_rate",
+        "operator": "<=",
+        "threshold": "max_retrieval_judge_failed_rate",
+    },
+    {
+        "gate": "hallucination_judge_failure_bounded",
+        "metric": "hallucination_judge_failed_rate",
+        "operator": "<=",
+        "threshold": "max_hallucination_judge_failed_rate",
+    },
+    {
+        "gate": "insufficient_evidence_answer_bounded",
+        "metric": "insufficient_evidence_answer_rate",
+        "operator": "<=",
+        "threshold": "max_insufficient_evidence_answer_rate",
+    },
+    {
+        "gate": "final_context_precision_floor",
+        "metric": "final_context_precision",
+        "operator": ">=",
+        "threshold": "min_final_context_precision",
+    },
+    {
+        "gate": "faithfulness_floor",
+        "metric": "faithfulness",
+        "operator": ">=",
+        "threshold": "min_faithfulness",
+    },
+    {
+        "gate": "response_relevancy_floor",
+        "metric": "response_relevancy",
+        "operator": ">=",
+        "threshold": "min_response_relevancy",
+    },
 ]
 
 ProgressCallback = Optional[Callable[[Dict[str, Any]], None]]
@@ -1567,6 +1672,30 @@ def _context_ids_from_summary(summary: Dict[str, Any] | None) -> List[str]:
     return normalize_ids(summary.get("context_ids") or [])
 
 
+def _final_context_ids_for_precision(item: Dict[str, Any]) -> List[str]:
+    summary = item.get("final_context_summary") or {}
+    final_ids = normalize_ids(
+        item.get("final_context_ids")
+        or _context_ids_from_summary(summary)
+    )
+    if final_ids:
+        return final_ids
+    retrieved_ids = normalize_ids(item.get("retrieved_context_ids") or [])
+    if not retrieved_ids:
+        return []
+    try:
+        included_docs = int(
+            (summary or {}).get("included_docs")
+            or item.get("final_context_doc_count")
+            or 0
+        )
+    except (TypeError, ValueError):
+        included_docs = 0
+    if included_docs > 0:
+        return retrieved_ids[:included_docs]
+    return []
+
+
 def _hit_at_k(
     predicted_ids: Sequence[str], relevant_ids: Sequence[str], k: int
 ) -> float:
@@ -1674,6 +1803,10 @@ def _run_single_case(
         for value in [error.strip(), answer_error, item_name_extract_error]
         if value
     )
+    quality_trace = final_state.get("quality_trace") or build_quality_trace(final_state)
+    quality_flags = _string_list(
+        final_state.get("quality_flags") or quality_trace.get("flags") or []
+    )
     return {
         "case_id": case_id,
         "query": query,
@@ -1737,6 +1870,21 @@ def _run_single_case(
         "rerank_diagnostics": final_state.get("rerank_diagnostics") or {},
         "rescue_plan": final_state.get("rescue_plan") or {},
         "answer_plan": final_state.get("answer_plan") or {},
+        "quality_trace": quality_trace,
+        "quality_flags": quality_flags,
+        "quality_risk_level": str(
+            final_state.get("quality_risk_level")
+            or quality_trace.get("risk_level")
+            or "low"
+        ),
+        "claim_verification_summary": final_state.get("claim_verification_summary")
+        or {},
+        "crag_safe_generation_required": bool(
+            final_state.get("crag_safe_generation_required", False)
+        ),
+        "crag_safe_reason": str(final_state.get("crag_safe_reason") or ""),
+        "citation_required": bool(final_state.get("citation_required", False)),
+        "citation_targets": final_state.get("citation_targets") or [],
         "clarification_reason": str(final_state.get("clarification_reason") or ""),
         "judge_skipped_reason": str(final_state.get("judge_skipped_reason") or ""),
         "retrieval_judge_skipped_reason": str(
@@ -1842,6 +1990,23 @@ def _run_single_case_via_service(
     final_context_preview = _string_list(
         final_context_summary.get("context_previews") or []
     )
+    quality_trace = (
+        metadata.get("quality_trace")
+        or runtime_fields.get("quality_trace")
+        or {}
+    )
+    quality_flags = _string_list(
+        metadata.get("quality_flags")
+        or runtime_fields.get("quality_flags")
+        or quality_trace.get("flags")
+        or []
+    )
+    quality_risk_level = str(
+        metadata.get("quality_risk_level")
+        or runtime_fields.get("quality_risk_level")
+        or quality_trace.get("risk_level")
+        or "low"
+    )
 
     return {
         "case_id": case_id,
@@ -1942,6 +2107,30 @@ def _run_single_case_via_service(
         or {},
         "rescue_plan": metadata.get("rescue_plan") or runtime_fields.get("rescue_plan") or {},
         "answer_plan": metadata.get("answer_plan") or runtime_fields.get("answer_plan") or {},
+        "quality_trace": quality_trace,
+        "quality_flags": quality_flags,
+        "quality_risk_level": quality_risk_level,
+        "claim_verification_summary": metadata.get("claim_verification_summary")
+        or runtime_fields.get("claim_verification_summary")
+        or {},
+        "crag_safe_generation_required": bool(
+            metadata.get("crag_safe_generation_required")
+            or runtime_fields.get("crag_safe_generation_required")
+            or False
+        ),
+        "crag_safe_reason": str(
+            metadata.get("crag_safe_reason")
+            or runtime_fields.get("crag_safe_reason")
+            or ""
+        ),
+        "citation_required": bool(
+            metadata.get("citation_required")
+            or runtime_fields.get("citation_required")
+            or False
+        ),
+        "citation_targets": metadata.get("citation_targets")
+        or runtime_fields.get("citation_targets")
+        or [],
         "clarification_reason": str(
             metadata.get("clarification_reason") or runtime_fields.get("clarification_reason") or ""
         ),
@@ -2316,10 +2505,7 @@ def _summarize_retrieval(
     ]
     prompt_context_precision_values = []
     for item in eligible_cases:
-        final_ids = normalize_ids(
-            item.get("final_context_ids")
-            or _context_ids_from_summary(item.get("final_context_summary") or {})
-        )
+        final_ids = _final_context_ids_for_precision(item)
         if not final_ids:
             prompt_context_precision_values.append(None)
         else:
@@ -2390,6 +2576,37 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         (item.get("evidence_coverage_summary") or {}).get("coverage_score")
         for item in case_results
     ]
+    quality_flags_counter: Counter[str] = Counter()
+    quality_risk_counter: Counter[str] = Counter()
+    coverage_risk_counter: Counter[str] = Counter()
+    coverage_answerability_counter: Counter[str] = Counter()
+    coverage_gap_counter: Counter[str] = Counter()
+    claim_risk_counter: Counter[str] = Counter()
+    for item in case_results:
+        risk_level = str(item.get("quality_risk_level") or "").strip().lower() or "unknown"
+        quality_risk_counter[risk_level] += 1
+        for flag in _string_list(item.get("quality_flags")):
+            quality_flags_counter[flag] += 1
+        coverage_summary = item.get("evidence_coverage_summary") or {}
+        coverage_risk = str(
+            coverage_summary.get("coverage_risk_level") or ""
+        ).strip().lower() or "unknown"
+        coverage_risk_counter[coverage_risk] += 1
+        answerability = str(
+            coverage_summary.get("answerability") or ""
+        ).strip().lower() or "unknown"
+        coverage_answerability_counter[answerability] += 1
+        for gap in coverage_summary.get("coverage_gaps") or []:
+            if not isinstance(gap, dict):
+                continue
+            dimension = str(gap.get("dimension") or "unknown").strip() or "unknown"
+            severity = str(gap.get("severity") or "unknown").strip() or "unknown"
+            coverage_gap_counter[f"{severity}:{dimension}"] += 1
+        claim_summary = item.get("claim_verification_summary") or {}
+        claim_risk = str(
+            claim_summary.get("risk_level") or ""
+        ).strip().lower() or "unknown"
+        claim_risk_counter[claim_risk] += 1
     rerank_diagnostics = [
         item.get("rerank_diagnostics") or {} for item in case_results
     ]
@@ -2466,6 +2683,204 @@ def _summarize_pipeline(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "hallucination_retry_rate": _avg(
             [
                 1.0 if int(item.get("hallucination_retry_count") or 0) > 0 else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "quality_high_risk_rate": _avg(
+            [
+                1.0 if str(item.get("quality_risk_level") or "").lower() == "high" else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "quality_medium_or_high_risk_rate": _avg(
+            [
+                1.0
+                if str(item.get("quality_risk_level") or "").lower() in {"medium", "high"}
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "quality_flag_case_rate": _avg(
+            [1.0 if _string_list(item.get("quality_flags")) else 0.0 for item in case_results]
+        )
+        or 0.0,
+        "quality_risk_distribution": dict(sorted(quality_risk_counter.items())),
+        "quality_flag_counts": dict(sorted(quality_flags_counter.items())),
+        "coverage_risk_distribution": dict(sorted(coverage_risk_counter.items())),
+        "coverage_answerability_distribution": dict(
+            sorted(coverage_answerability_counter.items())
+        ),
+        "coverage_gap_counts": dict(sorted(coverage_gap_counter.items())),
+        "claim_verification_risk_distribution": dict(sorted(claim_risk_counter.items())),
+        "avg_claim_support_rate": _avg(
+            [
+                (item.get("claim_verification_summary") or {}).get("support_rate")
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "claim_verification_high_risk_rate": _avg(
+            [
+                1.0
+                if str(
+                    (item.get("claim_verification_summary") or {}).get("risk_level")
+                    or ""
+                ).lower()
+                == "high"
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "claim_verification_medium_or_high_risk_rate": _avg(
+            [
+                1.0
+                if str(
+                    (item.get("claim_verification_summary") or {}).get("risk_level")
+                    or ""
+                ).lower()
+                in {"medium", "high"}
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "unsupported_claim_case_rate": _avg(
+            [
+                1.0
+                if int(
+                    (item.get("claim_verification_summary") or {}).get(
+                        "unsupported_claim_count"
+                    )
+                    or 0
+                )
+                > 0
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "weak_claim_case_rate": _avg(
+            [
+                1.0
+                if int(
+                    (item.get("claim_verification_summary") or {}).get(
+                        "weak_claim_count"
+                    )
+                    or 0
+                )
+                > 0
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "coverage_high_risk_rate": _avg(
+            [
+                1.0
+                if str(
+                    (item.get("evidence_coverage_summary") or {}).get(
+                        "coverage_risk_level"
+                    )
+                    or ""
+                ).lower()
+                == "high"
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "coverage_medium_or_high_risk_rate": _avg(
+            [
+                1.0
+                if str(
+                    (item.get("evidence_coverage_summary") or {}).get(
+                        "coverage_risk_level"
+                    )
+                    or ""
+                ).lower()
+                in {"medium", "high"}
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "coverage_gap_case_rate": _avg(
+            [
+                1.0
+                if (item.get("evidence_coverage_summary") or {}).get("coverage_gaps")
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "coverage_unanswerable_rate": _avg(
+            [
+                1.0
+                if str(
+                    (item.get("evidence_coverage_summary") or {}).get("answerability")
+                    or ""
+                ).lower()
+                in {"unanswerable_no_evidence", "needs_clarification"}
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "coverage_partial_answer_rate": _avg(
+            [
+                1.0
+                if str(
+                    (item.get("evidence_coverage_summary") or {}).get("answerability")
+                    or ""
+                ).lower()
+                == "partial"
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "retrieval_judge_failed_rate": _avg(
+            [
+                1.0
+                if "retrieval_judge_failed" in _string_list(item.get("quality_flags"))
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "hallucination_judge_failed_rate": _avg(
+            [
+                1.0
+                if "hallucination_judge_failed" in _string_list(item.get("quality_flags"))
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "insufficient_evidence_answer_rate": _avg(
+            [
+                1.0
+                if "answer_generated_with_insufficient_evidence"
+                in _string_list(item.get("quality_flags"))
+                else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "crag_safe_generation_rate": _avg(
+            [
+                1.0 if bool(item.get("crag_safe_generation_required")) else 0.0
+                for item in case_results
+            ]
+        )
+        or 0.0,
+        "citation_required_rate": _avg(
+            [
+                1.0 if bool(item.get("citation_required")) else 0.0
                 for item in case_results
             ]
         )
@@ -2755,6 +3170,7 @@ def _build_headline_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
     retrieval_metrics = summary.get("retrieval_metrics") or {}
     performance_metrics = summary.get("performance_metrics") or {}
     pipeline_metrics = summary.get("pipeline_metrics") or {}
+    quality_gates = summary.get("quality_gates") or {}
     result: Dict[str, Any] = {}
     for key in ("factual_correctness", "faithfulness", "response_relevancy"):
         if key in ragas_metrics:
@@ -2772,13 +3188,170 @@ def _build_headline_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
     ):
         if key in retrieval_metrics:
             result[key] = retrieval_metrics.get(key)
-    for key in ("retrieval_cache_rate",):
+    for key in (
+        "retrieval_cache_rate",
+        "quality_high_risk_rate",
+        "quality_medium_or_high_risk_rate",
+        "coverage_high_risk_rate",
+        "coverage_medium_or_high_risk_rate",
+        "coverage_gap_case_rate",
+        "coverage_unanswerable_rate",
+        "coverage_partial_answer_rate",
+        "claim_verification_high_risk_rate",
+        "claim_verification_medium_or_high_risk_rate",
+        "unsupported_claim_case_rate",
+        "weak_claim_case_rate",
+        "avg_claim_support_rate",
+        "retrieval_judge_failed_rate",
+        "hallucination_judge_failed_rate",
+        "insufficient_evidence_answer_rate",
+        "crag_safe_generation_rate",
+        "citation_required_rate",
+    ):
         if key in pipeline_metrics:
             result[key] = pipeline_metrics.get(key)
     for key in ("avg_total_duration_ms", "p95_total_duration_ms", "p95_first_token_ms"):
         if key in performance_metrics:
             result[key] = performance_metrics.get(key)
+    if quality_gates:
+        result["quality_gate_passed"] = bool(quality_gates.get("passed"))
+        result["quality_gate_failed_count"] = int(
+            quality_gates.get("failed_count") or 0
+        )
     return result
+
+
+def _quality_gate_thresholds() -> Dict[str, float]:
+    thresholds = dict(DEFAULT_QUALITY_GATE_THRESHOLDS)
+    for key, default in DEFAULT_QUALITY_GATE_THRESHOLDS.items():
+        env_key = f"EVAL_GATE_{key.upper()}"
+        raw_value = os.environ.get(env_key)
+        if raw_value is None:
+            continue
+        casted = _num(raw_value)
+        thresholds[key] = float(casted if casted is not None else default)
+    return thresholds
+
+
+def _summary_metric_value(summary: Dict[str, Any], metric_key: str) -> Any:
+    for section_name in (
+        "pipeline_metrics",
+        "retrieval_metrics",
+        "ragas_metrics",
+        "performance_metrics",
+        "headline_metrics",
+    ):
+        section = summary.get(section_name) or {}
+        if metric_key in section:
+            return section.get(metric_key)
+    return None
+
+
+def _distribution_has_signal(distribution: Dict[str, Any]) -> bool:
+    return any(str(key or "").lower() != "unknown" for key in distribution.keys())
+
+
+def _quality_gate_metric_available(summary: Dict[str, Any], metric_key: str) -> bool:
+    pipeline_metrics = summary.get("pipeline_metrics") or {}
+    if metric_key.startswith("coverage_"):
+        return _distribution_has_signal(
+            pipeline_metrics.get("coverage_risk_distribution") or {}
+        )
+    if (
+        metric_key.startswith("claim_")
+        or metric_key.startswith("unsupported_claim")
+        or metric_key.startswith("weak_claim")
+        or metric_key == "avg_claim_support_rate"
+    ):
+        return _distribution_has_signal(
+            pipeline_metrics.get("claim_verification_risk_distribution") or {}
+        )
+    if metric_key.startswith("quality_"):
+        return _distribution_has_signal(
+            pipeline_metrics.get("quality_risk_distribution") or {}
+        )
+    return _num(_summary_metric_value(summary, metric_key)) is not None
+
+
+def _build_quality_gates(summary: Dict[str, Any]) -> Dict[str, Any]:
+    thresholds = _quality_gate_thresholds()
+    checks: List[Dict[str, Any]] = []
+    for spec in QUALITY_GATE_SPECS:
+        gate = spec["gate"]
+        metric_key = spec["metric"]
+        operator = spec["operator"]
+        threshold_key = spec["threshold"]
+        threshold = thresholds.get(threshold_key)
+        if threshold is None:
+            checks.append(
+                {
+                    "gate": gate,
+                    "metric": metric_key,
+                    "operator": operator,
+                    "threshold": None,
+                    "value": None,
+                    "status": "skipped",
+                    "reason": "missing_threshold",
+                }
+            )
+            continue
+        if not _quality_gate_metric_available(summary, metric_key):
+            checks.append(
+                {
+                    "gate": gate,
+                    "metric": metric_key,
+                    "operator": operator,
+                    "threshold": threshold,
+                    "value": None,
+                    "status": "skipped",
+                    "reason": "metric_unavailable",
+                }
+            )
+            continue
+        value = _num(_summary_metric_value(summary, metric_key))
+        if value is None:
+            checks.append(
+                {
+                    "gate": gate,
+                    "metric": metric_key,
+                    "operator": operator,
+                    "threshold": threshold,
+                    "value": None,
+                    "status": "skipped",
+                    "reason": "metric_not_numeric",
+                }
+            )
+            continue
+        passed = value <= threshold if operator == "<=" else value >= threshold
+        checks.append(
+            {
+                "gate": gate,
+                "metric": metric_key,
+                "operator": operator,
+                "threshold": round(float(threshold), 4),
+                "value": round(float(value), 4),
+                "status": "passed" if passed else "failed",
+                "reason": "",
+            }
+        )
+    failed_checks = [item for item in checks if item.get("status") == "failed"]
+    passed_checks = [item for item in checks if item.get("status") == "passed"]
+    skipped_checks = [item for item in checks if item.get("status") == "skipped"]
+    if failed_checks:
+        status = "failed"
+    elif passed_checks:
+        status = "passed"
+    else:
+        status = "skipped"
+    return {
+        "status": status,
+        "passed": status == "passed",
+        "failed_count": len(failed_checks),
+        "passed_count": len(passed_checks),
+        "skipped_count": len(skipped_checks),
+        "thresholds": thresholds,
+        "checks": checks,
+    }
 
 
 def _summarize_variant(
@@ -2821,6 +3394,7 @@ def _summarize_variant(
         summary["ragas_coverage"] = ragas_bundle.get("coverage") or {}
         summary["ragas_errors"] = ragas_bundle.get("errors") or {}
         summary["ragas_metadata"] = ragas_bundle.get("metadata") or {}
+    summary["quality_gates"] = _build_quality_gates(summary)
     summary["headline_metrics"] = _build_headline_metrics(summary)
     return summary
 
@@ -2956,6 +3530,49 @@ def _build_comparison_report(
                 continue
             for compare_to in ordered[:index]:
                 add_comparison(variant_name, compare_to)
+    return report
+
+
+def _build_run_manifest(report: Dict[str, Any]) -> Dict[str, Any]:
+    final_summary = report.get("final_system_metrics") or {}
+    quality_gates = final_summary.get("quality_gates") or report.get("quality_gates") or {}
+    evaluation_method = report.get("evaluation_method") or {}
+    variants = report.get("variants") or {}
+    return {
+        "generated_at": str(report.get("generated_at") or ""),
+        "dataset_path": str(report.get("dataset_path") or ""),
+        "dataset_name": str(report.get("dataset_name") or ""),
+        "case_count": int(report.get("case_count") or 0),
+        "variant_count": len(variants),
+        "evaluation_mode": str(evaluation_method.get("mode") or ""),
+        "execution_order": evaluation_method.get("execution_order") or list(variants.keys()),
+        "final_variant": str(report.get("final_variant") or ""),
+        "quality_gate_status": str(quality_gates.get("status") or "unknown"),
+        "quality_gate_passed": bool(quality_gates.get("passed", False)),
+        "quality_gate_failed_count": int(quality_gates.get("failed_count") or 0),
+        "quality_gate_thresholds": quality_gates.get("thresholds")
+        or _quality_gate_thresholds(),
+        "metric_sources": [
+            "ragas_metrics",
+            "retrieval_metrics",
+            "pipeline_metrics",
+            "performance_metrics",
+        ],
+    }
+
+
+def _attach_report_quality_metadata(report: Dict[str, Any]) -> Dict[str, Any]:
+    final_summary = report.get("final_system_metrics") or {}
+    if final_summary:
+        final_summary["quality_gates"] = final_summary.get(
+            "quality_gates"
+        ) or _build_quality_gates(final_summary)
+        final_summary["headline_metrics"] = _build_headline_metrics(final_summary)
+        report["final_system_metrics"] = final_summary
+        report["quality_gates"] = final_summary.get("quality_gates") or {}
+    else:
+        report["quality_gates"] = {}
+    report["run_manifest"] = _build_run_manifest(report)
     return report
 
 
@@ -3213,6 +3830,7 @@ def evaluate_variants(
             pairwise_order=resolved_variants if has_feature_variants else None,
         ),
     }
+    _attach_report_quality_metadata(report)
     if progress_callback is not None:
         progress_callback(
             {

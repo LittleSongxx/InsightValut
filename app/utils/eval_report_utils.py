@@ -73,6 +73,7 @@ def _dataset_name(report: Dict[str, Any]) -> str:
 
 def _build_report_meta(path: Path, report: Dict[str, Any]) -> Dict[str, Any]:
     final_summary = report.get("final_system_metrics") or {}
+    quality_gates = report.get("quality_gates") or final_summary.get("quality_gates") or {}
     return _sanitize_for_json({
         "report_id": path.name,
         "file_name": path.name,
@@ -84,6 +85,9 @@ def _build_report_meta(path: Path, report: Dict[str, Any]) -> Dict[str, Any]:
         "final_variant": str(report.get("final_variant") or ""),
         "variants": list((report.get("variants") or {}).keys()),
         "headline_metrics": final_summary.get("headline_metrics") or {},
+        "quality_gate_status": str(quality_gates.get("status") or ""),
+        "quality_gate_passed": bool(quality_gates.get("passed", False)),
+        "quality_gate_failed_count": int(quality_gates.get("failed_count") or 0),
         "size_bytes": path.stat().st_size,
     })
 
@@ -100,6 +104,10 @@ def _strip_case_results(report: Dict[str, Any]) -> Dict[str, Any]:
         "dataset_name": report.get("dataset_name"),
         "case_count": int(report.get("case_count") or 0),
         "evaluation_method": report.get("evaluation_method") or {},
+        "run_manifest": report.get("run_manifest") or {},
+        "quality_gates": report.get("quality_gates")
+        or (report.get("final_system_metrics") or {}).get("quality_gates")
+        or {},
         "final_variant": report.get("final_variant"),
         "final_system_metrics": report.get("final_system_metrics") or {},
         "variants": variants_payload,

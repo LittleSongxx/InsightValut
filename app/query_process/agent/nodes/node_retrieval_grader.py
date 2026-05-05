@@ -99,8 +99,9 @@ def step_1_grade_retrieval(question: str, reranked_docs: list) -> dict:
         # 降级：评估失败时默认通过（避免阻塞主流程）
         return {
             "grade": "sufficient",
-            "reason": f"评估失败(降级通过): {e}",
+            "reason": f"评估失败(降级通过，仅保留兼容行为): {e}",
             "suggested_query": "",
+            "judge_failed": True,
         }
 
 
@@ -262,8 +263,12 @@ def node_retrieval_grader(state):
         "rescue_plan": rescue_plan,
         "judge_skipped_reason": "",
         "retrieval_judge_skipped_reason": "",
-        "retrieval_grader_strategy": "llm",
+        "retrieval_grader_strategy": "failed" if grade_result.get("judge_failed") else "llm",
     }
+
+    if grade_result.get("judge_failed"):
+        result["retrieval_judge_skipped_reason"] = grade_result.get("reason") or "retrieval_judge_failed"
+        result["judge_skipped_reason"] = result["retrieval_judge_skipped_reason"]
 
     if rescue_plan.get("action") == "clarify":
         logger.info(
@@ -346,6 +351,9 @@ def node_retrieval_grader(state):
             f"CRAG: 检索质量不足且重试耗尽 (reason: {grade_result.get('reason')})"
         )
         result["retrieval_grade"] = "insufficient"
+        result["crag_safe_generation_required"] = True
+        result["crag_safe_reason"] = grade_result.get("reason") or "insufficient_retrieval_after_retries"
+        result["grounded_mode"] = True
 
     add_done_task(
         state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")

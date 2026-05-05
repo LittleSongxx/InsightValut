@@ -571,6 +571,34 @@ async def test_evaluation_variant(request: EvaluationVariantTestRequest):
             "evidence_coverage_summary": final_state.get("evidence_coverage_summary") or {},
             "rescue_plan": final_state.get("rescue_plan") or {},
             "answer_plan": final_state.get("answer_plan") or {},
+            "quality_trace": metadata.get("quality_trace") or final_state.get("quality_trace") or {},
+            "quality_flags": metadata.get("quality_flags") or final_state.get("quality_flags") or [],
+            "quality_risk_level": str(
+                metadata.get("quality_risk_level")
+                or final_state.get("quality_risk_level")
+                or ""
+            ),
+            "claim_verification_summary": metadata.get("claim_verification_summary")
+            or final_state.get("claim_verification_summary")
+            or {},
+            "crag_safe_generation_required": bool(
+                metadata.get("crag_safe_generation_required")
+                or final_state.get("crag_safe_generation_required")
+                or False
+            ),
+            "crag_safe_reason": str(
+                metadata.get("crag_safe_reason")
+                or final_state.get("crag_safe_reason")
+                or ""
+            ),
+            "citation_required": bool(
+                metadata.get("citation_required")
+                or final_state.get("citation_required")
+                or False
+            ),
+            "citation_targets": metadata.get("citation_targets")
+            or final_state.get("citation_targets")
+            or [],
             "clarification_reason": str(final_state.get("clarification_reason") or ""),
             "judge_skipped_reason": str(final_state.get("judge_skipped_reason") or ""),
             "retrieval_judge_skipped_reason": str(

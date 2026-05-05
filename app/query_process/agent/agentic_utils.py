@@ -153,6 +153,146 @@ def _is_quality_rescue_path(query_type: str, query_family: str) -> bool:
     return query_type in {"comparison", "relation", "constraint", "explain"}
 
 
+def _doc_evidence_id(doc: Dict[str, Any], index: int) -> str:
+    for key in ("chunk_id", "doc_id", "id", "url"):
+        value = _clean_text(doc.get(key))
+        if value:
+            return value
+    return f"doc_{index + 1}"
+
+
+def _doc_evidence_title(doc: Dict[str, Any]) -> str:
+    for key in ("section_path", "title", "document_title", "file_title"):
+        value = _clean_text(doc.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _supporting_docs_for_terms(
+    terms: Sequence[str],
+    docs: Sequence[Dict[str, Any]],
+    doc_blobs: Sequence[str],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for term in terms or []:
+        normalized = _normalize_term(term)
+        evidence = []
+        if normalized:
+            for index, doc in enumerate(docs or []):
+                blob = doc_blobs[index] if index < len(doc_blobs) else ""
+                if normalized not in blob:
+                    continue
+                evidence.append(
+                    {
+                        "id": _doc_evidence_id(doc, index),
+                        "title": _doc_evidence_title(doc),
+                        "source": _clean_text(doc.get("source") or "local"),
+                    }
+                )
+        rows.append(
+            {
+                "term": normalized,
+                "covered": bool(evidence),
+                "evidence": evidence[:3],
+            }
+        )
+    return rows
+
+
+def _supporting_docs_for_sub_queries(
+    sub_queries: Sequence[str],
+    docs: Sequence[Dict[str, Any]],
+    doc_blobs: Sequence[str],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for sub_query in sub_queries or []:
+        query_text = _clean_text(sub_query)
+        sub_terms = _extract_terms(query_text) or [_normalize_term(query_text)]
+        hit_terms = [
+            term
+            for term in sub_terms
+            if term and any(term in blob for blob in doc_blobs)
+        ]
+        evidence = []
+        for index, doc in enumerate(docs or []):
+            blob = doc_blobs[index] if index < len(doc_blobs) else ""
+            if not any(term and term in blob for term in sub_terms):
+                continue
+            evidence.append(
+                {
+                    "id": _doc_evidence_id(doc, index),
+                    "title": _doc_evidence_title(doc),
+                    "source": _clean_text(doc.get("source") or "local"),
+                }
+            )
+        coverage_ratio = len(hit_terms) / len(sub_terms) if sub_terms else 0.0
+        rows.append(
+            {
+                "query": query_text,
+                "terms": sub_terms,
+                "covered_terms": hit_terms,
+                "coverage_ratio": round(coverage_ratio, 4),
+                "covered": bool(sub_terms) and coverage_ratio >= 0.5,
+                "evidence": evidence[:3],
+            }
+        )
+    return rows
+
+
+def _target_support_rows(target_coverage: Dict[str, Any]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for item in target_coverage.get("targets") or []:
+        chunks = item.get("chunks") or []
+        rows.append(
+            {
+                "target": _clean_text(item.get("target")),
+                "covered": bool(item.get("covered")),
+                "evidence": [
+                    {
+                        "id": _clean_text(chunk.get("chunk_id")),
+                        "title": _clean_text(chunk.get("title")),
+                        "source": "target_coverage",
+                    }
+                    for chunk in chunks[:3]
+                    if isinstance(chunk, dict)
+                ],
+            }
+        )
+    return rows
+
+
+def _coverage_gap(
+    dimension: str,
+    missing: Sequence[Any],
+    severity: str,
+    reason: str,
+    suggested_action: str,
+) -> Dict[str, Any]:
+    return {
+        "dimension": dimension,
+        "missing": [_clean_text(item) for item in missing or [] if _clean_text(item)],
+        "severity": severity,
+        "reason": reason,
+        "suggested_action": suggested_action,
+    }
+
+
+def _coverage_answerability(
+    doc_count: int,
+    needs_rescue: bool,
+    clarification_required: bool,
+    high_gap_count: int,
+) -> str:
+    if clarification_required:
+        return "needs_clarification"
+    if doc_count <= 0:
+        return "unanswerable_no_evidence"
+    if needs_rescue or high_gap_count > 0:
+        return "partial"
+    return "answerable"
+
+
 def is_agentic_feature_enabled(state: Dict[str, Any] | None, feature_name: str) -> bool:
     return bool(get_agentic_features(state).get(feature_name, True))
 
@@ -244,6 +384,7 @@ def build_clarification_request(state: Dict[str, Any]) -> Dict[str, Any]:
 
 def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
     reranked_docs = state.get("reranked_docs") or []
+    evidence_docs = [doc for doc in reranked_docs if isinstance(doc, dict)]
     question = _clean_text(state.get("rewritten_query") or state.get("original_query"))
     query_type = str(state.get("query_type") or "general")
     query_family = _query_family(state)
@@ -261,9 +402,9 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
         for target in (state.get("query_anchor_targets") or [])
         if _clean_text(target)
     ]
-    doc_blobs = [_doc_blob(doc) for doc in reranked_docs if isinstance(doc, dict)]
+    doc_blobs = [_doc_blob(doc) for doc in evidence_docs]
     source_counts = Counter(
-        _clean_text(doc.get("source") or "local") for doc in reranked_docs if isinstance(doc, dict)
+        _clean_text(doc.get("source") or "local") for doc in evidence_docs
     )
 
     covered_terms: List[str] = []
@@ -306,7 +447,7 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
     coverage_sub_ratio = (
         len(covered_sub_queries) / len(sub_queries) if sub_queries else 1.0
     )
-    target_coverage = build_target_coverage(reranked_docs, query_anchor_targets)
+    target_coverage = build_target_coverage(evidence_docs, query_anchor_targets)
     coverage_target_ratio = target_coverage.get("coverage_rate", 1.0)
     doc_ratio = min(
         doc_count / max(_rescue_min_docs(state), 1),
@@ -334,8 +475,118 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
         or bool(missing_items)
         or (target_coverage_required and bool(missing_targets))
     )
+    coverage_gaps: List[Dict[str, Any]] = []
+    if doc_count <= 0:
+        coverage_gaps.append(
+            _coverage_gap(
+                "documents",
+                ["no_retrieved_documents"],
+                "high",
+                "no_evidence_available",
+                "expand_retrieval_sources",
+            )
+        )
+    elif doc_count < _rescue_min_docs(state):
+        coverage_gaps.append(
+            _coverage_gap(
+                "documents",
+                [f"{doc_count}/{_rescue_min_docs(state)}"],
+                "medium",
+                "too_few_evidence_documents",
+                "expand_lexical_retrieval",
+            )
+        )
+    if missing_targets:
+        coverage_gaps.append(
+            _coverage_gap(
+                "targets",
+                missing_targets,
+                "high" if target_coverage_required else "medium",
+                "missing_anchor_targets",
+                "cover_missing_targets",
+            )
+        )
+    if missing_sub_queries:
+        coverage_gaps.append(
+            _coverage_gap(
+                "sub_queries",
+                missing_sub_queries,
+                "high",
+                "missing_sub_query_evidence",
+                "cover_missing_sub_queries",
+            )
+        )
+    if missing_items:
+        coverage_gaps.append(
+            _coverage_gap(
+                "item_names",
+                missing_items,
+                "high",
+                "missing_item_evidence",
+                "broaden_or_drop_item_filter",
+            )
+        )
+    if missing_terms:
+        all_focus_missing = bool(focus_terms) and len(missing_terms) == len(focus_terms)
+        coverage_gaps.append(
+            _coverage_gap(
+                "focus_terms",
+                missing_terms,
+                "high" if all_focus_missing and _is_quality_rescue_path(query_type, query_family) else "medium",
+                "missing_focus_term_evidence",
+                "expand_lexical_retrieval",
+            )
+        )
+    if coverage_score < _rescue_min_coverage_score(state) and not coverage_gaps:
+        coverage_gaps.append(
+            _coverage_gap(
+                "coverage_score",
+                [coverage_score],
+                "medium",
+                "coverage_score_below_threshold",
+                "query_rewrite_retry",
+            )
+        )
+    high_gap_count = len(
+        [gap for gap in coverage_gaps if gap.get("severity") == "high"]
+    )
+    clarification_required = bool(clarification.get("required"))
+    if clarification_required:
+        coverage_gaps.append(
+            _coverage_gap(
+                "query",
+                [clarification.get("reason") or "clarification_required"],
+                "high",
+                "query_missing_required_constraints",
+                "ask_clarification",
+            )
+        )
+        high_gap_count += 1
+    if doc_count <= 0 or clarification_required or high_gap_count > 0:
+        coverage_risk_level = "high"
+    elif needs_rescue or coverage_gaps:
+        coverage_risk_level = "medium"
+    else:
+        coverage_risk_level = "low"
+    answerability = _coverage_answerability(
+        doc_count,
+        needs_rescue,
+        clarification_required,
+        high_gap_count,
+    )
+    coverage_support = {
+        "focus_terms": _supporting_docs_for_terms(focus_terms, evidence_docs, doc_blobs),
+        "item_names": _supporting_docs_for_terms(item_names, evidence_docs, doc_blobs),
+        "sub_queries": _supporting_docs_for_sub_queries(
+            sub_queries,
+            evidence_docs,
+            doc_blobs,
+        ),
+        "targets": _target_support_rows(target_coverage),
+    }
 
     return {
+        "coverage_version": "v2",
         "query_type": query_type,
         "router_query_family": query_family,
         "question": question,
@@ -355,8 +606,12 @@ def analyze_evidence_coverage(state: Dict[str, Any]) -> Dict[str, Any]:
         "target_coverage": target_coverage,
         "missing_targets": missing_targets,
         "coverage_score": coverage_score,
+        "coverage_risk_level": coverage_risk_level,
+        "coverage_gaps": coverage_gaps,
+        "coverage_support": coverage_support,
+        "answerability": answerability,
         "needs_rescue": needs_rescue,
-        "clarification_required": bool(clarification.get("required")),
+        "clarification_required": clarification_required,
         "clarification_reason": clarification.get("reason", ""),
         "clarification_question": clarification.get("question", ""),
         "clarification_options": clarification.get("options", []),
@@ -506,6 +761,20 @@ def build_answer_plan(state: Dict[str, Any]) -> Dict[str, Any]:
     coverage = state.get("evidence_coverage_summary") or {}
     kg_summary = state.get("kg_query_summary") or {}
     reranked_docs = state.get("reranked_docs") or []
+    retrieval_grade = str(state.get("retrieval_grade") or "")
+    coverage_score = coverage.get("coverage_score")
+    coverage_answerability = str(coverage.get("answerability") or "")
+    coverage_risk_level = str(coverage.get("coverage_risk_level") or "")
+    coverage_incomplete = (
+        bool(coverage.get("needs_rescue"))
+        or retrieval_grade == "insufficient"
+        or coverage_risk_level in {"medium", "high"}
+        or coverage_answerability in {
+            "partial",
+            "unanswerable_no_evidence",
+            "needs_clarification",
+        }
+    )
     query_anchor_targets = [
         _clean_text(target)
         for target in (state.get("query_anchor_targets") or [])
@@ -552,9 +821,19 @@ def build_answer_plan(state: Dict[str, Any]) -> Dict[str, Any]:
         "must_cover": must_cover,
         "top_titles": top_titles,
         "top_graph_facts": top_graph_facts,
-        "coverage_score": coverage.get("coverage_score"),
+        "coverage_score": coverage_score,
         "graph_summary": kg_summary,
+        "risk_level": "high" if coverage_incomplete else "normal",
+        "answerability": coverage_answerability
+        or ("partial_or_unknown" if coverage_incomplete else "answerable"),
+        "must_refuse_missing_parts": coverage_incomplete,
     }
+
+    if coverage_incomplete:
+        plan["style_instructions"] = list(plan.get("style_instructions") or []) + [
+            "如果当前证据不足，只回答证据直接支持的部分。",
+            "对缺少证据的参数、步骤、条件或结论必须明确说明资料中未提供。",
+        ]
 
     if not structured_enabled or not high_risk_structured:
         return plan
@@ -615,7 +894,239 @@ def build_answer_plan(state: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
+    if coverage_incomplete:
+        for instruction in (
+            "如果当前证据不足，只回答证据直接支持的部分。",
+            "对缺少证据的参数、步骤、条件或结论必须明确说明资料中未提供。",
+        ):
+            if instruction not in plan.get("style_instructions", []):
+                plan["style_instructions"].append(instruction)
+
     return plan
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _append_flag(flags: List[str], flag: str) -> None:
+    if flag and flag not in flags:
+        flags.append(flag)
+
+
+def _retrieval_source_counts(state: Dict[str, Any]) -> Dict[str, int]:
+    return {
+        "embedding": len(state.get("embedding_chunks") or []),
+        "hyde": len(state.get("hyde_embedding_chunks") or []),
+        "bm25": len(state.get("bm25_chunks") or []),
+        "anchor": len(state.get("anchor_chunks") or []),
+        "kg": len(state.get("kg_chunks") or []),
+        "web": len(state.get("web_search_docs") or []),
+        "rrf": len(state.get("rrf_chunks") or []),
+        "reranked": len(state.get("reranked_docs") or []),
+    }
+
+
+def _has_judge_failure_reason(reason: Any) -> bool:
+    text = _clean_text(reason).lower()
+    return any(marker in text for marker in ("failed", "失败", "error", "exception", "降级通过"))
+
+
+def build_quality_trace(state: Dict[str, Any]) -> Dict[str, Any]:
+    coverage = state.get("evidence_coverage_summary") or {}
+    rerank_diagnostics = state.get("rerank_diagnostics") or {}
+    rescue_plan = state.get("rescue_plan") or {}
+    answer_plan = state.get("answer_plan") or {}
+    claim_summary = state.get("claim_verification_summary") or {}
+    retrieval_grade = str(state.get("retrieval_grade") or "")
+    retrieval_strategy = str(state.get("retrieval_grader_strategy") or "")
+    retrieval_skip_reason = str(state.get("retrieval_judge_skipped_reason") or "")
+    hallucination_strategy = str(state.get("hallucination_check_strategy") or "")
+    hallucination_skip_reason = str(state.get("hallucination_judge_skipped_reason") or "")
+    retry_count = int(state.get("retry_count") or 0)
+    hallucination_retry_count = int(state.get("hallucination_retry_count") or 0)
+    coverage_score = _safe_float(coverage.get("coverage_score"), 1.0)
+    min_coverage_score = _rescue_min_coverage_score(state)
+    coverage_risk_level = str(coverage.get("coverage_risk_level") or "").lower()
+    coverage_answerability = str(coverage.get("answerability") or "").lower()
+    target_coverage = state.get("target_coverage") or {}
+    missing_targets = coverage.get("missing_targets") or target_coverage.get("missing_targets") or []
+    missing_sub_queries = coverage.get("missing_sub_queries") or []
+    missing_items = coverage.get("missing_item_names") or []
+    missing_focus_terms = coverage.get("missing_focus_terms") or []
+    coverage_gaps = coverage.get("coverage_gaps") or []
+    flags: List[str] = []
+
+    if bool(state.get("need_rag", False)) and not state.get("reranked_docs"):
+        _append_flag(flags, "empty_retrieval")
+    if retrieval_grade in {"insufficient", "partial", "irrelevant", "conflicting", "unanswerable"}:
+        _append_flag(flags, "low_retrieval_confidence")
+    if retrieval_grade == "retry":
+        _append_flag(flags, "crag_retry_pending")
+    if retry_count > 0:
+        _append_flag(flags, "crag_retry_used")
+    if retrieval_grade == "insufficient" and retry_count >= int(query_threshold_config.crag_max_retries):
+        _append_flag(flags, "crag_retry_exhausted")
+    if bool(coverage.get("needs_rescue")) or coverage_score < min_coverage_score:
+        _append_flag(flags, "coverage_incomplete")
+    if coverage_risk_level == "high":
+        _append_flag(flags, "coverage_high_risk")
+    elif coverage_risk_level == "medium":
+        _append_flag(flags, "coverage_medium_risk")
+    if coverage_answerability in {"unanswerable_no_evidence", "needs_clarification"}:
+        _append_flag(flags, "coverage_unanswerable")
+    elif coverage_answerability == "partial":
+        _append_flag(flags, "coverage_partial")
+    if missing_targets:
+        _append_flag(flags, "target_coverage_incomplete")
+    if missing_sub_queries:
+        _append_flag(flags, "subquery_coverage_incomplete")
+    if missing_items:
+        _append_flag(flags, "item_coverage_incomplete")
+    if missing_focus_terms:
+        _append_flag(flags, "focus_term_coverage_incomplete")
+    if rescue_plan.get("action") == "retry":
+        _append_flag(flags, "retrieval_rescue_triggered")
+    if rescue_plan.get("action") == "clarify":
+        _append_flag(flags, "clarification_required")
+    if (
+        bool(rerank_diagnostics.get("fallback"))
+        or bool(rerank_diagnostics.get("heuristic"))
+        or bool(rerank_diagnostics.get("error"))
+        or str(rerank_diagnostics.get("status") or "").lower().startswith("error")
+    ):
+        _append_flag(flags, "rerank_untrusted")
+    if retrieval_strategy == "failed" or _has_judge_failure_reason(retrieval_skip_reason):
+        _append_flag(flags, "retrieval_judge_failed")
+    elif retrieval_skip_reason:
+        _append_flag(flags, "retrieval_judge_skipped")
+    if hallucination_strategy == "failed" or _has_judge_failure_reason(hallucination_skip_reason):
+        _append_flag(flags, "hallucination_judge_failed")
+    elif hallucination_skip_reason:
+        _append_flag(flags, "hallucination_judge_skipped")
+    if not bool(state.get("hallucination_check_passed", True)):
+        _append_flag(flags, "hallucination_detected")
+    if hallucination_retry_count > 0:
+        _append_flag(flags, "hallucination_retry_used")
+    if bool(state.get("is_stream")) and bool(state.get("need_rag", False)) and not hallucination_strategy:
+        _append_flag(flags, "streaming_unverified_answer")
+    if bool(state.get("answer")) and (
+        retrieval_grade == "insufficient" or bool(coverage.get("needs_rescue"))
+    ):
+        _append_flag(flags, "answer_generated_with_insufficient_evidence")
+    if bool(answer_plan.get("must_refuse_missing_parts")):
+        _append_flag(flags, "answer_requires_partial_refusal")
+    if bool(state.get("crag_safe_generation_required")):
+        _append_flag(flags, "crag_safe_generation_required")
+    if bool(state.get("citation_required")):
+        _append_flag(flags, "citation_required")
+    if int(claim_summary.get("unsupported_claim_count") or 0) > 0:
+        _append_flag(flags, "unsupported_claims_detected")
+    if int(claim_summary.get("weak_claim_count") or 0) > 0:
+        _append_flag(flags, "weakly_supported_claims_detected")
+    claim_risk_level = str(claim_summary.get("risk_level") or "").lower()
+    if claim_risk_level == "high":
+        _append_flag(flags, "claim_verification_high_risk")
+    elif claim_risk_level == "medium":
+        _append_flag(flags, "claim_verification_medium_risk")
+
+    severe_flags = {
+        "empty_retrieval",
+        "low_retrieval_confidence",
+        "crag_retry_exhausted",
+        "retrieval_judge_failed",
+        "hallucination_judge_failed",
+        "hallucination_detected",
+        "answer_generated_with_insufficient_evidence",
+        "coverage_high_risk",
+        "coverage_unanswerable",
+        "unsupported_claims_detected",
+        "claim_verification_high_risk",
+    }
+    medium_flags = {
+        "coverage_incomplete",
+        "coverage_medium_risk",
+        "coverage_partial",
+        "target_coverage_incomplete",
+        "subquery_coverage_incomplete",
+        "item_coverage_incomplete",
+        "focus_term_coverage_incomplete",
+        "weakly_supported_claims_detected",
+        "claim_verification_medium_risk",
+        "rerank_untrusted",
+        "streaming_unverified_answer",
+    }
+    if any(flag in severe_flags for flag in flags):
+        risk_level = "high"
+    elif any(flag in medium_flags for flag in flags):
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+
+    return {
+        "risk_level": risk_level,
+        "flags": flags,
+        "retrieval": {
+            "grade": retrieval_grade,
+            "retry_count": retry_count,
+            "strategy": retrieval_strategy,
+            "judge_skipped_reason": retrieval_skip_reason,
+            "rescue_action": rescue_plan.get("action") or "",
+            "rescue_reason": rescue_plan.get("reason") or "",
+            "rescue_steps": rescue_plan.get("steps") or [],
+            "source_counts": _retrieval_source_counts(state),
+            "rerank_diagnostics": rerank_diagnostics,
+        },
+        "coverage": {
+            "score": coverage_score,
+            "min_score": min_coverage_score,
+            "needs_rescue": bool(coverage.get("needs_rescue")),
+            "risk_level": coverage_risk_level,
+            "answerability": coverage_answerability,
+            "gaps": coverage_gaps,
+            "missing_targets": missing_targets,
+            "missing_sub_queries": missing_sub_queries,
+            "missing_item_names": missing_items,
+            "missing_focus_terms": missing_focus_terms,
+        },
+        "generation": {
+            "grounded_mode": bool(state.get("grounded_mode", False)),
+            "answer_plan_risk_level": answer_plan.get("risk_level") or "",
+            "answerability": answer_plan.get("answerability") or "",
+            "must_refuse_missing_parts": bool(answer_plan.get("must_refuse_missing_parts")),
+            "crag_safe_generation_required": bool(
+                state.get("crag_safe_generation_required")
+            ),
+            "crag_safe_reason": state.get("crag_safe_reason") or "",
+            "citation_required": bool(state.get("citation_required", False)),
+            "citation_targets": state.get("citation_targets") or [],
+            "final_context_doc_count": int(state.get("final_context_doc_count") or 0),
+            "final_context_chars": int(state.get("final_context_chars") or 0),
+        },
+        "verification": {
+            "hallucination_check_passed": bool(
+                state.get("hallucination_check_passed", True)
+            ),
+            "hallucination_check_strategy": hallucination_strategy,
+            "hallucination_judge_skipped_reason": hallucination_skip_reason,
+            "hallucination_retry_count": hallucination_retry_count,
+            "feedback": state.get("hallucination_feedback") or "",
+            "claim_verification": {
+                "enabled": bool(claim_summary.get("enabled", False)),
+                "strategy": claim_summary.get("strategy") or "",
+                "risk_level": claim_summary.get("risk_level") or "",
+                "claim_count": int(claim_summary.get("claim_count") or 0),
+                "unsupported_claim_count": int(
+                    claim_summary.get("unsupported_claim_count") or 0
+                ),
+                "weak_claim_count": int(claim_summary.get("weak_claim_count") or 0),
+                "support_rate": _safe_float(claim_summary.get("support_rate"), 1.0),
+            },
+        },
+    }
 
 
 def build_agentic_response_metadata(
@@ -626,6 +1137,7 @@ def build_agentic_response_metadata(
     rescue_plan = state.get("rescue_plan") or {}
     context_expansion = state.get("context_expansion_summary") or {}
     rerank_diagnostics = state.get("rerank_diagnostics") or {}
+    quality_trace = build_quality_trace(state)
     return {
         "query_type": state.get("query_type") or "general",
         "query_complexity": state.get("query_complexity") or "simple",
@@ -665,9 +1177,19 @@ def build_agentic_response_metadata(
         or "",
         "retrieval_grader_strategy": state.get("retrieval_grader_strategy") or "",
         "hallucination_check_strategy": state.get("hallucination_check_strategy") or "",
+        "claim_verification_summary": state.get("claim_verification_summary") or {},
         "answer_plan": answer_plan,
+        "crag_safe_generation_required": bool(
+            state.get("crag_safe_generation_required", False)
+        ),
+        "crag_safe_reason": state.get("crag_safe_reason") or "",
+        "citation_required": bool(state.get("citation_required", False)),
+        "citation_targets": state.get("citation_targets") or [],
         "clarification_reason": coverage.get("clarification_reason") or state.get("clarification_reason") or "",
         "image_urls": list(image_urls or []),
         "agentic_features": get_agentic_features(state),
+        "quality_trace": quality_trace,
+        "quality_flags": quality_trace.get("flags") or [],
+        "quality_risk_level": quality_trace.get("risk_level") or "low",
         "cache_summary": state.get("cache_summary") or {},
     }

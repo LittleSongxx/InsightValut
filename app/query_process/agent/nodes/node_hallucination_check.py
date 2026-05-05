@@ -2,14 +2,25 @@ import sys
 import json
 import re
 
-from app.utils.task_utils import add_running_task, add_done_task
+from app.utils.task_utils import add_running_task, add_done_task, set_task_result
 from app.lm.lm_utils import coerce_llm_content, get_llm_client
 from app.core.load_prompt import load_prompt
 from app.core.logger import logger
 from app.conf.query_threshold_config import query_threshold_config
+from app.query_process.agent.agentic_utils import build_quality_trace
 
 cfg = query_threshold_config
 HALLUCINATION_MAX_RETRIES = cfg.hallucination_max_retries
+
+
+_CLAIM_SKIP_PHRASES = (
+    "抱歉，资料中未提供",
+    "资料中未提供",
+    "当前资料未直接给出",
+    "无法确定",
+    "未说明",
+    "待确认",
+)
 
 
 def _bool_from_state(state: dict, key: str, default: bool = False) -> bool:
@@ -42,6 +53,133 @@ def _rerank_diagnostics_untrusted(diagnostics: dict) -> bool:
         return True
 
 
+def _normalize_claim_text(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "")).lower()
+
+
+def _claim_terms(value: str) -> set[str]:
+    normalized = str(value or "")
+    terms = set(
+        re.findall(
+            r"[A-Za-z0-9][A-Za-z0-9._/-]*|[\u4e00-\u9fff]{2,12}",
+            normalized,
+        )
+    )
+    return {term.lower() for term in terms if len(term.strip()) >= 2}
+
+
+def _extract_answer_claims(answer: str, limit: int = 12) -> list[str]:
+    text = re.sub(r"```.*?```", " ", str(answer or ""), flags=re.S)
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", text)
+    text = re.sub(r"\[[^\]]{1,80}\]\([^)]+\)", " ", text)
+    rows = re.split(r"[\n。！？!?；;]+", text)
+    claims: list[str] = []
+    seen = set()
+    for row in rows:
+        cleaned = re.sub(r"^\s*[-*#>\d.、）)]+\s*", "", row).strip()
+        cleaned = re.sub(r"\[[A-Za-z0-9._:/#-]{1,80}\]", "", cleaned).strip()
+        if len(cleaned) < 8:
+            continue
+        if any(phrase in cleaned for phrase in _CLAIM_SKIP_PHRASES):
+            continue
+        key = _normalize_claim_text(cleaned)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        claims.append(cleaned[:180])
+        if len(claims) >= limit:
+            break
+    return claims
+
+
+def _doc_identifier(doc: dict, index: int) -> str:
+    for key in ("chunk_id", "doc_id", "id", "url"):
+        value = str(doc.get(key) or "").strip()
+        if value:
+            return value
+    return f"doc_{index + 1}"
+
+
+def build_claim_verification_summary(answer: str, reranked_docs: list) -> dict:
+    claims = _extract_answer_claims(answer)
+    doc_rows = []
+    for index, doc in enumerate(reranked_docs or []):
+        if not isinstance(doc, dict):
+            continue
+        text = " ".join(
+            str(doc.get(key) or "")
+            for key in ("title", "section_path", "text", "content", "graph_fact")
+        )
+        normalized = _normalize_claim_text(text)
+        if not normalized:
+            continue
+        doc_rows.append(
+            {
+                "id": _doc_identifier(doc, index),
+                "title": str(doc.get("title") or doc.get("section_path") or ""),
+                "text": normalized,
+                "terms": _claim_terms(text),
+            }
+        )
+    verified_claims = []
+    unsupported_claims = []
+    weak_claims = []
+    for claim in claims:
+        claim_key = _normalize_claim_text(claim)
+        claim_terms = _claim_terms(claim)
+        best_doc = None
+        best_score = 0.0
+        for doc in doc_rows:
+            substring_score = 1.0 if claim_key and claim_key in doc["text"] else 0.0
+            overlap_score = 0.0
+            if claim_terms:
+                overlap_score = len(claim_terms & doc["terms"]) / len(claim_terms)
+            score = max(substring_score, overlap_score)
+            if score > best_score:
+                best_score = score
+                best_doc = doc
+        row = {
+            "claim": claim,
+            "support_score": round(best_score, 4),
+            "supporting_doc_id": (best_doc or {}).get("id", ""),
+            "supporting_doc_title": (best_doc or {}).get("title", ""),
+        }
+        if best_score >= 0.82:
+            verified_claims.append(row)
+        elif best_score >= 0.45:
+            weak_claims.append(row)
+        else:
+            unsupported_claims.append(row)
+    claim_count = len(claims)
+    supported_count = len(verified_claims)
+    weak_count = len(weak_claims)
+    unsupported_count = len(unsupported_claims)
+    support_rate = (
+        round((supported_count + weak_count * 0.5) / claim_count, 4)
+        if claim_count
+        else 1.0
+    )
+    if unsupported_count:
+        risk_level = "high"
+    elif weak_count:
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+    return {
+        "enabled": True,
+        "strategy": "lexical_overlap",
+        "claim_count": claim_count,
+        "supported_claim_count": supported_count,
+        "weak_claim_count": weak_count,
+        "unsupported_claim_count": unsupported_count,
+        "support_rate": support_rate,
+        "risk_level": risk_level,
+        "verified_claims": verified_claims[:8],
+        "weak_claims": weak_claims[:8],
+        "unsupported_claims": unsupported_claims[:8],
+    }
+
+
 def _needs_llm_hallucination_check(state: dict, answer: str, reranked_docs: list) -> bool:
     if _bool_from_state(state, "force_hallucination_llm", False):
         return True
@@ -53,6 +191,12 @@ def _needs_llm_hallucination_check(state: dict, answer: str, reranked_docs: list
     target_coverage = state.get("target_coverage") or {}
     missing_targets = target_coverage.get("missing_targets") or []
     if missing_targets and "抱歉，资料中未提供" not in answer:
+        return True
+
+    claim_summary = state.get("claim_verification_summary") or {}
+    if int(claim_summary.get("unsupported_claim_count") or 0) > 0:
+        return True
+    if str(claim_summary.get("risk_level") or "").lower() == "medium":
         return True
 
     answer_numbers = set(re.findall(r"\d+(?:\.\d+)?%?|[A-Za-z]{1,8}\d[A-Za-z0-9._/-]*", answer))
@@ -94,6 +238,25 @@ def _needs_llm_hallucination_check(state: dict, answer: str, reranked_docs: list
         return True
 
     return False
+
+
+def _finalize_quality_result(state: dict, result: dict) -> dict:
+    quality_trace = build_quality_trace({**state, **result})
+    result["quality_trace"] = quality_trace
+    result["quality_flags"] = quality_trace.get("flags") or []
+    result["quality_risk_level"] = quality_trace.get("risk_level") or "low"
+    response_metadata = dict(state.get("response_metadata") or {})
+    if response_metadata:
+        if result.get("claim_verification_summary"):
+            response_metadata["claim_verification_summary"] = result[
+                "claim_verification_summary"
+            ]
+        response_metadata["quality_trace"] = result["quality_trace"]
+        response_metadata["quality_flags"] = result["quality_flags"]
+        response_metadata["quality_risk_level"] = result["quality_risk_level"]
+        result["response_metadata"] = response_metadata
+        set_task_result(state["session_id"], "metadata", response_metadata)
+    return result
 
 
 def step_1_check_hallucination(question: str, answer: str, reranked_docs: list) -> dict:
@@ -159,7 +322,11 @@ def step_1_check_hallucination(question: str, answer: str, reranked_docs: list) 
     except Exception as e:
         logger.exception("Step 1: 幻觉检查失败")
         # 降级：检查失败时默认通过
-        return {"passed": True, "hallucinations": f"检查失败(降级通过): {e}"}
+        return {
+            "passed": True,
+            "hallucinations": f"检查失败(降级通过，仅保留兼容行为): {e}",
+            "judge_failed": True,
+        }
 
 
 def node_hallucination_check(state):
@@ -190,6 +357,13 @@ def node_hallucination_check(state):
     question = state.get("rewritten_query") or state.get("original_query", "")
     is_stream = state.get("is_stream", False)
     hallucination_retry_count = state.get("hallucination_retry_count", 0)
+    claim_summary = (
+        build_claim_verification_summary(answer, reranked_docs)
+        if state.get("need_rag") and answer
+        else {}
+    )
+    if claim_summary:
+        state["claim_verification_summary"] = claim_summary
 
     # 跳过条件检查
     skip_reason = None
@@ -202,40 +376,49 @@ def node_hallucination_check(state):
 
     if skip_reason:
         logger.info(f"幻觉检查跳过: {skip_reason}")
-        add_done_task(
-            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
-        )
-        return {
+        result = {
             "hallucination_check_passed": True,
             "judge_skipped_reason": skip_reason,
             "hallucination_judge_skipped_reason": skip_reason,
             "hallucination_check_strategy": "skipped",
+            "claim_verification_summary": claim_summary,
         }
+        result = _finalize_quality_result(state, result)
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        return result
 
     if not _needs_llm_hallucination_check(state, answer, reranked_docs):
         skip_reason = "grounded_evidence_low_risk"
         logger.info("幻觉检查轻量规则通过，跳过 LLM 检查: %s", skip_reason)
-        add_done_task(
-            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
-        )
-        return {
+        result = {
             "hallucination_check_passed": True,
             "hallucination_feedback": "",
             "judge_skipped_reason": skip_reason,
             "hallucination_judge_skipped_reason": skip_reason,
             "hallucination_check_strategy": "gated",
+            "claim_verification_summary": claim_summary,
         }
+        result = _finalize_quality_result(state, result)
+        add_done_task(
+            state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")
+        )
+        return result
 
     # 阶段1：执行幻觉检查
     check_result = step_1_check_hallucination(question, answer, reranked_docs)
     passed = check_result.get("passed", True)
 
-    result = {}
+    result = {"claim_verification_summary": claim_summary}
+    if check_result.get("judge_failed"):
+        result["judge_skipped_reason"] = check_result.get("hallucinations") or "hallucination_judge_failed"
+        result["hallucination_judge_skipped_reason"] = result["judge_skipped_reason"]
 
     if passed:
         logger.info("幻觉检查通过，答案事实一致性合格")
         result["hallucination_check_passed"] = True
-        result["hallucination_check_strategy"] = "llm"
+        result["hallucination_check_strategy"] = "failed" if check_result.get("judge_failed") else "llm"
 
     elif is_stream:
         # 流式模式下答案已推送，无法重新生成，仅记录警告
@@ -262,6 +445,8 @@ def node_hallucination_check(state):
         result["hallucination_feedback"] = feedback
         result["hallucination_retry_count"] = hallucination_retry_count + 1
         result["hallucination_check_strategy"] = "llm"
+
+    result = _finalize_quality_result(state, result)
 
     add_done_task(
         state["session_id"], sys._getframe().f_code.co_name, state.get("is_stream")

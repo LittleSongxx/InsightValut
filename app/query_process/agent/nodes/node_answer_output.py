@@ -90,6 +90,38 @@ def _context_doc_title(doc: Dict[str, Any]) -> str:
     ).strip()
 
 
+def _requires_safe_generation(state: QueryGraphState) -> bool:
+    coverage = state.get("evidence_coverage_summary") or {}
+    return bool(
+        state.get("crag_safe_generation_required")
+        or state.get("retrieval_grade") == "insufficient"
+        or coverage.get("needs_rescue")
+    )
+
+
+def _should_short_circuit_safe_fallback(state: QueryGraphState) -> bool:
+    return bool(
+        state.get("need_rag")
+        and _requires_safe_generation(state)
+        and not (state.get("reranked_docs") or [])
+    )
+
+
+def _citation_targets_from_docs(docs: list[Dict[str, Any]], limit: int = 8) -> list[str]:
+    targets: list[str] = []
+    seen = set()
+    for doc in docs or []:
+        doc_id = _context_doc_id(doc)
+        if not doc_id or doc_id in seen:
+            continue
+        seen.add(doc_id)
+        title = _context_doc_title(doc)
+        targets.append(f"{doc_id}（{title}）" if title else doc_id)
+        if len(targets) >= limit:
+            break
+    return targets
+
+
 def _set_final_context_state(
     state: QueryGraphState,
     *,
@@ -292,6 +324,49 @@ def step_2_construct_prompt(state: QueryGraphState) -> str:
                     + "、".join(str(item) for item in missing_targets[:6])
                     + "。这些目标必须使用固定兜底语。\n"
                 )
+
+    if _requires_safe_generation(state):
+        coverage = state.get("evidence_coverage_summary") or {}
+        missing_parts = []
+        for key in ("missing_targets", "missing_sub_queries", "missing_item_names", "missing_focus_terms"):
+            values = coverage.get(key) or []
+            if values:
+                missing_parts.append(f"{key}: " + "、".join(str(item) for item in values[:6]))
+        coverage_gaps = []
+        for gap in coverage.get("coverage_gaps") or []:
+            if not isinstance(gap, dict):
+                continue
+            dimension = str(gap.get("dimension") or "").strip()
+            severity = str(gap.get("severity") or "").strip()
+            reason = str(gap.get("reason") or "").strip()
+            if dimension or reason:
+                coverage_gaps.append(
+                    f"{severity or 'unknown'}:{dimension or 'unknown'}:{reason or 'unknown'}"
+                )
+        prompt += (
+            "\n\n【CRAG 安全生成约束】\n"
+            "1. 当前检索质量不足或证据覆盖不完整，回答必须降级为保守模式。\n"
+            "2. 只允许输出参考内容直接支持的事实；不允许补全缺失参数、步骤、适用范围、比较结论或因果链。\n"
+            f"3. 如果没有任何可用参考内容，必须只回答：{FALLBACK_MESSAGE}。\n"
+            "4. 对证据缺失的对象或子问题，必须逐项写“抱歉，资料中未提供”，不能用相近证据替代。\n"
+        )
+        if missing_parts:
+            prompt += "当前缺失证据项：\n" + "\n".join(f"- {item}" for item in missing_parts) + "\n"
+        if coverage_gaps:
+            prompt += "结构化覆盖缺口：\n" + "\n".join(f"- {item}" for item in coverage_gaps[:8]) + "\n"
+
+    citation_targets = _citation_targets_from_docs(reranked_docs)
+    if citation_targets and (grounded_mode or _requires_safe_generation(state)):
+        state["citation_required"] = True
+        state["citation_targets"] = citation_targets
+        prompt += (
+            "\n\n【证据引用约束】\n"
+            "1. 回答中的关键事实、参数、步骤、限制、比较结论或因果关系后必须附上对应证据 ID，格式为 [chunk_id]。\n"
+            "2. 如果某句话无法对应到下列证据 ID，不要输出该事实。\n"
+            "可引用证据 ID：\n"
+            + "\n".join(f"- {item}" for item in citation_targets)
+            + "\n"
+        )
 
     hallucination_feedback = state.get("hallucination_feedback")
     if hallucination_feedback:
@@ -551,18 +626,22 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
     answer_exists = step_1_check_answer(state)
 
     if not answer_exists:
-        prompt = step_2_construct_prompt(state)
-        state["prompt"] = prompt
-        answer_cache_descriptor = _answer_cache_descriptor(state)
-        cached_answer = query_cache_get("answer", answer_cache_descriptor)
-        if isinstance(cached_answer, str) and cached_answer.strip():
-            logger.info("答案缓存命中，跳过 LLM 生成")
+        if _should_short_circuit_safe_fallback(state):
+            state["answer"] = FALLBACK_MESSAGE
             perf_mark_first_token(state["session_id"])
-            state["answer"] = cached_answer
         else:
-            step_3_generate_response(state, prompt)
-            if state.get("answer"):
-                query_cache_set("answer", answer_cache_descriptor, state.get("answer"))
+            prompt = step_2_construct_prompt(state)
+            state["prompt"] = prompt
+            answer_cache_descriptor = _answer_cache_descriptor(state)
+            cached_answer = query_cache_get("answer", answer_cache_descriptor)
+            if isinstance(cached_answer, str) and cached_answer.strip():
+                logger.info("答案缓存命中，跳过 LLM 生成")
+                perf_mark_first_token(state["session_id"])
+                state["answer"] = cached_answer
+            else:
+                step_3_generate_response(state, prompt)
+                if state.get("answer"):
+                    query_cache_set("answer", answer_cache_descriptor, state.get("answer"))
 
     # 提取图片URL（用于历史记录和前端展示）
     image_urls = _extract_images_from_docs(state.get("reranked_docs") or [])
@@ -571,6 +650,12 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
         set_task_result(state["session_id"], "answer", state.get("answer"))
     response_metadata = build_agentic_response_metadata(state, image_urls=image_urls)
     state["response_metadata"] = response_metadata
+    state["quality_trace"] = response_metadata.get("quality_trace") or {}
+    state["quality_flags"] = response_metadata.get("quality_flags") or []
+    state["quality_risk_level"] = response_metadata.get("quality_risk_level") or "low"
+    state["claim_verification_summary"] = response_metadata.get(
+        "claim_verification_summary"
+    ) or state.get("claim_verification_summary") or {}
     set_task_result(state["session_id"], "metadata", response_metadata)
 
     # 把答案写入到mongodb的history中

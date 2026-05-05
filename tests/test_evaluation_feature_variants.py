@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.utils import unified_rag_eval as eval_mod
+from app.utils import eval_report_utils as report_utils
 from app.utils import perf_tracker as perf_mod
 from app.utils.eval_dataset_builder import _query_type_targets
 from app.utils.eval_job_utils import (
@@ -24,6 +25,9 @@ from app.utils.unified_rag_eval import (
 )
 from app.query_process.agent.nodes import node_item_name_confirm as item_confirm_mod
 from app.query_process.agent.nodes import node_query_decompose as query_decompose_mod
+from app.query_process.agent.nodes.node_hallucination_check import (
+    build_claim_verification_summary,
+)
 from app.query_process.agent.nodes import node_retrieval_grader as retrieval_grader_mod
 
 
@@ -204,6 +208,234 @@ def test_summary_includes_final_context_precision_and_rerank_diagnostics():
     assert pipeline_metrics["hallucination_judge_skipped_rate"] == 1.0
 
 
+def test_summary_includes_coverage_v2_risk_and_gap_metrics():
+    cases = [
+        {
+            "response": "部分回答",
+            "evidence_coverage_summary": {
+                "coverage_score": 0.4,
+                "coverage_risk_level": "high",
+                "answerability": "partial",
+                "coverage_gaps": [
+                    {"severity": "high", "dimension": "targets"},
+                    {"severity": "medium", "dimension": "focus_terms"},
+                ],
+            },
+            "quality_risk_level": "high",
+            "quality_flags": ["coverage_high_risk", "coverage_partial"],
+            "cache_summary": {},
+        },
+        {
+            "response": "无法回答",
+            "evidence_coverage_summary": {
+                "coverage_score": 0.0,
+                "coverage_risk_level": "high",
+                "answerability": "unanswerable_no_evidence",
+                "coverage_gaps": [
+                    {"severity": "high", "dimension": "documents"},
+                ],
+            },
+            "quality_risk_level": "high",
+            "quality_flags": ["coverage_unanswerable"],
+            "cache_summary": {},
+        },
+    ]
+
+    pipeline_metrics = _summarize_pipeline(cases)
+
+    assert pipeline_metrics["coverage_high_risk_rate"] == 1.0
+    assert pipeline_metrics["coverage_medium_or_high_risk_rate"] == 1.0
+    assert pipeline_metrics["coverage_gap_case_rate"] == 1.0
+    assert pipeline_metrics["coverage_partial_answer_rate"] == 0.5
+    assert pipeline_metrics["coverage_unanswerable_rate"] == 0.5
+    assert pipeline_metrics["coverage_risk_distribution"] == {"high": 2}
+    assert pipeline_metrics["coverage_answerability_distribution"] == {
+        "partial": 1,
+        "unanswerable_no_evidence": 1,
+    }
+    assert pipeline_metrics["coverage_gap_counts"] == {
+        "high:documents": 1,
+        "high:targets": 1,
+        "medium:focus_terms": 1,
+    }
+
+
+def test_claim_verifier_flags_unsupported_claims():
+    summary = build_claim_verification_summary(
+        "A 需要固定支架。A 支持蓝牙控制。",
+        [
+            {
+                "chunk_id": "a1",
+                "title": "A 安装",
+                "text": "A 需要固定支架。",
+            }
+        ],
+    )
+
+    assert summary["enabled"] is True
+    assert summary["risk_level"] == "high"
+    assert summary["unsupported_claim_count"] == 1
+    assert summary["supported_claim_count"] == 1
+    assert summary["unsupported_claims"][0]["claim"] == "A 支持蓝牙控制"
+
+
+def test_summary_includes_claim_verification_metrics():
+    cases = [
+        {
+            "response": "回答1",
+            "claim_verification_summary": {
+                "risk_level": "high",
+                "support_rate": 0.5,
+                "unsupported_claim_count": 1,
+                "weak_claim_count": 0,
+            },
+            "quality_risk_level": "high",
+            "quality_flags": ["unsupported_claims_detected"],
+            "cache_summary": {},
+        },
+        {
+            "response": "回答2",
+            "claim_verification_summary": {
+                "risk_level": "medium",
+                "support_rate": 0.75,
+                "unsupported_claim_count": 0,
+                "weak_claim_count": 1,
+            },
+            "quality_risk_level": "medium",
+            "quality_flags": ["weakly_supported_claims_detected"],
+            "cache_summary": {},
+        },
+    ]
+
+    pipeline_metrics = _summarize_pipeline(cases)
+
+    assert pipeline_metrics["avg_claim_support_rate"] == 0.625
+    assert pipeline_metrics["claim_verification_high_risk_rate"] == 0.5
+    assert pipeline_metrics["claim_verification_medium_or_high_risk_rate"] == 1.0
+    assert pipeline_metrics["unsupported_claim_case_rate"] == 0.5
+    assert pipeline_metrics["weak_claim_case_rate"] == 0.5
+    assert pipeline_metrics["claim_verification_risk_distribution"] == {
+        "high": 1,
+        "medium": 1,
+    }
+
+
+def test_quality_gates_fail_on_quality_and_claim_risks():
+    gates = eval_mod._build_quality_gates(
+        {
+            "pipeline_metrics": {
+                "error_rate": 0.1,
+                "quality_risk_distribution": {"high": 1},
+                "quality_high_risk_rate": 0.5,
+                "quality_medium_or_high_risk_rate": 0.5,
+                "coverage_risk_distribution": {"low": 2},
+                "coverage_high_risk_rate": 0.0,
+                "coverage_unanswerable_rate": 0.0,
+                "claim_verification_risk_distribution": {"high": 1},
+                "claim_verification_high_risk_rate": 0.5,
+                "unsupported_claim_case_rate": 0.5,
+                "avg_claim_support_rate": 0.5,
+                "retrieval_judge_failed_rate": 0.0,
+                "hallucination_judge_failed_rate": 0.0,
+                "insufficient_evidence_answer_rate": 0.0,
+            },
+            "retrieval_metrics": {"final_context_precision": 0.8},
+            "ragas_metrics": {"faithfulness": 0.8, "response_relevancy": 0.8},
+            "performance_metrics": {},
+        }
+    )
+
+    failed_metrics = {
+        item["metric"] for item in gates["checks"] if item["status"] == "failed"
+    }
+    assert gates["status"] == "failed"
+    assert gates["passed"] is False
+    assert "error_rate" in failed_metrics
+    assert "claim_verification_high_risk_rate" in failed_metrics
+    assert "unsupported_claim_case_rate" in failed_metrics
+    assert "avg_claim_support_rate" in failed_metrics
+
+
+def test_variant_summary_attaches_quality_gates_and_headline_gate_metrics():
+    summary = _summarize_variant(
+        "combo_baseline",
+        [
+            {
+                "case_id": "case_1",
+                "query_type": "general",
+                "response": "回答",
+                "retrieved_context_ids": ["chunk_1"],
+                "final_context_ids": ["chunk_1"],
+                "relevant_chunk_ids": ["chunk_1"],
+                "quality_risk_level": "low",
+                "quality_flags": [],
+                "evidence_coverage_summary": {
+                    "coverage_score": 1.0,
+                    "coverage_risk_level": "low",
+                    "answerability": "answerable",
+                    "coverage_gaps": [],
+                },
+                "claim_verification_summary": {
+                    "risk_level": "low",
+                    "support_rate": 1.0,
+                    "unsupported_claim_count": 0,
+                    "weak_claim_count": 0,
+                },
+                "cache_summary": {},
+                "latency_ms": 120.0,
+                "stage_durations_ms": {},
+                "error": "",
+            }
+        ],
+        ragas_bundle={
+            "summary": {"faithfulness": 0.9, "response_relevancy": 0.9},
+            "coverage": {"faithfulness": 1, "response_relevancy": 1},
+            "errors": {},
+            "metadata": {},
+        },
+    )
+
+    assert summary["quality_gates"]["status"] == "passed"
+    assert summary["headline_metrics"]["quality_gate_passed"] is True
+    assert summary["headline_metrics"]["quality_gate_failed_count"] == 0
+
+
+def test_report_listing_exposes_quality_gates_and_manifest(tmp_path, monkeypatch):
+    report_path = tmp_path / "unified_rag_eval_demo.json"
+    report_payload = {
+        "generated_at": "2026-05-01T00:00:00",
+        "dataset_path": "/tmp/demo.json",
+        "dataset_name": "demo",
+        "case_count": 1,
+        "final_variant": "final_system",
+        "quality_gates": {
+            "status": "failed",
+            "passed": False,
+            "failed_count": 2,
+            "checks": [],
+        },
+        "run_manifest": {
+            "final_variant": "final_system",
+            "quality_gate_status": "failed",
+        },
+        "final_system_metrics": {
+            "headline_metrics": {"quality_gate_passed": False},
+        },
+        "variants": {"final_system": {"summary": {}}},
+        "comparisons": {},
+    }
+    report_path.write_text(json.dumps(report_payload), encoding="utf-8")
+    monkeypatch.setattr(report_utils, "_eval_output_dirs", lambda: [tmp_path])
+
+    listing = report_utils.list_evaluation_reports()
+    detail = report_utils.get_evaluation_report(report_path.name)
+
+    assert listing["reports"][0]["quality_gate_status"] == "failed"
+    assert listing["reports"][0]["quality_gate_failed_count"] == 2
+    assert detail["report"]["quality_gates"]["status"] == "failed"
+    assert detail["report"]["run_manifest"]["quality_gate_status"] == "failed"
+
+
 def test_feature_variant_builds_expected_overrides():
     payload = build_feature_variant_definition(
         {"label": "Baseline + HyDE + BM25 + Cache", "features": ["hyde", "bm25", "cache"]}
@@ -367,6 +599,13 @@ def test_merge_appended_report_compares_new_variant_to_existing_variants():
     assert "combo_hyde_vs_combo_baseline" in merged["comparisons"]
     assert "combo_cache_vs_combo_baseline" in merged["comparisons"]
     assert "combo_cache_vs_combo_hyde" in merged["comparisons"]
+    assert "quality_gates" in merged
+    assert merged["run_manifest"]["final_variant"] == "combo_cache"
+    assert merged["run_manifest"]["quality_gate_status"] in {
+        "passed",
+        "failed",
+        "skipped",
+    }
 
 
 def test_25_case_dataset_distribution_prioritizes_constraint():

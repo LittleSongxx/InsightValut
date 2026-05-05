@@ -11,6 +11,7 @@ from app.utils.eval_report_utils import load_evaluation_report_payload
 from app.utils.unified_rag_eval import (
     DEFAULT_VARIANTS,
     EvaluationCancelledError,
+    _attach_report_quality_metadata,
     _build_comparison_report,
     evaluate_variants,
     evaluate_variants_to_file,
@@ -202,6 +203,7 @@ def merge_appended_evaluation_report(
         "appended_at": merged["generated_at"],
         "appended_variants": appended_names,
     }
+    _attach_report_quality_metadata(merged)
     return merged
 
 
